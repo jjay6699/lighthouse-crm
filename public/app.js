@@ -565,12 +565,11 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, entity: "all" })} />
         <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
         <Select label="Brand / customer" value={filters.entity} options={entityOptions} onChange={(value) => setFilters({ ...filters, entity: value })} />
-        <Select label="Section" value={filters.section} options={sectionOptions} onChange={(value) => setFilters({ ...filters, section: value })} />
         <DateField label="From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
         <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
       </section>
       <p className="filterHelp">
-        Batch keeps uploads separate. Internal intercompany transactions are excluded from consolidated reporting.
+        Batch keeps uploads separate. Internal intercompany transactions are excluded from consolidated reporting. P&L section filtering is available inside the P&L lines tab.
       </p>
 
       <section className="metricGrid">
@@ -645,6 +644,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
                 <h2>Consolidated P&L statement</h2>
                 <p>Management view in HKD, ordered by source statement structure</p>
               </div>
+              <Select label="P&L section" value={filters.section} options={sectionOptions} onChange={(value) => setFilters({ ...filters, section: value })} />
               <label className="search">
                 <Search size={15} />
                 <input value={search} placeholder="Search P&L" onChange={(event) => setSearch(event.target.value)} />
