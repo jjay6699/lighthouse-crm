@@ -179,7 +179,8 @@ function openDb() {
   return new DatabaseSync(dbPath, { readOnly: true });
 }
 
-function whereFromSearch(params) {
+function whereFromSearch(params, options = {}) {
+  const includeSection = options.includeSection ?? false;
   const clauses = [];
   const values = {};
   const dimension = params.get("dimension") || "class";
@@ -203,7 +204,7 @@ function whereFromSearch(params) {
     clauses.push("f.entity = $entity");
     values.$entity = entity;
   }
-  if (section && section !== "all") {
+  if (includeSection && section && section !== "all") {
     clauses.push("f.section = $section");
     values.$section = section;
   }
@@ -327,6 +328,7 @@ function getDashboard(params) {
   }
 
   const filter = whereFromSearch(params);
+  const sectionFilter = whereFromSearch(params, { includeSection: true });
   const baseJoin = `
     FROM (
       SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
@@ -336,6 +338,16 @@ function getDashboard(params) {
     JOIN batches b ON b.id = r.batch_id
     JOIN companies c ON c.id = r.company_id
     ${filter.sql}
+  `;
+  const sectionJoin = `
+    FROM (
+      SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+      FROM facts raw_f
+    ) f
+    JOIN reports r ON r.id = f.report_id
+    JOIN batches b ON b.id = r.batch_id
+    JOIN companies c ON c.id = r.company_id
+    ${sectionFilter.sql}
   `;
 
   const kpiRows = db
@@ -421,14 +433,14 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT f.line_item, f.section, SUM(f.amount_hkd) AS amount
-      ${baseJoin}
+      ${sectionJoin}
       GROUP BY f.section, f.line_item
       HAVING ABS(amount) > 0
       ORDER BY ABS(amount) DESC
       LIMIT 80
       `
     )
-    .all(filter.values);
+    .all(sectionFilter.values);
 
   const pAndL = db
     .prepare(
@@ -439,7 +451,7 @@ function getDashboard(params) {
         MAX(f.is_total) AS is_total,
         MIN(f.row_order) AS row_order,
         SUM(f.amount_hkd) AS amount
-      ${baseJoin}
+      ${sectionJoin}
       GROUP BY f.section, f.line_item
       HAVING ABS(amount) > 0
       ORDER BY
@@ -465,7 +477,7 @@ function getDashboard(params) {
         f.line_item
       `
     )
-    .all(filter.values);
+    .all(sectionFilter.values);
 
   const sectionSummary = db
     .prepare(
