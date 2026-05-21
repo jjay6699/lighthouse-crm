@@ -424,7 +424,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const grossMargin = revenueBase ? Number(data.kpis.gross_profit || 0) / revenueBase : 0;
   const expenseRatio = revenueBase ? Number(data.kpis.expenses || 0) / revenueBase : 0;
   const netMargin = revenueBase ? Number(data.kpis.net_earnings || 0) / revenueBase : 0;
-  const eliminatedRevenue = Number(data.intercompany?.eliminated?.revenue || 0);
 
   return (
     <main className="workspace">
@@ -454,19 +453,9 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <Select label="Section" value={filters.section} options={sectionOptions} onChange={(value) => setFilters({ ...filters, section: value })} />
         <DateField label="From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
         <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
-        <label className="toggleField">
-          <span>Intercompany</span>
-          <button
-            type="button"
-            className={filters.includeIntercompany ? "toggle on" : "toggle"}
-            onClick={() => setFilters({ ...filters, includeIntercompany: !filters.includeIntercompany })}
-          >
-            {filters.includeIntercompany ? "Shown" : "Hidden"}
-          </button>
-        </label>
       </section>
       <p className="filterHelp">
-        Batch keeps uploads separate. Intercompany is hidden by default for external consolidated reporting.
+        Batch keeps uploads separate. Internal intercompany transactions are excluded from consolidated reporting.
       </p>
 
       <section className="metricGrid">
@@ -475,19 +464,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <Kpi title="Expense ratio" value={pct(expenseRatio)} note={hkd(data.kpis.expenses)} icon={WalletCards} />
         <Kpi title="Net margin" value={pct(netMargin)} note={hkd(data.kpis.net_earnings)} icon={CircleDollarSign} />
       </section>
-      {filters.dimension === "class" && (
-        <section className="infoBanner">
-          <strong>Intercompany note</strong>
-          <span>Intercompany filtering works in By customer view because those reports show the counterparty. Class / brand reports do not identify internal customers.</span>
-        </section>
-      )}
-      {filters.dimension === "customer" && !filters.includeIntercompany && Math.abs(eliminatedRevenue) > 0 && (
-        <section className="eliminationBanner">
-          <strong>Intercompany hidden</strong>
-          <span>{hkd(eliminatedRevenue)} revenue excluded from this view. Toggle Intercompany to Shown to include internal transactions.</span>
-        </section>
-      )}
-
       <nav className="subtabs">
         {[
           ["summary", "Summary"],
@@ -682,7 +658,6 @@ function App() {
     section: "all",
     dateFrom: "",
     dateTo: "",
-    includeIntercompany: false,
   });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

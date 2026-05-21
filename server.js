@@ -188,7 +188,6 @@ function whereFromSearch(params) {
   const section = params.get("section");
   const lineItem = params.get("lineItem");
   const batch = params.get("batch");
-  const includeIntercompany = params.get("includeIntercompany") === "true";
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
 
@@ -216,9 +215,7 @@ function whereFromSearch(params) {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
   }
-  if (!includeIntercompany) {
-    clauses.push("f.is_intercompany = 0");
-  }
+  clauses.push("f.is_intercompany = 0");
   if (dateFrom) {
     clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
     values.$dateFrom = dateFrom;
@@ -242,7 +239,6 @@ function entityOptionsWhere(params) {
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
-  const includeIntercompany = params.get("includeIntercompany") === "true";
 
   if (dimension && dimension !== "all") {
     clauses.push("r.dimension = $dimension");
@@ -256,9 +252,7 @@ function entityOptionsWhere(params) {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
   }
-  if (!includeIntercompany) {
-    clauses.push("f.is_intercompany = 0");
-  }
+  clauses.push("f.is_intercompany = 0");
   if (dateFrom) {
     clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
     values.$dateFrom = dateFrom;
@@ -555,9 +549,9 @@ function getDashboard(params) {
       lossCompanies,
     },
     intercompany: {
-      included: params.get("includeIntercompany") === "true",
+      included: false,
       eliminated: intercompanyEliminations || {},
-      rule: "Entity/customer names matching group company names are classified as intercompany.",
+      rule: "Entity/customer names matching group company names are excluded by default.",
     },
     meta,
   };

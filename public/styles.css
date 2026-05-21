@@ -202,40 +202,6 @@ h2 {
   font-size: 12px;
 }
 
-.eliminationBanner,
-.infoBanner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid #cfe1db;
-  border-radius: 8px;
-  background: #eaf4f1;
-}
-
-.eliminationBanner strong {
-  color: var(--teal);
-}
-
-.eliminationBanner span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.infoBanner {
-  border-color: #d9e2df;
-  background: #ffffff;
-}
-
-.infoBanner strong {
-  color: var(--ink);
-}
-
-.infoBanner span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .field {
   display: grid;
   gap: 5px;
@@ -257,32 +223,6 @@ h2 {
   color: var(--ink);
   padding: 0 10px;
   outline: none;
-}
-
-.toggleField {
-  display: grid;
-  gap: 5px;
-}
-
-.toggleField span {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.toggle {
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #ffffff;
-  color: var(--muted);
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.toggle.on {
-  background: var(--teal);
-  border-color: var(--teal);
-  color: #ffffff;
 }
 
 .metricGrid,
