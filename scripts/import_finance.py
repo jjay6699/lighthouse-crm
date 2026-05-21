@@ -19,11 +19,13 @@ TARGET_CURRENCY = "HKD"
 
 COMPANY_CURRENCY = {
     "Moment Health Sdn Bhd": "MYR",
+    "健康創富有限公司": "TWD",
 }
 
 FALLBACK_RATES_TO_HKD = {
     "HKD": 1.0,
     "MYR": 1.65,
+    "TWD": 0.24,
 }
 
 SECTION_NAMES = {

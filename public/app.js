@@ -279,6 +279,24 @@ function UploadPanel({ uploadState, onFiles }) {
   );
 }
 
+function RebuildPanel({ uploadState, onRebuild }) {
+  return (
+    <section className="importPanel">
+      <div>
+        <div className="sectionTitle">
+          <RefreshCw size={18} />
+          <h2>Rebuild existing database</h2>
+        </div>
+        <p>Use this after currency rules, intercompany rules, or importer logic changes. It recalculates SQLite from the report files already stored in the current batch folders.</p>
+      </div>
+      <button className="ghostButton rebuildButton" type="button" disabled={uploadState.busy} onClick={onRebuild}>
+        <RefreshCw size={16} />
+        Rebuild database
+      </button>
+    </section>
+  );
+}
+
 function Overview({ data, goFinance }) {
   const reports = data.meta.reports;
   return (
@@ -340,7 +358,7 @@ function Overview({ data, goFinance }) {
   );
 }
 
-function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, refresh }) {
+function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, rebuildDatabase, refresh }) {
   const [subtab, setSubtab] = useState("summary");
 
   const companyOptions = [
@@ -490,6 +508,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
             </div>
             <ExpenseBars rows={data.expenses.slice(0, 8)} />
           </div>
+          <RebuildPanel uploadState={uploadState} onRebuild={rebuildDatabase} />
         </section>
       )}
 
@@ -745,6 +764,10 @@ function App() {
       return;
     }
 
+    await rebuildDatabase();
+  }
+
+  async function rebuildDatabase() {
     setUploadState({ busy: true, message: "Rebuilding finance database..." });
     const imported = await fetch("/api/reimport-finance", { method: "POST" }).then((response) => response.json());
     setUploadState({ busy: false, message: imported.ok ? imported.stdout : imported.stderr || "Reimport failed." });
@@ -789,6 +812,7 @@ function App() {
           setSearch={setSearch}
           uploadState={uploadState}
           uploadFiles={uploadFiles}
+          rebuildDatabase={rebuildDatabase}
           refresh={load}
         />
       )}

@@ -58,5 +58,6 @@ The app will then store uploaded reports under `/data/finance consilidation/` an
 
 ## Notes
 
-- The current currency assumption is `Moment Health Sdn Bhd = MYR`; all other companies are treated as HKD.
+- Currency assumptions: `Moment Health Sdn Bhd = MYR`, `健康創富有限公司 = TWD`, all other companies are treated as HKD.
 - The dashboard uses the Excel files as source reports and stores normalized fact rows in SQLite.
+- If currency or import rules change after files are uploaded, use `Financial Consolidation` > `Import` > `Rebuild database`.
