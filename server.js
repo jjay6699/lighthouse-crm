@@ -142,6 +142,7 @@ function whereFromSearch(params) {
   const section = params.get("section");
   const lineItem = params.get("lineItem");
   const batch = params.get("batch");
+  const includeIntercompany = params.get("includeIntercompany") === "true";
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
 
@@ -169,6 +170,9 @@ function whereFromSearch(params) {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
   }
+  if (!includeIntercompany) {
+    clauses.push("f.is_intercompany = 0");
+  }
   if (dateFrom) {
     clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
     values.$dateFrom = dateFrom;
@@ -182,6 +186,18 @@ function whereFromSearch(params) {
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
     values,
   };
+}
+
+function intercompanyExpression(alias = "f") {
+  const col = `${alias}.entity`;
+  return `(
+    lower(${col}) LIKE '%lighthouse mart%'
+    OR lower(${col}) LIKE '%moment health%'
+    OR lower(${col}) LIKE '%rando plus%'
+    OR ${col} LIKE '%健康創富%'
+    OR lower(${col}) LIKE '%mhl%'
+    OR lower(${col}) LIKE '%sdn%'
+  )`;
 }
 
 function appendWhere(filter, condition) {
@@ -199,7 +215,10 @@ function getDashboard(params) {
 
   const filter = whereFromSearch(params);
   const baseJoin = `
-    FROM facts f
+    FROM (
+      SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+      FROM facts raw_f
+    ) f
     JOIN reports r ON r.id = f.report_id
     JOIN batches b ON b.id = r.batch_id
     JOIN companies c ON c.id = r.company_id
@@ -346,6 +365,30 @@ function getDashboard(params) {
     )
     .all(filter.values);
 
+  const eliminationWhere = filter.sql
+    ? `${filter.sql.replace("f.is_intercompany = 0", "f.is_intercompany = 1")}`
+    : "WHERE f.is_intercompany = 1";
+  const eliminationValues = { ...filter.values };
+  const intercompanyEliminations = db
+    .prepare(
+      `
+      SELECT
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+      FROM (
+        SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+        FROM facts raw_f
+      ) f
+      JOIN reports r ON r.id = f.report_id
+      JOIN batches b ON b.id = r.batch_id
+      JOIN companies c ON c.id = r.company_id
+      ${eliminationWhere}
+      `
+    )
+    .get(eliminationValues);
+
   const companyEntity = db
     .prepare(
       `
@@ -411,6 +454,11 @@ function getDashboard(params) {
       bestMarginCompany,
       largestExpense,
       lossCompanies,
+    },
+    intercompany: {
+      included: params.get("includeIntercompany") === "true",
+      eliminated: intercompanyEliminations || {},
+      rule: "Entity/customer names matching group company names are classified as intercompany.",
     },
     meta,
   };
