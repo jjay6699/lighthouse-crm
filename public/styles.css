@@ -202,7 +202,8 @@ h2 {
   font-size: 12px;
 }
 
-.eliminationBanner {
+.eliminationBanner,
+.infoBanner {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -217,6 +218,20 @@ h2 {
 }
 
 .eliminationBanner span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.infoBanner {
+  border-color: #d9e2df;
+  background: #ffffff;
+}
+
+.infoBanner strong {
+  color: var(--ink);
+}
+
+.infoBanner span {
   color: var(--muted);
   font-size: 12px;
 }

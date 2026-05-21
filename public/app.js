@@ -422,7 +422,13 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <Kpi title="Expense ratio" value={pct(expenseRatio)} note={hkd(data.kpis.expenses)} icon={WalletCards} />
         <Kpi title="Net margin" value={pct(netMargin)} note={hkd(data.kpis.net_earnings)} icon={CircleDollarSign} />
       </section>
-      {!filters.includeIntercompany && Math.abs(eliminatedRevenue) > 0 && (
+      {filters.dimension === "class" && (
+        <section className="infoBanner">
+          <strong>Intercompany note</strong>
+          <span>Intercompany filtering works in By customer view because those reports show the counterparty. Class / brand reports do not identify internal customers.</span>
+        </section>
+      )}
+      {filters.dimension === "customer" && !filters.includeIntercompany && Math.abs(eliminatedRevenue) > 0 && (
         <section className="eliminationBanner">
           <strong>Intercompany hidden</strong>
           <span>{hkd(eliminatedRevenue)} revenue excluded from this view. Toggle Intercompany to Shown to include internal transactions.</span>
