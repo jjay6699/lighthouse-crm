@@ -186,14 +186,36 @@ function BrandSkuView({ sku }) {
   const rows = sku.rows.filter((row) =>
     `${row.brand} ${row.sku} ${row.product_name}`.toLowerCase().includes(query.toLowerCase())
   );
+  const topRows = rows.slice(0, 8);
 
   return (
     <section className="summaryStack">
-      <section className="metricGrid">
-        <Kpi title="SKU revenue" value={hkd(sku.totals.revenue)} note="Sales by Product files" icon={CircleDollarSign} />
-        <Kpi title="Units sold" value={new Intl.NumberFormat("en-HK").format(Number(sku.totals.quantity || 0))} note="Consolidated quantity" icon={BarChart3} />
-        <Kpi title="Brands" value={sku.totals.brand_count || 0} note="With SKU sales" icon={Filter} />
-        <Kpi title="SKUs" value={sku.totals.sku_count || 0} note="Unique product codes" icon={Database} />
+      <section className="skuHeader panel">
+        <div>
+          <h2>Brand / SKU sales</h2>
+          <p>Sales by Product/Service detail, external customers only, converted to HKD.</p>
+        </div>
+        <div className="skuStats">
+          <div>
+            <span>SKU revenue</span>
+            <strong>{hkd(sku.totals.revenue)}</strong>
+          </div>
+          <div>
+            <span>Units sold</span>
+            <strong>{new Intl.NumberFormat("en-HK").format(Number(sku.totals.quantity || 0))}</strong>
+          </div>
+          <div>
+            <span>Brands</span>
+            <strong>{sku.totals.brand_count || 0}</strong>
+          </div>
+          <div>
+            <span>SKUs</span>
+            <strong>{sku.totals.sku_count || 0}</strong>
+          </div>
+        </div>
+        <p className="sourceNote">
+          SKU revenue may not equal P&L revenue because P&L can include discounts, shipping, funding, service income, credit notes, and accounting adjustments.
+        </p>
       </section>
 
       <section className="summaryTop">
@@ -204,27 +226,37 @@ function BrandSkuView({ sku }) {
               <p>Revenue share from Sales by Product reports</p>
             </div>
           </div>
-          <ContributionList rows={sku.brands.map((row) => ({ company: row.brand, revenue: row.revenue, revenue_share: row.revenue_share }))} />
+          <ContributionList rows={sku.brands.slice(0, 15).map((row) => ({ company: row.brand, revenue: row.revenue, revenue_share: row.revenue_share }))} />
         </div>
         <div className="panel">
           <div className="panelHeader">
             <div>
               <h2>SKU search</h2>
-              <p>Find product code, name, or brand</p>
+              <p>{query ? `${rows.length} matching SKU rows` : "Type to filter, or review top SKUs below"}</p>
             </div>
           </div>
           <label className="search wideSearch">
             <Search size={15} />
             <input value={query} placeholder="Search SKU, product, brand" onChange={(event) => setQuery(event.target.value)} />
           </label>
+          <div className="skuResultList">
+            {topRows.map((row) => (
+              <button className="skuResult" key={`${row.brand}-${row.sku}-${row.product_name}`} type="button" onClick={() => setQuery(row.sku)}>
+                <span>{row.brand}</span>
+                <strong>{row.product_name}</strong>
+                <em>{row.sku} | {hkd(row.revenue)}</em>
+              </button>
+            ))}
+            {!topRows.length && <p className="emptyMini">No SKU rows match this search.</p>}
+          </div>
         </div>
       </section>
 
       <div className="panel">
         <div className="panelHeader">
           <div>
-            <h2>Consolidated by brand and SKU</h2>
-            <p>External sales only, converted to HKD</p>
+            <h2>SKU detail</h2>
+            <p>{query ? `Filtered by "${query}"` : "Top SKU rows by revenue"}</p>
           </div>
         </div>
         <div className="tableWrap compactTable">

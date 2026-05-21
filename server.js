@@ -305,6 +305,7 @@ function skuWhereFromSearch(params) {
     clauses.push("(s.period_start IS NULL OR s.period_start <= $dateTo)");
     values.$dateTo = dateTo;
   }
+  clauses.push("ABS(s.amount_hkd) > 0.01");
 
   return {
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
@@ -592,7 +593,7 @@ function getDashboard(params) {
           COUNT(DISTINCT s.customer) AS customer_count
         ${skuJoin}
         GROUP BY s.brand, s.sku, s.product_name
-        HAVING ABS(revenue) > 0.01 OR ABS(quantity) > 0.01
+        HAVING ABS(revenue) > 0.01
         ORDER BY revenue DESC
         LIMIT 250
         `
@@ -608,7 +609,7 @@ function getDashboard(params) {
           COUNT(DISTINCT s.sku) AS sku_count
         ${skuJoin}
         GROUP BY s.brand
-        HAVING ABS(revenue) > 0.01 OR ABS(quantity) > 0.01
+        HAVING revenue > 0.01
         ORDER BY revenue DESC
         LIMIT 80
         `
