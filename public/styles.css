@@ -792,6 +792,66 @@ th {
   font-weight: 700;
 }
 
+.totalRow {
+  background: #f3f7f5;
+  font-weight: 800;
+}
+
+.totalRow td {
+  border-bottom-color: #cfe1db;
+}
+
+.batchList {
+  display: grid;
+  gap: 10px;
+}
+
+.batchRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.batchRow strong,
+.batchRow span {
+  display: block;
+}
+
+.batchRow span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.batchRow input {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  min-width: 0;
+}
+
+.batchRow button {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.batchRow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.batchRow .dangerButton {
+  color: #9a2630;
+}
+
 td:nth-child(n + 3),
 th:nth-child(n + 3),
 td:last-child,
@@ -918,6 +978,10 @@ th:last-child {
   .statementHead,
   .statementRow {
     grid-template-columns: minmax(160px, 1fr) 120px 88px;
+  }
+
+  .batchRow {
+    grid-template-columns: 1fr;
   }
 
   h1 {

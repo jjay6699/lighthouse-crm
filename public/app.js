@@ -109,6 +109,22 @@ function InsightGrid({ insights }) {
 }
 
 function PerformanceTable({ rows }) {
+  const total = rows.reduce(
+    (acc, row) => ({
+      company: "Total",
+      revenue: acc.revenue + Number(row.revenue || 0),
+      gross_profit: acc.gross_profit + Number(row.gross_profit || 0),
+      expenses: acc.expenses + Number(row.expenses || 0),
+      net_earnings: acc.net_earnings + Number(row.net_earnings || 0),
+    }),
+    { company: "Total", revenue: 0, gross_profit: 0, expenses: 0, net_earnings: 0 }
+  );
+  total.revenue_share = 1;
+  total.gross_margin = total.revenue ? total.gross_profit / total.revenue : 0;
+  total.expense_ratio = total.revenue ? total.expenses / total.revenue : 0;
+  total.net_margin = total.revenue ? total.net_earnings / total.revenue : 0;
+  const tableRows = [total, ...rows];
+
   return (
     <div className="tableWrap compactTable">
       <table>
@@ -124,8 +140,8 @@ function PerformanceTable({ rows }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.company}>
+          {tableRows.map((row) => (
+            <tr className={row.company === "Total" ? "totalRow" : ""} key={row.company}>
               <td>{row.company}</td>
               <td>{hkd(row.revenue)}</td>
               <td>{pct(row.revenue_share)}</td>
@@ -279,20 +295,41 @@ function UploadPanel({ uploadState, onFiles }) {
   );
 }
 
-function RebuildPanel({ uploadState, onRebuild }) {
+function BatchManager({ batches, uploadState, onRename, onDelete }) {
+  const [editing, setEditing] = useState({});
   return (
-    <section className="importPanel">
-      <div>
-        <div className="sectionTitle">
-          <RefreshCw size={18} />
-          <h2>Rebuild existing database</h2>
+    <section className="panel">
+      <div className="panelHeader">
+        <div>
+          <h2>Manage batches</h2>
+          <p>Rename or delete uploaded report groups</p>
         </div>
-        <p>Use this after currency rules, intercompany rules, or importer logic changes. It recalculates SQLite from the report files already stored in the current batch folders.</p>
       </div>
-      <button className="ghostButton rebuildButton" type="button" disabled={uploadState.busy} onClick={onRebuild}>
-        <RefreshCw size={16} />
-        Rebuild database
-      </button>
+      <div className="batchList">
+        {batches.map((batch) => {
+          const locked = batch.batch_key === "initial-import";
+          const value = editing[batch.batch_key] ?? batch.name;
+          return (
+            <div className="batchRow" key={batch.batch_key}>
+              <div>
+                <strong>{batch.name}</strong>
+                <span>{locked ? "Original local source files" : batch.uploaded_at || "Uploaded batch"}</span>
+              </div>
+              <input
+                value={value}
+                disabled={locked || uploadState.busy}
+                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: event.target.value })}
+              />
+              <button type="button" disabled={locked || uploadState.busy || value === batch.name} onClick={() => onRename(batch.batch_key, value)}>
+                Save
+              </button>
+              <button className="dangerButton" type="button" disabled={locked || uploadState.busy} onClick={() => onDelete(batch.batch_key)}>
+                Delete
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -358,7 +395,7 @@ function Overview({ data, goFinance }) {
   );
 }
 
-function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, rebuildDatabase, refresh }) {
+function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh }) {
   const [subtab, setSubtab] = useState("summary");
 
   const companyOptions = [
@@ -399,11 +436,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           <p className="subtitle">Consolidated HKD dashboard with controls for period, company, view, entity, and P&L section.</p>
         </div>
         <div className="headerActions">
-          <label className="primaryButton">
-            <input type="file" accept=".xlsx" multiple onChange={(event) => uploadFiles(event.target.files, `Quick upload ${new Date().toISOString().slice(0, 10)}`)} />
+          <button className="primaryButton" type="button" onClick={() => setSubtab("import")}>
             <UploadCloud size={16} />
             Upload reports
-          </label>
+          </button>
           <button className="ghostButton" type="button" onClick={refresh}>
             <RefreshCw size={16} />
             Refresh
@@ -508,7 +544,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
             </div>
             <ExpenseBars rows={data.expenses.slice(0, 8)} />
           </div>
-          <RebuildPanel uploadState={uploadState} onRebuild={rebuildDatabase} />
         </section>
       )}
 
@@ -587,6 +622,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       {subtab === "import" && (
         <section className="cleanGrid">
           <UploadPanel uploadState={uploadState} onFiles={uploadFiles} />
+          <BatchManager batches={data.meta.batches} uploadState={uploadState} onRename={renameBatch} onDelete={deleteBatch} />
           <div className="panel">
             <div className="panelHeader">
               <div>
@@ -774,6 +810,26 @@ function App() {
     await load();
   }
 
+  async function renameBatch(batchKey, name) {
+    setUploadState({ busy: true, message: "Saving batch..." });
+    const result = await fetch(`/api/batches/${encodeURIComponent(batchKey)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then((response) => response.json());
+    setUploadState({ busy: false, message: result.ok ? result.stdout || "Batch updated." : result.error || result.stderr || "Batch update failed." });
+    await load();
+  }
+
+  async function deleteBatch(batchKey) {
+    const confirmed = window.confirm("Delete this batch and rebuild the dashboard database?");
+    if (!confirmed) return;
+    setUploadState({ busy: true, message: "Deleting batch..." });
+    const result = await fetch(`/api/batches/${encodeURIComponent(batchKey)}`, { method: "DELETE" }).then((response) => response.json());
+    setUploadState({ busy: false, message: result.ok ? result.stdout || "Batch deleted." : result.error || result.stderr || "Batch delete failed." });
+    await load();
+  }
+
   if (!data) return <EmptyState message="Loading finance database..." />;
   if (!data.ready) return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
 
@@ -812,7 +868,8 @@ function App() {
           setSearch={setSearch}
           uploadState={uploadState}
           uploadFiles={uploadFiles}
-          rebuildDatabase={rebuildDatabase}
+          renameBatch={renameBatch}
+          deleteBatch={deleteBatch}
           refresh={load}
         />
       )}

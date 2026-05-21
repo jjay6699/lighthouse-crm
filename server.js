@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -39,6 +39,12 @@ function readBody(req) {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+async function readJson(req) {
+  const raw = await readBody(req);
+  if (!raw.length) return {};
+  return JSON.parse(raw.toString("utf8"));
 }
 
 function safeFileName(name) {
@@ -133,6 +139,37 @@ function runImporter() {
       resolve({ ok: code === 0, code, stdout: stdout.trim(), stderr: stderr.trim() });
     });
   });
+}
+
+async function renameBatch(batchKey, name) {
+  const safeName = String(name || "").trim();
+  if (!safeName) return { ok: false, error: "Batch name is required." };
+  if (batchKey === "initial-import") return { ok: false, error: "Initial import cannot be renamed from the app." };
+
+  const batchDir = normalize(join(financeDir, "batches", batchKey));
+  const batchesRoot = normalize(join(financeDir, "batches"));
+  if (!batchDir.startsWith(batchesRoot) || !existsSync(batchDir)) {
+    return { ok: false, error: "Batch folder was not found." };
+  }
+
+  await writeFile(
+    join(batchDir, "batch.json"),
+    JSON.stringify({ name: safeName, uploaded_at: new Date().toISOString() }, null, 2)
+  );
+  return runImporter();
+}
+
+async function deleteBatch(batchKey) {
+  if (batchKey === "initial-import") return { ok: false, error: "Initial import cannot be deleted from the app." };
+
+  const batchDir = normalize(join(financeDir, "batches", batchKey));
+  const batchesRoot = normalize(join(financeDir, "batches"));
+  if (!batchDir.startsWith(batchesRoot) || !existsSync(batchDir)) {
+    return { ok: false, error: "Batch folder was not found." };
+  }
+
+  await rm(batchDir, { recursive: true, force: true });
+  return runImporter();
 }
 
 function openDb() {
@@ -523,6 +560,26 @@ createServer(async (req, res) => {
 
   if (url.pathname === "/api/reimport-finance" && req.method === "POST") {
     json(res, 200, await runImporter());
+    return;
+  }
+
+  const batchMatch = url.pathname.match(/^\/api\/batches\/([^/]+)$/);
+  if (batchMatch && req.method === "PATCH") {
+    try {
+      const body = await readJson(req);
+      json(res, 200, await renameBatch(decodeURIComponent(batchMatch[1]), body.name));
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (batchMatch && req.method === "DELETE") {
+    try {
+      json(res, 200, await deleteBatch(decodeURIComponent(batchMatch[1])));
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
     return;
   }
 
