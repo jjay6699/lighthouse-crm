@@ -8,8 +8,11 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const dbPath = process.env.DATABASE_PATH || join(__dirname, "data", "finance.sqlite");
-const financeDir = join(__dirname, "finance consilidation");
+const persistDir = process.env.PERSIST_DIR || "";
+const dataDir = process.env.DATA_DIR || (persistDir ? join(persistDir, "data") : join(__dirname, "data"));
+const dbPath = process.env.DATABASE_PATH || join(dataDir, "finance.sqlite");
+const financeDir =
+  process.env.FINANCE_DIR || (persistDir ? join(persistDir, "finance consilidation") : join(__dirname, "finance consilidation"));
 const port = Number(process.env.PORT || 3000);
 const bundledPython = process.env.USERPROFILE
   ? join(process.env.USERPROFILE, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
@@ -114,6 +117,12 @@ function runImporter() {
   return new Promise((resolve) => {
     const child = spawn(python, [join(__dirname, "scripts", "import_finance.py")], {
       cwd: __dirname,
+      env: {
+        ...process.env,
+        DATA_DIR: dataDir,
+        DATABASE_PATH: dbPath,
+        FINANCE_DIR: financeDir,
+      },
     });
 
     let stdout = "";

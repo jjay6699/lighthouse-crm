@@ -205,12 +205,49 @@ function Kpi({ title, value, note, icon: Icon }) {
 }
 
 function EmptyState({ message }) {
+  const [batchName, setBatchName] = useState(`Initial import ${new Date().toISOString().slice(0, 10)}`);
+  const [status, setStatus] = useState("");
+
+  async function uploadInitial(files) {
+    if (!files.length) return;
+    setStatus("Uploading reports...");
+    const form = new FormData();
+    form.append("batchName", batchName || "Initial import");
+    Array.from(files).forEach((file) => form.append("files", file));
+
+    const upload = await fetch("/api/upload-finance", { method: "POST", body: form }).then((response) => response.json());
+    if (!upload.ok) {
+      setStatus(upload.message || upload.error || "Upload failed.");
+      return;
+    }
+
+    setStatus("Building finance database...");
+    const imported = await fetch("/api/reimport-finance", { method: "POST" }).then((response) => response.json());
+    if (!imported.ok) {
+      setStatus(imported.stderr || "Import failed. Check Railway logs.");
+      return;
+    }
+
+    setStatus(imported.stdout || "Import complete. Reloading...");
+    window.location.reload();
+  }
+
   return (
     <main className="empty">
       <Database size={28} />
       <h1>Financial Consolidation</h1>
       <p>{message}</p>
-      <code>python scripts/import_finance.py</code>
+      <label className="field emptyField">
+        <span>Batch name</span>
+        <input value={batchName} onChange={(event) => setBatchName(event.target.value)} />
+      </label>
+      <label className="primaryButton emptyUpload">
+        <input type="file" accept=".xlsx" multiple onChange={(event) => uploadInitial(event.target.files)} />
+        <UploadCloud size={16} />
+        Upload first finance reports
+      </label>
+      <small>For local development you can also run: python scripts/import_finance.py</small>
+      {status && <p className="notice">{status}</p>}
     </main>
   );
 }

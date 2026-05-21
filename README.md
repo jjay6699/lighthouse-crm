@@ -45,7 +45,16 @@ The expected file pattern is a QuickBooks-style Profit and Loss export by Class 
 1. Push this folder to GitHub.
 2. Create a new Railway project from the GitHub repo.
 3. Railway will use `npm start`, which runs `node server.js`.
-4. Keep `data/finance.sqlite` in the repo for the first deploy, or run the importer before deployment whenever the Excel files change.
+4. Do not commit finance source files or `data/finance.sqlite`.
+5. After deployment, open the app and upload the first finance reports from the empty-state upload screen or from `Financial Consolidation` > `Import`.
+
+For persistent uploads across redeploys, attach a Railway volume and set:
+
+```text
+PERSIST_DIR=/data
+```
+
+The app will then store uploaded reports under `/data/finance consilidation/` and the SQLite database under `/data/data/finance.sqlite`.
 
 ## Notes
 

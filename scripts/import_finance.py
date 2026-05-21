@@ -12,9 +12,9 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FINANCE_DIR = ROOT / "finance consilidation"
-DATA_DIR = ROOT / "data"
-DB_PATH = DATA_DIR / "finance.sqlite"
+FINANCE_DIR = Path(os.environ.get("FINANCE_DIR", ROOT / "finance consilidation"))
+DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
+DB_PATH = Path(os.environ.get("DATABASE_PATH", DATA_DIR / "finance.sqlite"))
 TARGET_CURRENCY = "HKD"
 
 COMPANY_CURRENCY = {
