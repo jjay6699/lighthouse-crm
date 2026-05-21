@@ -1,0 +1,13 @@
+{
+  "name": "lightmart-crm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "import:finance": "python scripts/import_finance.py",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

@@ -1,0 +1,475 @@
+import { createServer } from "node:http";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { extname, join, normalize } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const publicDir = join(__dirname, "public");
+const dbPath = process.env.DATABASE_PATH || join(__dirname, "data", "finance.sqlite");
+const financeDir = join(__dirname, "finance consilidation");
+const port = Number(process.env.PORT || 3000);
+const bundledPython = process.env.USERPROFILE
+  ? join(process.env.USERPROFILE, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
+  : "";
+
+const mime = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+};
+
+function json(res, status, payload) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+function safeFileName(name) {
+  return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/\s+/g, " ").trim();
+}
+
+function slugify(value) {
+  return safeFileName(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+async function uploadFinanceFiles(req) {
+  const contentType = req.headers["content-type"] || "";
+  const match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!match) {
+    return { ok: false, message: "Upload must use multipart/form-data." };
+  }
+
+  const boundary = Buffer.from(`--${match[1] || match[2]}`);
+  const body = await readBody(req);
+  const files = [];
+  let batchName = "";
+  let batchKey = "";
+  let batchDir = "";
+  let batchLabel = "";
+  let cursor = body.indexOf(boundary);
+
+  while (cursor !== -1) {
+    const next = body.indexOf(boundary, cursor + boundary.length);
+    if (next === -1) break;
+
+    const part = body.subarray(cursor + boundary.length + 2, next - 2);
+    const headerEnd = part.indexOf(Buffer.from("\r\n\r\n"));
+    if (headerEnd > -1) {
+      const header = part.subarray(0, headerEnd).toString("utf8");
+      const fieldMatch = header.match(/name="([^"]+)"/i);
+      const filenameMatch = header.match(/filename="([^"]+)"/i);
+      const content = part.subarray(headerEnd + 4);
+      if (!filenameMatch && fieldMatch?.[1] === "batchName") {
+        batchName = content.toString("utf8").trim();
+      }
+      if (filenameMatch) {
+        const originalName = safeFileName(filenameMatch[1]);
+        if (!originalName.toLowerCase().endsWith(".xlsx")) {
+          files.push({ name: originalName, skipped: true, reason: "Only .xlsx files are accepted." });
+        } else {
+          if (!batchKey) {
+            const now = new Date();
+            batchLabel = batchName || `Upload ${now.toISOString().slice(0, 10)}`;
+            batchKey = `${now.toISOString().replace(/[:.]/g, "-")}-${slugify(batchLabel) || "batch"}`;
+            batchDir = join(financeDir, "batches", batchKey);
+            await mkdir(batchDir, { recursive: true });
+            await writeFile(
+              join(batchDir, "batch.json"),
+              JSON.stringify({ name: batchLabel, uploaded_at: now.toISOString() }, null, 2)
+            );
+          }
+          const targetPath = join(batchDir, originalName);
+          await writeFile(targetPath, content);
+          files.push({ name: originalName, size: content.length, skipped: false, batch: batchLabel });
+        }
+      }
+    }
+
+    cursor = next;
+  }
+
+  return { ok: true, files };
+}
+
+function runImporter() {
+  const python = process.env.PYTHON || (bundledPython && existsSync(bundledPython) ? bundledPython : "python3");
+  return new Promise((resolve) => {
+    const child = spawn(python, [join(__dirname, "scripts", "import_finance.py")], {
+      cwd: __dirname,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
+    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
+    child.on("close", (code) => {
+      resolve({ ok: code === 0, code, stdout: stdout.trim(), stderr: stderr.trim() });
+    });
+  });
+}
+
+function openDb() {
+  if (!existsSync(dbPath)) {
+    return null;
+  }
+  return new DatabaseSync(dbPath, { readOnly: true });
+}
+
+function whereFromSearch(params) {
+  const clauses = [];
+  const values = {};
+  const dimension = params.get("dimension") || "class";
+  const company = params.get("company");
+  const entity = params.get("entity");
+  const section = params.get("section");
+  const lineItem = params.get("lineItem");
+  const batch = params.get("batch");
+  const dateFrom = params.get("dateFrom");
+  const dateTo = params.get("dateTo");
+
+  if (dimension && dimension !== "all") {
+    clauses.push("r.dimension = $dimension");
+    values.$dimension = dimension;
+  }
+  if (company && company !== "all") {
+    clauses.push("c.name = $company");
+    values.$company = company;
+  }
+  if (entity && entity !== "all") {
+    clauses.push("f.entity = $entity");
+    values.$entity = entity;
+  }
+  if (section && section !== "all") {
+    clauses.push("f.section = $section");
+    values.$section = section;
+  }
+  if (lineItem && lineItem !== "all") {
+    clauses.push("f.line_item = $lineItem");
+    values.$lineItem = lineItem;
+  }
+  if (batch && batch !== "all") {
+    clauses.push("b.batch_key = $batch");
+    values.$batch = batch;
+  }
+  if (dateFrom) {
+    clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
+    values.$dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    clauses.push("(r.period_start IS NULL OR r.period_start <= $dateTo)");
+    values.$dateTo = dateTo;
+  }
+
+  return {
+    sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    values,
+  };
+}
+
+function appendWhere(filter, condition) {
+  return filter.sql ? `AND ${condition}` : `WHERE ${condition}`;
+}
+
+function getDashboard(params) {
+  const db = openDb();
+  if (!db) {
+    return {
+      ready: false,
+      message: "Finance database not found. Run python scripts/import_finance.py first.",
+    };
+  }
+
+  const filter = whereFromSearch(params);
+  const baseJoin = `
+    FROM facts f
+    JOIN reports r ON r.id = f.report_id
+    JOIN batches b ON b.id = r.batch_id
+    JOIN companies c ON c.id = r.company_id
+    ${filter.sql}
+  `;
+
+  const kpiRows = db
+    .prepare(
+      `
+      SELECT
+        SUM(CASE WHEN f.line_item IN ('Total for Income', 'Income') THEN f.amount_hkd ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+      ${baseJoin}
+      `
+    )
+    .all(filter.values);
+
+  const byCompany = db
+    .prepare(
+      `
+      SELECT c.name AS company, c.source_currency AS currency,
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+      ${baseJoin}
+      GROUP BY c.name, c.source_currency
+      ORDER BY revenue DESC
+      `
+    )
+    .all(filter.values);
+
+  const revenueTotal = Number((kpiRows[0] || {}).revenue || 0);
+  const expenseTotal = Number((kpiRows[0] || {}).expenses || 0);
+  const companyPerformance = byCompany.map((row) => {
+    const revenue = Number(row.revenue || 0);
+    return {
+      ...row,
+      revenue_share: revenueTotal ? revenue / revenueTotal : 0,
+      gross_margin: revenue ? Number(row.gross_profit || 0) / revenue : 0,
+      expense_ratio: revenue ? Number(row.expenses || 0) / revenue : 0,
+      net_margin: revenue ? Number(row.net_earnings || 0) / revenue : 0,
+    };
+  });
+
+  const byEntity = db
+    .prepare(
+      `
+      SELECT f.entity,
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+      ${baseJoin}
+      GROUP BY f.entity
+      HAVING ABS(revenue) + ABS(gross_profit) + ABS(net_earnings) > 0
+      ORDER BY revenue DESC
+      LIMIT 25
+      `
+    )
+    .all(filter.values);
+
+  const expenses = db
+    .prepare(
+      `
+      SELECT f.line_item,
+        SUM(f.amount_hkd) AS amount
+      ${baseJoin}
+      ${appendWhere(filter, "f.section = 'Expenses'")}
+      AND f.line_item NOT LIKE 'Total for%'
+      GROUP BY f.line_item
+      HAVING ABS(amount) > 0
+      ORDER BY amount DESC
+      LIMIT 12
+      `
+    )
+    .all(filter.values);
+
+  const expenseBreakdown = expenses.map((row) => ({
+    ...row,
+    share_of_expenses: expenseTotal ? Number(row.amount || 0) / expenseTotal : 0,
+    share_of_revenue: revenueTotal ? Number(row.amount || 0) / revenueTotal : 0,
+  }));
+
+  const lines = db
+    .prepare(
+      `
+      SELECT f.line_item, f.section, SUM(f.amount_hkd) AS amount
+      ${baseJoin}
+      GROUP BY f.section, f.line_item
+      HAVING ABS(amount) > 0
+      ORDER BY ABS(amount) DESC
+      LIMIT 80
+      `
+    )
+    .all(filter.values);
+
+  const pAndL = db
+    .prepare(
+      `
+      SELECT
+        f.section,
+        f.line_item,
+        MAX(f.is_total) AS is_total,
+        MIN(f.row_order) AS row_order,
+        SUM(f.amount_hkd) AS amount
+      ${baseJoin}
+      GROUP BY f.section, f.line_item
+      HAVING ABS(amount) > 0
+      ORDER BY
+        CASE f.section
+          WHEN 'Income' THEN 1
+          WHEN 'Cost of Sales' THEN 2
+          WHEN 'Other Income(Loss)' THEN 3
+          WHEN 'Expenses' THEN 4
+          WHEN 'Other Expenses' THEN 5
+          ELSE 9
+        END,
+        CASE
+          WHEN f.line_item IN (
+            'Total for Income',
+            'Gross Profit',
+            'Total for Other Income(Loss)',
+            'Total for Expenses',
+            'Total for Other Expenses',
+            'Net Earnings'
+          ) THEN 900
+          ELSE row_order
+        END,
+        f.line_item
+      `
+    )
+    .all(filter.values);
+
+  const sectionSummary = db
+    .prepare(
+      `
+      SELECT f.section, SUM(f.amount_hkd) AS amount, COUNT(*) AS rows
+      ${baseJoin}
+      GROUP BY f.section
+      ORDER BY ABS(amount) DESC
+      `
+    )
+    .all(filter.values);
+
+  const companyEntity = db
+    .prepare(
+      `
+      SELECT c.name AS company, f.entity,
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+      ${baseJoin}
+      GROUP BY c.name, f.entity
+      HAVING ABS(revenue) + ABS(gross_profit) + ABS(expenses) + ABS(net_earnings) > 0
+      ORDER BY revenue DESC
+      LIMIT 120
+      `
+    )
+    .all(filter.values);
+
+  const meta = {
+    batches: db.prepare("SELECT batch_key, name, uploaded_at FROM batches ORDER BY id DESC").all(),
+    companies: db.prepare("SELECT name, source_currency AS currency FROM companies ORDER BY name").all(),
+    dimensions: db.prepare("SELECT DISTINCT dimension FROM reports ORDER BY dimension").all().map((x) => x.dimension),
+    entities: db
+      .prepare(
+        "SELECT DISTINCT entity FROM facts ORDER BY entity"
+      )
+      .all()
+      .map((x) => x.entity),
+    sections: db.prepare("SELECT DISTINCT section FROM facts WHERE section IS NOT NULL ORDER BY section").all().map((x) => x.section),
+    fx: db.prepare("SELECT * FROM fx_rates ORDER BY source_currency").all(),
+    reports: db
+      .prepare(
+        "SELECT b.batch_key, b.name AS batch_name, r.dimension, r.period_label, r.period_start, r.period_end, r.source_file, c.name AS company FROM reports r JOIN batches b ON b.id = r.batch_id JOIN companies c ON c.id = r.company_id ORDER BY b.id DESC, c.name, r.dimension"
+      )
+      .all(),
+    dateRange: db
+      .prepare("SELECT MIN(period_start) AS min, MAX(period_end) AS max FROM reports")
+      .get(),
+  };
+
+  db.close();
+
+  const bestMarginCompany = companyPerformance
+    .filter((row) => Number(row.revenue || 0) > 0)
+    .sort((a, b) => b.net_margin - a.net_margin)[0];
+  const topRevenueCompany = companyPerformance[0];
+  const largestExpense = expenseBreakdown[0];
+  const lossCompanies = companyPerformance.filter((row) => Number(row.net_earnings || 0) < 0);
+
+  return {
+    ready: true,
+    filters: Object.fromEntries(params.entries()),
+    kpis: kpiRows[0] || {},
+    byCompany,
+    companyPerformance,
+    byEntity,
+    expenses: expenseBreakdown,
+    lines,
+    pAndL,
+    sectionSummary,
+    companyEntity,
+    insights: {
+      topRevenueCompany,
+      bestMarginCompany,
+      largestExpense,
+      lossCompanies,
+    },
+    meta,
+  };
+}
+
+async function serveStatic(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  const filePath = normalize(join(publicDir, requested));
+
+  if (!filePath.startsWith(publicDir)) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+
+  try {
+    const data = await readFile(filePath);
+    res.writeHead(200, { "content-type": mime[extname(filePath)] || "application/octet-stream" });
+    res.end(data);
+  } catch {
+    const data = await readFile(join(publicDir, "index.html"));
+    res.writeHead(200, { "content-type": mime[".html"] });
+    res.end(data);
+  }
+}
+
+createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname === "/api/health") {
+    json(res, 200, { ok: true, database: existsSync(dbPath), dbPath });
+    return;
+  }
+
+  if (url.pathname === "/api/dashboard") {
+    try {
+      json(res, 200, getDashboard(url.searchParams));
+    } catch (error) {
+      json(res, 500, { ready: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/upload-finance" && req.method === "POST") {
+    try {
+      json(res, 200, await uploadFinanceFiles(req));
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/reimport-finance" && req.method === "POST") {
+    json(res, 200, await runImporter());
+    return;
+  }
+
+  await serveStatic(req, res);
+}).listen(port, () => {
+  console.log(`Lightmart CRM running at http://localhost:${port}`);
+});
