@@ -234,6 +234,46 @@ function whereFromSearch(params) {
   };
 }
 
+function entityOptionsWhere(params) {
+  const clauses = [];
+  const values = {};
+  const dimension = params.get("dimension") || "class";
+  const company = params.get("company");
+  const batch = params.get("batch");
+  const dateFrom = params.get("dateFrom");
+  const dateTo = params.get("dateTo");
+  const includeIntercompany = params.get("includeIntercompany") === "true";
+
+  if (dimension && dimension !== "all") {
+    clauses.push("r.dimension = $dimension");
+    values.$dimension = dimension;
+  }
+  if (company && company !== "all") {
+    clauses.push("c.name = $company");
+    values.$company = company;
+  }
+  if (batch && batch !== "all") {
+    clauses.push("b.batch_key = $batch");
+    values.$batch = batch;
+  }
+  if (!includeIntercompany) {
+    clauses.push("f.is_intercompany = 0");
+  }
+  if (dateFrom) {
+    clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
+    values.$dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    clauses.push("(r.period_start IS NULL OR r.period_start <= $dateTo)");
+    values.$dateTo = dateTo;
+  }
+
+  return {
+    sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    values,
+  };
+}
+
 function intercompanyExpression(alias = "f") {
   const col = `${alias}.entity`;
   return `(
@@ -458,9 +498,22 @@ function getDashboard(params) {
     dimensions: db.prepare("SELECT DISTINCT dimension FROM reports ORDER BY dimension").all().map((x) => x.dimension),
     entities: db
       .prepare(
-        "SELECT DISTINCT entity FROM facts ORDER BY entity"
+        `
+        SELECT f.entity
+        FROM (
+          SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+          FROM facts raw_f
+        ) f
+        JOIN reports r ON r.id = f.report_id
+        JOIN batches b ON b.id = r.batch_id
+        JOIN companies c ON c.id = r.company_id
+        ${entityOptionsWhere(params).sql}
+        GROUP BY f.entity
+        HAVING ABS(SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END)) > 0.01
+        ORDER BY f.entity
+        `
       )
-      .all()
+      .all(entityOptionsWhere(params).values)
       .map((x) => x.entity),
     sections: db.prepare("SELECT DISTINCT section FROM facts WHERE section IS NOT NULL ORDER BY section").all().map((x) => x.section),
     fx: db.prepare("SELECT * FROM fx_rates ORDER BY source_currency").all(),
