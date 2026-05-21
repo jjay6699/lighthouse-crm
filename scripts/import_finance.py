@@ -121,6 +121,31 @@ def parse_period(period_label: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def looks_like_transaction(value) -> bool:
+    if pd.isna(value):
+        return False
+    text = str(value).strip()
+    return bool(re.match(r"\d{1,2}[./]\d{1,2}[./]\d{4}", text))
+
+
+def extract_barcode(*values) -> str:
+    for value in values:
+        if pd.isna(value):
+            continue
+        text = str(value)
+        matches = re.findall(r"\d{8,14}", text)
+        if matches:
+            return matches[0]
+    return ""
+
+
+def clean_product_name(label: str) -> str:
+    text = re.sub(r"^Total for\s+", "", label or "").strip()
+    text = re.sub(r"^\(?\d{5,14}\)?\s*[-–]?\s*", "", text).strip()
+    text = re.sub(r"^\d{5,14}\s*[-–]\s*", "", text).strip()
+    return text or label
+
+
 def parse_file(path: Path):
     df = pd.read_excel(path, sheet_name=0, header=None)
     company = clean_label(df.iat[0, 0]) or path.name.split("_")[0]
@@ -187,9 +212,71 @@ def parse_file(path: Path):
     }
 
 
+def parse_sales_file(path: Path):
+    df = pd.read_excel(path, sheet_name=0, header=None)
+    company = clean_label(df.iat[0, 0]) or path.name.split("_")[0]
+    report_title = clean_label(df.iat[1, 0]) or ""
+    period_label = clean_label(df.iat[2, 0]) or ""
+    period_start, period_end = parse_period(period_label)
+    currency = infer_currency(company)
+
+    current_brand = None
+    current_product = None
+    sales = []
+
+    for row in range(5, df.shape[0]):
+        first = clean_label(df.iat[row, 0])
+        transaction_date = clean_label(df.iat[row, 1])
+        if looks_like_transaction(transaction_date):
+            description = clean_label(df.iat[row, 5]) or current_product or ""
+            sku = extract_barcode(description, current_product)
+            amount = numeric(df.iat[row, 8])
+            quantity = numeric(df.iat[row, 6])
+            if amount is None and quantity is None:
+                continue
+            product_name = clean_product_name(current_product or description)
+            brand = current_brand or product_name.split(" - ")[0].strip() or "Unmapped"
+            sales.append(
+                {
+                    "transaction_date": transaction_date,
+                    "customer": clean_label(df.iat[row, 4]) or "Not specified",
+                    "brand": brand,
+                    "sku": sku or product_name,
+                    "product_name": product_name,
+                    "quantity": quantity or 0,
+                    "amount_original": amount or 0,
+                }
+            )
+            continue
+
+        if not first:
+            continue
+
+        if first.startswith("Total for"):
+            continue
+
+        next_is_transaction = row + 1 < df.shape[0] and looks_like_transaction(df.iat[row + 1, 1])
+        if next_is_transaction:
+            current_product = first
+        else:
+            current_brand = first.replace(" with sub-items", "").strip()
+            current_product = None
+
+    return {
+        "company": company,
+        "currency": currency,
+        "report_title": report_title,
+        "period_label": period_label,
+        "period_start": period_start,
+        "period_end": period_end,
+        "source_file": path.name,
+        "sales": sales,
+    }
+
+
 def discover_report_files():
     items = []
-    for path in sorted(FINANCE_DIR.glob("*.xlsx")):
+    for path in sorted(FINANCE_DIR.glob("*Profit and Loss*.xlsx")):
         items.append(
             {
                 "path": path,
@@ -214,7 +301,46 @@ def discover_report_files():
                 uploaded_at = meta.get("uploaded_at") or ""
             except Exception:
                 pass
-        for path in sorted(batch_dir.glob("*.xlsx")):
+        for path in sorted(batch_dir.glob("*Profit and Loss*.xlsx")):
+            items.append(
+                {
+                    "path": path,
+                    "batch_key": batch_key,
+                    "batch_name": batch_name,
+                    "uploaded_at": uploaded_at,
+                }
+            )
+    return items
+
+
+def discover_sales_files():
+    items = []
+    for path in sorted(FINANCE_DIR.glob("*Sales by Product*.xlsx")):
+        items.append(
+            {
+                "path": path,
+                "batch_key": "initial-import",
+                "batch_name": "Initial import",
+                "uploaded_at": "",
+            }
+        )
+
+    batches_dir = FINANCE_DIR / "batches"
+    for batch_dir in sorted(batches_dir.glob("*")):
+        if not batch_dir.is_dir():
+            continue
+        meta_path = batch_dir / "batch.json"
+        batch_key = batch_dir.name
+        batch_name = batch_key
+        uploaded_at = ""
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                batch_name = meta.get("name") or batch_name
+                uploaded_at = meta.get("uploaded_at") or ""
+            except Exception:
+                pass
+        for path in sorted(batch_dir.glob("*Sales by Product*.xlsx")):
             items.append(
                 {
                     "path": path,
@@ -231,6 +357,7 @@ def init_db(conn: sqlite3.Connection):
         """
         DROP TABLE IF EXISTS facts;
         DROP TABLE IF EXISTS reports;
+        DROP TABLE IF EXISTS sku_sales;
         DROP TABLE IF EXISTS fx_rates;
         DROP TABLE IF EXISTS companies;
         DROP TABLE IF EXISTS batches;
@@ -281,10 +408,31 @@ def init_db(conn: sqlite3.Connection):
             is_total INTEGER NOT NULL
         );
 
+        CREATE TABLE sku_sales (
+            id INTEGER PRIMARY KEY,
+            batch_id INTEGER NOT NULL REFERENCES batches(id),
+            company_id INTEGER NOT NULL REFERENCES companies(id),
+            source_file TEXT NOT NULL,
+            period_label TEXT NOT NULL,
+            period_start TEXT,
+            period_end TEXT,
+            transaction_date TEXT,
+            customer TEXT NOT NULL,
+            brand TEXT NOT NULL,
+            sku TEXT NOT NULL,
+            product_name TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            amount_original REAL NOT NULL,
+            amount_hkd REAL NOT NULL
+        );
+
         CREATE INDEX idx_facts_report ON facts(report_id);
         CREATE INDEX idx_facts_entity ON facts(entity);
         CREATE INDEX idx_facts_line_item ON facts(line_item);
         CREATE INDEX idx_reports_dimension ON reports(dimension);
+        CREATE INDEX idx_sku_sales_brand ON sku_sales(brand);
+        CREATE INDEX idx_sku_sales_sku ON sku_sales(sku);
+        CREATE INDEX idx_sku_sales_batch ON sku_sales(batch_id);
         """
     )
 
@@ -292,6 +440,7 @@ def init_db(conn: sqlite3.Connection):
 def main():
     DATA_DIR.mkdir(exist_ok=True)
     source_items = discover_report_files()
+    sales_items = discover_sales_files()
     reports = []
     for item in source_items:
         report = parse_file(item["path"])
@@ -303,7 +452,18 @@ def main():
             }
         )
         reports.append(report)
-    currencies = sorted({report["currency"] for report in reports})
+    sales_reports = []
+    for item in sales_items:
+        report = parse_sales_file(item["path"])
+        report.update(
+            {
+                "batch_key": item["batch_key"],
+                "batch_name": item["batch_name"],
+                "uploaded_at": item["uploaded_at"],
+            }
+        )
+        sales_reports.append(report)
+    currencies = sorted({report["currency"] for report in reports + sales_reports})
     rates = {currency: fetch_rate_to_hkd(currency) for currency in currencies}
 
     conn = sqlite3.connect(DB_PATH)
@@ -369,9 +529,55 @@ def main():
                 ],
             )
 
+        for report in sales_reports:
+            conn.execute(
+                "INSERT OR IGNORE INTO batches(batch_key, name, uploaded_at) VALUES (?, ?, ?)",
+                (report["batch_key"], report["batch_name"], report["uploaded_at"]),
+            )
+            batch_id = conn.execute(
+                "SELECT id FROM batches WHERE batch_key = ?", (report["batch_key"],)
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT OR IGNORE INTO companies(name, source_currency) VALUES (?, ?)",
+                (report["company"], report["currency"]),
+            )
+            company_id = conn.execute(
+                "SELECT id FROM companies WHERE name = ?", (report["company"],)
+            ).fetchone()[0]
+            rate = rates[report["currency"]][0]
+            conn.executemany(
+                """
+                INSERT INTO sku_sales(
+                    batch_id, company_id, source_file, period_label, period_start, period_end,
+                    transaction_date, customer, brand, sku, product_name, quantity, amount_original, amount_hkd
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        batch_id,
+                        company_id,
+                        report["source_file"],
+                        report["period_label"],
+                        report["period_start"],
+                        report["period_end"],
+                        sale["transaction_date"],
+                        sale["customer"],
+                        sale["brand"],
+                        sale["sku"],
+                        sale["product_name"],
+                        sale["quantity"],
+                        sale["amount_original"],
+                        sale["amount_original"] * rate,
+                    )
+                    for sale in report["sales"]
+                ],
+            )
+
     total_facts = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+    total_sku_sales = conn.execute("SELECT COUNT(*) FROM sku_sales").fetchone()[0]
     conn.close()
-    print(f"Imported {len(reports)} reports and {total_facts:,} facts into {DB_PATH}")
+    print(f"Imported {len(reports)} P&L reports, {total_facts:,} facts, and {total_sku_sales:,} SKU sales rows into {DB_PATH}")
 
 
 if __name__ == "__main__":

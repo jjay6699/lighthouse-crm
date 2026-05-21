@@ -268,8 +268,8 @@ function entityOptionsWhere(params) {
   };
 }
 
-function intercompanyExpression(alias = "f") {
-  const col = `${alias}.entity`;
+function intercompanyExpression(alias = "f", column = "entity") {
+  const col = `${alias}.${column}`;
   return `(
     lower(${col}) LIKE '%lighthouse mart%'
     OR lower(${col}) LIKE '%moment health%'
@@ -278,6 +278,38 @@ function intercompanyExpression(alias = "f") {
     OR lower(${col}) LIKE '%mhl%'
     OR lower(${col}) LIKE '%sdn%'
   )`;
+}
+
+function skuWhereFromSearch(params) {
+  const clauses = [];
+  const values = {};
+  const company = params.get("company");
+  const batch = params.get("batch");
+  const dateFrom = params.get("dateFrom");
+  const dateTo = params.get("dateTo");
+
+  clauses.push(`NOT ${intercompanyExpression("s", "customer")}`);
+  if (company && company !== "all") {
+    clauses.push("c.name = $company");
+    values.$company = company;
+  }
+  if (batch && batch !== "all") {
+    clauses.push("b.batch_key = $batch");
+    values.$batch = batch;
+  }
+  if (dateFrom) {
+    clauses.push("(s.period_end IS NULL OR s.period_end >= $dateFrom)");
+    values.$dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    clauses.push("(s.period_start IS NULL OR s.period_start <= $dateTo)");
+    values.$dateTo = dateTo;
+  }
+
+  return {
+    sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    values,
+  };
 }
 
 function appendWhere(filter, condition) {
@@ -521,6 +553,69 @@ function getDashboard(params) {
       .get(),
   };
 
+  const hasSkuSales = !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sku_sales'").get();
+  let skuTotals = {};
+  let skuRows = [];
+  let skuBrands = [];
+  if (hasSkuSales) {
+    const skuFilter = skuWhereFromSearch(params);
+    const skuJoin = `
+      FROM sku_sales s
+      JOIN batches b ON b.id = s.batch_id
+      JOIN companies c ON c.id = s.company_id
+      ${skuFilter.sql}
+    `;
+    skuTotals =
+      db
+        .prepare(
+          `
+          SELECT
+            SUM(s.quantity) AS quantity,
+            SUM(s.amount_hkd) AS revenue,
+            COUNT(DISTINCT s.sku) AS sku_count,
+            COUNT(DISTINCT s.brand) AS brand_count
+          ${skuJoin}
+          `
+        )
+        .get(skuFilter.values) || {};
+    skuRows = db
+      .prepare(
+        `
+        SELECT
+          s.brand,
+          s.sku,
+          s.product_name,
+          SUM(s.quantity) AS quantity,
+          SUM(s.amount_hkd) AS revenue,
+          CASE WHEN SUM(s.quantity) != 0 THEN SUM(s.amount_hkd) / SUM(s.quantity) ELSE 0 END AS avg_price,
+          COUNT(DISTINCT c.name) AS company_count,
+          COUNT(DISTINCT s.customer) AS customer_count
+        ${skuJoin}
+        GROUP BY s.brand, s.sku, s.product_name
+        HAVING ABS(revenue) > 0.01 OR ABS(quantity) > 0.01
+        ORDER BY revenue DESC
+        LIMIT 250
+        `
+      )
+      .all(skuFilter.values);
+    skuBrands = db
+      .prepare(
+        `
+        SELECT
+          s.brand,
+          SUM(s.quantity) AS quantity,
+          SUM(s.amount_hkd) AS revenue,
+          COUNT(DISTINCT s.sku) AS sku_count
+        ${skuJoin}
+        GROUP BY s.brand
+        HAVING ABS(revenue) > 0.01 OR ABS(quantity) > 0.01
+        ORDER BY revenue DESC
+        LIMIT 80
+        `
+      )
+      .all(skuFilter.values);
+  }
+
   db.close();
 
   const bestMarginCompany = companyPerformance
@@ -552,6 +647,17 @@ function getDashboard(params) {
       included: false,
       eliminated: intercompanyEliminations || {},
       rule: "Entity/customer names matching group company names are excluded by default.",
+    },
+    sku: {
+      totals: skuTotals,
+      rows: skuRows.map((row) => ({
+        ...row,
+        revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
+      })),
+      brands: skuBrands.map((row) => ({
+        ...row,
+        revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
+      })),
     },
     meta,
   };

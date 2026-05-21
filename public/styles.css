@@ -347,6 +347,10 @@ h2 {
   align-items: center;
 }
 
+.wideSearch {
+  width: 100%;
+}
+
 .panelHeader {
   justify-content: space-between;
   gap: 12px;

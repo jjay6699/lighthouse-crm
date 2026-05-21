@@ -181,6 +181,89 @@ function ExpenseBars({ rows }) {
   );
 }
 
+function BrandSkuView({ sku }) {
+  const [query, setQuery] = useState("");
+  const rows = sku.rows.filter((row) =>
+    `${row.brand} ${row.sku} ${row.product_name}`.toLowerCase().includes(query.toLowerCase())
+  );
+
+  return (
+    <section className="summaryStack">
+      <section className="metricGrid">
+        <Kpi title="SKU revenue" value={hkd(sku.totals.revenue)} note="Sales by Product files" icon={CircleDollarSign} />
+        <Kpi title="Units sold" value={new Intl.NumberFormat("en-HK").format(Number(sku.totals.quantity || 0))} note="Consolidated quantity" icon={BarChart3} />
+        <Kpi title="Brands" value={sku.totals.brand_count || 0} note="With SKU sales" icon={Filter} />
+        <Kpi title="SKUs" value={sku.totals.sku_count || 0} note="Unique product codes" icon={Database} />
+      </section>
+
+      <section className="summaryTop">
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Brand revenue mix</h2>
+              <p>Revenue share from Sales by Product reports</p>
+            </div>
+          </div>
+          <ContributionList rows={sku.brands.map((row) => ({ company: row.brand, revenue: row.revenue, revenue_share: row.revenue_share }))} />
+        </div>
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>SKU search</h2>
+              <p>Find product code, name, or brand</p>
+            </div>
+          </div>
+          <label className="search wideSearch">
+            <Search size={15} />
+            <input value={query} placeholder="Search SKU, product, brand" onChange={(event) => setQuery(event.target.value)} />
+          </label>
+        </div>
+      </section>
+
+      <div className="panel">
+        <div className="panelHeader">
+          <div>
+            <h2>Consolidated by brand and SKU</h2>
+            <p>External sales only, converted to HKD</p>
+          </div>
+        </div>
+        <div className="tableWrap compactTable">
+          <table>
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>SKU</th>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Revenue</th>
+                <th>Share</th>
+                <th>Avg price</th>
+                <th>Companies</th>
+                <th>Customers</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${row.brand}-${row.sku}-${row.product_name}`}>
+                  <td>{row.brand}</td>
+                  <td>{row.sku}</td>
+                  <td>{row.product_name}</td>
+                  <td>{new Intl.NumberFormat("en-HK").format(Number(row.quantity || 0))}</td>
+                  <td>{hkd(row.revenue)}</td>
+                  <td>{pct(row.revenue_share)}</td>
+                  <td>{hkd(row.avg_price)}</td>
+                  <td>{row.company_count}</td>
+                  <td>{row.customer_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Select({ label, value, onChange, options }) {
   return (
     <label className="field">
@@ -467,6 +550,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       <nav className="subtabs">
         {[
           ["summary", "Summary"],
+          ["sku", "Brand / SKU"],
           ["lines", "P&L lines"],
           ["import", "Import"],
         ].map(([id, label]) => (
@@ -561,6 +645,8 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           </div>
         </section>
       )}
+
+      {subtab === "sku" && <BrandSkuView sku={data.sku} />}
 
       {subtab === "import" && (
         <section className="cleanGrid">
