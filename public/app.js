@@ -420,7 +420,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   ];
 
   const filteredLines = data.lines.filter((row) => `${row.line_item} ${row.section}`.toLowerCase().includes(search.toLowerCase()));
-  const topEntities = data.byEntity.slice(0, 10);
   const revenueBase = Number(data.kpis.revenue || 0);
   const grossMargin = revenueBase ? Number(data.kpis.gross_profit || 0) / revenueBase : 0;
   const expenseRatio = revenueBase ? Number(data.kpis.expenses || 0) / revenueBase : 0;
@@ -492,7 +491,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       <nav className="subtabs">
         {[
           ["summary", "Summary"],
-          ["entities", "Brands / customers"],
           ["lines", "P&L lines"],
           ["import", "Import"],
         ].map(([id, label]) => (
@@ -543,37 +541,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
               </div>
             </div>
             <ExpenseBars rows={data.expenses.slice(0, 8)} />
-          </div>
-        </section>
-      )}
-
-      {subtab === "entities" && (
-        <section className="cleanGrid">
-          <div className="panel">
-            <div className="panelHeader">
-              <div>
-                <h2>Top brands and customers</h2>
-                <p>Sorted by revenue</p>
-              </div>
-            </div>
-            <div className="rankList compact">
-              {topEntities.map((row, index) => (
-                <button className="rankRow" key={row.entity} type="button" onClick={() => setFilters({ ...filters, entity: row.entity })}>
-                  <span>{index + 1}</span>
-                  <strong>{row.entity}</strong>
-                  <em>{hkd(row.revenue)}</em>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="panel wide">
-            <div className="panelHeader">
-              <div>
-                <h2>Company and entity detail</h2>
-                <p>Drilldown by company, brand, and customer</p>
-              </div>
-            </div>
-            <DataTable rows={data.companyEntity} />
           </div>
         </section>
       )}
@@ -701,39 +668,6 @@ function ProfitLossStatement({ rows, revenueBase }) {
           </React.Fragment>
         );
       })}
-    </div>
-  );
-}
-
-function DataTable({ rows }) {
-  return (
-    <div className="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Company</th>
-            <th>Brand / customer</th>
-            <th>Revenue</th>
-            <th>Gross profit</th>
-            <th>Expenses</th>
-            <th>Net earnings</th>
-            <th>Margin</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={`${row.company}-${row.entity}`}>
-              <td>{row.company}</td>
-              <td>{row.entity}</td>
-              <td>{hkd(row.revenue)}</td>
-              <td>{hkd(row.gross_profit)}</td>
-              <td>{hkd(row.expenses)}</td>
-              <td>{hkd(row.net_earnings)}</td>
-              <td>{margin(row)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
