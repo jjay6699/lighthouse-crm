@@ -123,7 +123,7 @@ function PerformanceTable({ rows }) {
   total.gross_margin = total.revenue ? total.gross_profit / total.revenue : 0;
   total.expense_ratio = total.revenue ? total.expenses / total.revenue : 0;
   total.net_margin = total.revenue ? total.net_earnings / total.revenue : 0;
-  const tableRows = [total, ...rows];
+  const tableRows = [...rows, total];
 
   return (
     <div className="tableWrap compactTable">
@@ -539,6 +539,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const grossMargin = revenueBase ? Number(data.kpis.gross_profit || 0) / revenueBase : 0;
   const expenseRatio = revenueBase ? Number(data.kpis.expenses || 0) / revenueBase : 0;
   const netMargin = revenueBase ? Number(data.kpis.net_earnings || 0) / revenueBase : 0;
+  const statementContext = [
+    filters.company !== "all" ? filters.company : "All companies",
+    filters.entity !== "all" ? filters.entity : filters.dimension === "class" ? "All brands" : "All customers",
+  ].join(" / ");
 
   return (
     <main className="workspace">
@@ -643,6 +647,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
               <div>
                 <h2>Consolidated P&L statement</h2>
                 <p>Management view in HKD, ordered by source statement structure</p>
+                <div className="contextLabel">
+                  <span>Showing</span>
+                  <strong>{statementContext}</strong>
+                </div>
               </div>
               <Select label="P&L section" value={filters.section} options={sectionOptions} onChange={(value) => setFilters({ ...filters, section: value })} />
               <label className="search">
