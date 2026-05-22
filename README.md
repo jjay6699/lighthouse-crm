@@ -46,7 +46,30 @@ The expected file pattern is a QuickBooks-style Profit and Loss export by Class 
 2. Create a new Railway project from the GitHub repo.
 3. Railway will use `npm start`, which runs `node server.js`.
 4. Do not commit finance source files or `data/finance.sqlite`.
-5. After deployment, open the app and upload the first finance reports from the empty-state upload screen or from `Financial Consolidation` > `Import`.
+5. Add the login environment variables below.
+6. After deployment, open the app and upload the first finance reports from the empty-state upload screen or from `Financial Consolidation` > `Import`.
+
+## Login configuration
+
+The app requires a login before serving the dashboard or finance APIs. Passwords are not stored in plain text. Generate a hash locally:
+
+```powershell
+npm run hash:password
+```
+
+Then set these Railway variables:
+
+```text
+CRM_USERNAME=your-login-name
+CRM_PASSWORD_HASH=the-generated-pbkdf2-hash
+SESSION_SECRET=a-long-random-secret
+```
+
+Generate `SESSION_SECRET` with a password manager or a command such as:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
 
 For persistent uploads across redeploys, attach a Railway volume and set:
 

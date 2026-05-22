@@ -69,6 +69,7 @@ input {
 }
 
 .mainNav button,
+.logoutButton,
 .subtabs button,
 .ghostButton,
 .primaryButton,
@@ -106,6 +107,22 @@ input {
 
 .sidePanel strong {
   font-size: 22px;
+}
+
+.logoutButton {
+  min-height: 38px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #dce7e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.logoutButton:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
 }
 
 .workspace {

@@ -9,6 +9,7 @@ import {
   Filter,
   LayoutDashboard,
   LineChart,
+  LogOut,
   RefreshCw,
   Search,
   TrendingUp,
@@ -865,6 +866,11 @@ function App() {
     await load();
   }
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+
   if (!data) return <EmptyState message="Loading finance database..." />;
   if (!data.ready) return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
 
@@ -890,6 +896,10 @@ function App() {
           <strong>HKD</strong>
           <small>{data.meta.fx.map((rate) => `${rate.source_currency}->HKD ${Number(rate.rate).toFixed(4)}`).join(" | ")}</small>
         </div>
+        <button className="logoutButton" type="button" onClick={logout}>
+          <LogOut size={16} />
+          Sign out
+        </button>
       </aside>
 
       {page === "overview" ? (

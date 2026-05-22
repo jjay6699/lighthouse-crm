@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
@@ -14,6 +15,10 @@ const dbPath = process.env.DATABASE_PATH || join(dataDir, "finance.sqlite");
 const financeDir =
   process.env.FINANCE_DIR || (persistDir ? join(persistDir, "finance consilidation") : join(__dirname, "finance consilidation"));
 const port = Number(process.env.PORT || 3000);
+const authUser = process.env.CRM_USERNAME || "admin";
+const passwordHash = process.env.CRM_PASSWORD_HASH || "";
+const sessionSecret = process.env.SESSION_SECRET || "";
+const sessions = new Map();
 const bundledPython = process.env.USERPROFILE
   ? join(process.env.USERPROFILE, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
   : "";
@@ -30,6 +35,84 @@ const mime = {
 function json(res, status, payload) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(payload));
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(
+    String(req.headers.cookie || "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const index = part.indexOf("=");
+        return index === -1 ? [part, ""] : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+      })
+  );
+}
+
+function secureCookie(req) {
+  return req.headers["x-forwarded-proto"] === "https" || process.env.NODE_ENV === "production";
+}
+
+function setSessionCookie(req, res, token) {
+  const signedToken = `${token}.${createHmac("sha256", sessionSecret).update(token).digest("base64url")}`;
+  const parts = [
+    `lm_session=${encodeURIComponent(signedToken)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=28800",
+  ];
+  if (secureCookie(req)) parts.push("Secure");
+  res.setHeader("Set-Cookie", parts.join("; "));
+}
+
+function clearSessionCookie(res) {
+  res.setHeader("Set-Cookie", "lm_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+}
+
+function isAuthConfigured() {
+  return Boolean(passwordHash && sessionSecret);
+}
+
+function verifyPassword(password) {
+  const [scheme, iterationsRaw, salt, expected] = passwordHash.split("$");
+  if (scheme !== "pbkdf2-sha256" || !iterationsRaw || !salt || !expected) return false;
+  const iterations = Number(iterationsRaw);
+  if (!Number.isInteger(iterations) || iterations < 100000) return false;
+
+  const actual = pbkdf2Sync(String(password), salt, iterations, 32, "sha256").toString("base64url");
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  return expectedBuffer.length === actualBuffer.length && timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function isAuthenticated(req) {
+  if (!isAuthConfigured()) return false;
+  const signedToken = parseCookies(req).lm_session || "";
+  const [token, signature] = signedToken.split(".");
+  if (!token || !signature) return false;
+  const expected = createHmac("sha256", sessionSecret).update(token).digest("base64url");
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(signature);
+  if (expectedBuffer.length !== actualBuffer.length || !timingSafeEqual(expectedBuffer, actualBuffer)) return false;
+  const session = token ? sessions.get(token) : null;
+  if (!session) return false;
+  if (session.expiresAt <= Date.now()) {
+    sessions.delete(token);
+    return false;
+  }
+  session.expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+  return true;
+}
+
+async function serveLogin(req, res) {
+  const data = await readFile(join(publicDir, "login.html"));
+  res.writeHead(200, {
+    "content-type": mime[".html"],
+    "cache-control": "no-store",
+  });
+  res.end(data);
 }
 
 function readBody(req) {
@@ -702,7 +785,65 @@ createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === "/api/health") {
-    json(res, 200, { ok: true, database: existsSync(dbPath), dbPath });
+    json(res, 200, { ok: true, database: existsSync(dbPath), auth: isAuthConfigured() });
+    return;
+  }
+
+  if (url.pathname === "/login") {
+    if (isAuthenticated(req)) {
+      res.writeHead(302, { location: "/" });
+      res.end();
+      return;
+    }
+    await serveLogin(req, res);
+    return;
+  }
+
+  if (url.pathname === "/api/auth/status") {
+    json(res, 200, { authenticated: isAuthenticated(req), configured: isAuthConfigured(), username: authUser });
+    return;
+  }
+
+  if (url.pathname === "/api/auth/login" && req.method === "POST") {
+    if (!isAuthConfigured()) {
+      json(res, 500, { ok: false, error: "Login is not configured. Set CRM_PASSWORD_HASH and SESSION_SECRET." });
+      return;
+    }
+
+    try {
+      const body = await readJson(req);
+      const usernameOk = String(body.username || "") === authUser;
+      const passwordOk = verifyPassword(body.password || "");
+      if (!usernameOk || !passwordOk) {
+        json(res, 401, { ok: false, error: "Invalid username or password." });
+        return;
+      }
+
+      const token = randomBytes(32).toString("base64url");
+      sessions.set(token, { username: authUser, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+      setSessionCookie(req, res, token);
+      json(res, 200, { ok: true });
+    } catch (error) {
+      json(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+    const token = (parseCookies(req).lm_session || "").split(".")[0];
+    if (token) sessions.delete(token);
+    clearSessionCookie(res);
+    json(res, 200, { ok: true });
+    return;
+  }
+
+  if (!isAuthenticated(req)) {
+    if (url.pathname.startsWith("/api/")) {
+      json(res, 401, { ok: false, error: "Login required." });
+      return;
+    }
+    res.writeHead(302, { location: "/login" });
+    res.end();
     return;
   }
 
