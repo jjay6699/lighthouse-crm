@@ -1114,6 +1114,103 @@ th:last-child {
   box-shadow: var(--shadow);
 }
 
+.loadingScreen {
+  grid-column: 1 / -1;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(26, 127, 120, 0.08), transparent 36%),
+    linear-gradient(315deg, rgba(228, 154, 56, 0.1), transparent 42%),
+    var(--bg);
+}
+
+.loadingCard {
+  width: min(560px, 100%);
+  padding: 34px;
+  border: 1px solid rgba(23, 33, 31, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+}
+
+.loadingMark {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background: var(--nav);
+  box-shadow: 0 10px 24px rgba(19, 33, 29, 0.16);
+}
+
+.loadingCard .eyebrow {
+  margin-top: 24px;
+}
+
+.loadingCard h1 {
+  margin: 6px 0 10px;
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.04;
+}
+
+.loadingCopy {
+  max-width: 430px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.loadingBar {
+  height: 8px;
+  margin-top: 28px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7eeeb;
+}
+
+.loadingBar span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--teal), var(--gold));
+  animation: loadingSlide 1.15s ease-in-out infinite;
+}
+
+.loadingSteps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.loadingSteps span {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  background: #f8faf8;
+}
+
+@keyframes loadingSlide {
+  0% {
+    transform: translateX(-105%);
+  }
+  50% {
+    transform: translateX(72%);
+  }
+  100% {
+    transform: translateX(245%);
+  }
+}
+
 .empty {
   grid-column: 1 / -1;
   min-height: 100vh;

@@ -502,10 +502,23 @@ function EmptyState({ message }) {
 
 function LoadingState() {
   return (
-    <main className="empty">
-      <Database size={28} />
-      <h1>Financial Consolidation</h1>
-      <p>Loading finance dashboard...</p>
+    <main className="loadingScreen">
+      <section className="loadingCard" aria-live="polite">
+        <div className="loadingMark">
+          <Database size={24} />
+        </div>
+        <p className="eyebrow">Lightmart CRM</p>
+        <h1>Preparing your finance dashboard</h1>
+        <p className="loadingCopy">Loading consolidated reports, SKU sales, batches, and HKD analytics.</p>
+        <div className="loadingBar" aria-hidden="true">
+          <span />
+        </div>
+        <div className="loadingSteps" aria-hidden="true">
+          <span>Secure session</span>
+          <span>SQLite data</span>
+          <span>Dashboard view</span>
+        </div>
+      </section>
     </main>
   );
 }
