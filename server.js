@@ -360,7 +360,6 @@ function intercompanyExpression(alias = "f", column = "entity") {
     OR lower(${col}) LIKE '%rando plus%'
     OR ${col} LIKE '%健康創富%'
     OR lower(${col}) LIKE '%mhl%'
-    OR lower(${col}) LIKE '%sdn%'
   )`;
 }
 
@@ -695,7 +694,7 @@ function getDashboard(params) {
             SUM(s.quantity) AS quantity,
             SUM(s.amount_hkd) AS revenue,
             COUNT(DISTINCT s.sku) AS sku_count,
-            COUNT(DISTINCT s.brand) AS brand_count
+            COUNT(DISTINCT lower(s.brand)) AS brand_count
           ${skuJoin}
           `
         )
@@ -704,7 +703,7 @@ function getDashboard(params) {
       .prepare(
         `
         SELECT
-          s.brand,
+          MIN(s.brand) AS brand,
           s.sku,
           s.product_name,
           SUM(s.quantity) AS quantity,
@@ -713,7 +712,7 @@ function getDashboard(params) {
           COUNT(DISTINCT c.name) AS company_count,
           COUNT(DISTINCT s.customer) AS customer_count
         ${skuJoin}
-        GROUP BY s.brand, s.sku, s.product_name
+        GROUP BY lower(s.brand), s.sku, s.product_name
         HAVING ABS(revenue) > 0.01
         ORDER BY revenue DESC
         LIMIT 250
@@ -724,12 +723,12 @@ function getDashboard(params) {
       .prepare(
         `
         SELECT
-          s.brand,
+          MIN(s.brand) AS brand,
           SUM(s.quantity) AS quantity,
           SUM(s.amount_hkd) AS revenue,
           COUNT(DISTINCT s.sku) AS sku_count
         ${skuJoin}
-        GROUP BY s.brand
+        GROUP BY lower(s.brand)
         HAVING revenue > 0.01
         ORDER BY revenue DESC
         LIMIT 80
