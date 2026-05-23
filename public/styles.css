@@ -412,6 +412,48 @@ h2 {
   line-height: 1.45;
 }
 
+.skuRangeNotice {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.skuRangeNotice.warning {
+  border-color: #e4c572;
+  background: #fff8e7;
+}
+
+.skuRangeNotice div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.skuRangeNotice strong {
+  font-size: 13px;
+}
+
+.skuRangeNotice span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.skuRangeNotice button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--teal);
+  padding: 8px 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .skuResultList {
   display: grid;
   gap: 8px;

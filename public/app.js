@@ -279,13 +279,36 @@ function sortSkuRows(rows, sortBy) {
   });
 }
 
-function BrandSkuView({ sku }) {
+function isoDays(start, end) {
+  if (!start || !end) return 0;
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  const endMs = Date.parse(`${end}T00:00:00Z`);
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) return 0;
+  return Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
+}
+
+function BrandSkuView({ sku, filters, setFilters }) {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("revenue");
   const rows = sortSkuRows(sku.rows.filter((row) =>
     `${row.brand} ${row.sku} ${row.product_name}`.toLowerCase().includes(query.toLowerCase())
   ), sortBy);
   const topRows = rows.slice(0, 8);
+  const activeRange = sku.activeRange || {};
+  const dataRange = sku.dataRange || {};
+  const activeDays = isoDays(activeRange.from, activeRange.to);
+  const narrowRange = activeDays > 0 && activeDays <= 7;
+  const resetSkuFilters = () => {
+    setQuery("");
+    setFilters({
+      ...filters,
+      batch: "all",
+      company: "all",
+      entity: "all",
+      dateFrom: dataRange.min || "",
+      dateTo: dataRange.max || "",
+    });
+  };
 
   return (
     <section className="summaryStack">
@@ -315,6 +338,16 @@ function BrandSkuView({ sku }) {
         <p className="sourceNote">
           SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. SKU margin is allocated from each brand's P&L gross margin rate.
         </p>
+        <div className={`skuRangeNotice ${narrowRange ? "warning" : ""}`}>
+          <div>
+            <strong>Showing SKU sales from {activeRange.from || "-"} to {activeRange.to || "-"}</strong>
+            <span>
+              Available SKU range {dataRange.min || "-"} to {dataRange.max || "-"}
+              {sku.comparison?.current?.start ? ` | Growth window ${sku.comparison.current.start} to ${sku.comparison.current.end}` : ""}
+            </span>
+          </div>
+          <button type="button" onClick={resetSkuFilters}>Reset SKU filters</button>
+        </div>
       </section>
 
       <section className="summaryTop">
@@ -883,7 +916,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         </section>
       )}
 
-      {subtab === "sku" && <BrandSkuView sku={data.sku} />}
+      {subtab === "sku" && <BrandSkuView sku={data.sku} filters={filters} setFilters={setFilters} />}
 
       {subtab === "import" && (
         <section className="cleanGrid">
@@ -1014,12 +1047,13 @@ function App() {
 
   useEffect(() => {
     if (!data?.ready || datesInitialized) return;
-    if (data.meta.dateRange?.min || data.meta.dateRange?.max) {
+    const defaultRange = data.meta.availableDateRange || data.meta.skuDateRange || data.meta.dateRange || {};
+    if (defaultRange.min || defaultRange.max) {
       setDatesInitialized(true);
       setFilters((current) => ({
         ...current,
-        dateFrom: current.dateFrom || data.meta.dateRange.min || "",
-        dateTo: current.dateTo || data.meta.dateRange.max || "",
+        dateFrom: current.dateFrom || defaultRange.min || "",
+        dateTo: current.dateTo || defaultRange.max || "",
       }));
     }
   }, [data, datesInitialized]);

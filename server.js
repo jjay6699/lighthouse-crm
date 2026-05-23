@@ -497,6 +497,30 @@ function comparisonWindow(start, end) {
   };
 }
 
+function minIsoDate(...values) {
+  return values.filter(Boolean).sort()[0] || "";
+}
+
+function maxIsoDate(...values) {
+  return values.filter(Boolean).sort().at(-1) || "";
+}
+
+function clampIsoDate(value, min, max) {
+  if (!value) return value;
+  if (min && value < min) return min;
+  if (max && value > max) return max;
+  return value;
+}
+
+function skuRangeWhere(params, { includeDates = false } = {}) {
+  const rangeParams = new URLSearchParams(params);
+  if (!includeDates) {
+    rangeParams.delete("dateFrom");
+    rangeParams.delete("dateTo");
+  }
+  return skuWhereFromSearch(rangeParams);
+}
+
 function periodParams(params, dateFrom, dateTo) {
   const next = new URLSearchParams(params);
   next.set("dateFrom", dateFrom);
@@ -727,6 +751,31 @@ function getDashboard(params) {
     )
     .all(filter.values);
 
+  const reportDateRange = db
+    .prepare("SELECT MIN(period_start) AS min, MAX(period_end) AS max FROM reports")
+    .get();
+  const hasSkuSales = !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sku_sales'").get();
+  const skuDate = skuDateExpression("s");
+  const skuRangeFilter = hasSkuSales ? skuRangeWhere(params) : { sql: "", values: {} };
+  const skuDateRange = hasSkuSales
+    ? db
+        .prepare(
+          `
+          SELECT MIN(${skuDate}) AS min, MAX(${skuDate}) AS max
+          FROM sku_sales s
+          JOIN batches b ON b.id = s.batch_id
+          JOIN companies c ON c.id = s.company_id
+          ${skuRangeFilter.sql}
+          `
+        )
+        .get(skuRangeFilter.values)
+    : { min: "", max: "" };
+  const currentDate = currentHongKongDate();
+  const availableDateRange = {
+    min: minIsoDate(reportDateRange?.min, skuDateRange?.min),
+    max: maxIsoDate(reportDateRange?.max, skuDateRange?.max),
+  };
+
   const meta = {
     batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
     companies: db.prepare("SELECT name, source_currency AS currency FROM companies ORDER BY name").all(),
@@ -757,14 +806,13 @@ function getDashboard(params) {
         "SELECT b.batch_key, b.name AS batch_name, b.period_start AS batch_period_start, b.period_end AS batch_period_end, r.dimension, r.period_label, r.period_start, r.period_end, r.source_file, c.name AS company FROM reports r JOIN batches b ON b.id = r.batch_id JOIN companies c ON c.id = r.company_id ORDER BY COALESCE(b.period_start, b.uploaded_at) DESC, b.id DESC, c.name, r.dimension"
       )
       .all(),
-    dateRange: db
-      .prepare("SELECT MIN(period_start) AS min, MAX(period_end) AS max FROM reports")
-      .get(),
+    dateRange: reportDateRange,
+    skuDateRange,
+    availableDateRange,
     timezone: "Asia/Hong_Kong",
-    currentDate: currentHongKongDate(),
+    currentDate,
   };
 
-  const hasSkuSales = !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sku_sales'").get();
   let skuTotals = {};
   let skuRows = [];
   let skuBrands = [];
@@ -775,6 +823,12 @@ function getDashboard(params) {
   let skuCurrent = [];
   let skuLy = [];
   let skuP3m = [];
+  let skuActiveRange = { from: "", to: "" };
+  let skuComparison = {
+    current: { start: "", end: "" },
+    ly: { start: "", end: "" },
+    p3m: { start: "", end: "" },
+  };
   if (hasSkuSales) {
     const skuFilter = skuWhereFromSearch(params);
     const skuBrandKey = brandKeyExpression("s", "brand");
@@ -865,13 +919,24 @@ function getDashboard(params) {
       )
       .all(brandMarginFilter.values);
 
-    const currentFrom = params.get("dateFrom") || meta.dateRange?.min;
-    const currentTo = params.get("dateTo") || meta.dateRange?.max;
+    const currentFrom = params.get("dateFrom") || meta.skuDateRange?.min || meta.availableDateRange?.min;
+    const uncappedCurrentTo = params.get("dateTo") || meta.skuDateRange?.max || meta.availableDateRange?.max;
+    const currentTo = clampIsoDate(uncappedCurrentTo, "", minIsoDate(meta.skuDateRange?.max, currentDate) || uncappedCurrentTo);
+    skuActiveRange = { from: currentFrom || "", to: currentTo || "" };
     if (currentFrom && currentTo) {
       const compare = comparisonWindow(currentFrom, currentTo);
+      const lyWindow = {
+        start: shiftDate(compare.start, { years: -1 }),
+        end: shiftDate(compare.end, { years: -1 }),
+      };
+      const p3mWindow = {
+        start: shiftDate(compare.start, { months: -3 }),
+        end: shiftDate(compare.start, { days: -1 }),
+      };
+      skuComparison = { current: compare, ly: lyWindow, p3m: p3mWindow };
       const currentFilter = skuWhereFromSearch(periodParams(params, compare.start, compare.end));
-      const lyFilter = skuWhereFromSearch(periodParams(params, shiftDate(compare.start, { years: -1 }), shiftDate(compare.end, { years: -1 })));
-      const p3mFilter = skuWhereFromSearch(periodParams(params, shiftDate(compare.start, { months: -3 }), shiftDate(compare.start, { days: -1 })));
+      const lyFilter = skuWhereFromSearch(periodParams(params, lyWindow.start, lyWindow.end));
+      const p3mFilter = skuWhereFromSearch(periodParams(params, p3mWindow.start, p3mWindow.end));
       const comparisonSql = `
         SELECT ${skuBrandKey} AS brand_key, SUM(s.amount_hkd) AS revenue
         FROM sku_sales s
@@ -969,6 +1034,7 @@ function getDashboard(params) {
   const skuCurrentMap = new Map(skuCurrent.map((row) => [row.sku_key, Number(row.revenue || 0)]));
   const skuLyMap = new Map(skuLy.map((row) => [row.sku_key, Number(row.revenue || 0)]));
   const skuP3mMap = new Map(skuP3m.map((row) => [row.sku_key, Number(row.revenue || 0)]));
+  const hasSkuComparison = Boolean(skuComparison.current.start && skuComparison.current.end);
   const skuKey = (row) =>
     `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").toLowerCase()}`;
 
@@ -997,10 +1063,13 @@ function getDashboard(params) {
     },
     sku: {
       totals: skuTotals,
+      activeRange: skuActiveRange,
+      dataRange: meta.skuDateRange,
+      comparison: skuComparison,
       rows: skuRows.map((row) => {
         const key = row.brand_key || String(row.brand || "").toLowerCase();
         const rowKey = skuKey(row);
-        const currentRevenue = skuCurrentMap.get(rowKey) ?? Number(row.revenue || 0);
+        const currentRevenue = hasSkuComparison ? Number(skuCurrentMap.get(rowKey) || 0) : Number(row.revenue || 0);
         const brandMargin = brandMarginMap.get(key);
         const grossMargin = brandMargin?.gross_margin ?? null;
         return {
@@ -1016,7 +1085,7 @@ function getDashboard(params) {
         };
       }),
       brands: skuBrands.map((row) => {
-        const currentRevenue = skuBrandCurrentMap.get(row.brand_key) ?? Number(row.revenue || 0);
+        const currentRevenue = hasSkuComparison ? Number(skuBrandCurrentMap.get(row.brand_key) || 0) : Number(row.revenue || 0);
         return {
           ...row,
           brand: brandLabel(row.brand_key, row.brand),
