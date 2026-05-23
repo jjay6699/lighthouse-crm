@@ -225,11 +225,34 @@ function Growth({ value }) {
   return <span className={`growth ${tone}`}>{pctOrDash(value)}</span>;
 }
 
+const skuSortOptions = [
+  { value: "revenue", label: "Sales" },
+  { value: "gross_profit", label: "Margin $" },
+  { value: "growth_value_ly", label: "Sales growth $ vs LY" },
+  { value: "growth_ly", label: "Sales growth % vs LY" },
+  { value: "growth_value_p3m", label: "Sales growth $ vs P3M" },
+  { value: "growth_p3m", label: "Sales growth % vs P3M" },
+];
+
+function sortSkuRows(rows, sortBy) {
+  return [...rows].sort((a, b) => {
+    const aValue = a[sortBy];
+    const bValue = b[sortBy];
+    const aMissing = aValue === null || aValue === undefined || Number.isNaN(Number(aValue));
+    const bMissing = bValue === null || bValue === undefined || Number.isNaN(Number(bValue));
+    if (aMissing && bMissing) return Number(b.revenue || 0) - Number(a.revenue || 0);
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    return Number(bValue || 0) - Number(aValue || 0);
+  });
+}
+
 function BrandSkuView({ sku }) {
   const [query, setQuery] = useState("");
-  const rows = sku.rows.filter((row) =>
+  const [sortBy, setSortBy] = useState("revenue");
+  const rows = sortSkuRows(sku.rows.filter((row) =>
     `${row.brand} ${row.sku} ${row.product_name}`.toLowerCase().includes(query.toLowerCase())
-  );
+  ), sortBy);
   const topRows = rows.slice(0, 8);
 
   return (
@@ -258,7 +281,7 @@ function BrandSkuView({ sku }) {
           </div>
         </div>
         <p className="sourceNote">
-          SKU revenue may not equal P&L revenue because P&L can include discounts, shipping, funding, service income, credit notes, and accounting adjustments.
+          SKU revenue may not equal P&L revenue because P&L can include discounts, shipping, funding, service income, credit notes, and accounting adjustments. SKU margin is allocated from each brand's P&L gross margin rate.
         </p>
       </section>
 
@@ -300,8 +323,9 @@ function BrandSkuView({ sku }) {
         <div className="panelHeader">
           <div>
             <h2>SKU detail</h2>
-            <p>{query ? `Filtered by "${query}"` : "Top SKU rows by revenue"}</p>
+            <p>{query ? `Filtered by "${query}"` : `Top SKU rows by ${skuSortOptions.find((option) => option.value === sortBy)?.label || "Sales"}`}</p>
           </div>
+          <Select label="Sort by" value={sortBy} options={skuSortOptions} onChange={setSortBy} />
         </div>
         <div className="tableWrap compactTable">
           <table>
@@ -314,8 +338,11 @@ function BrandSkuView({ sku }) {
                 <th>Revenue</th>
                 <th>Share</th>
                 <th>Avg price</th>
-                <th>Companies</th>
-                <th>Customers</th>
+                <th>Margin $</th>
+                <th>Growth $ vs LY</th>
+                <th>Growth % vs LY</th>
+                <th>Growth $ vs P3M</th>
+                <th>Growth % vs P3M</th>
               </tr>
             </thead>
             <tbody>
@@ -328,8 +355,11 @@ function BrandSkuView({ sku }) {
                   <td>{hkd(row.revenue)}</td>
                   <td>{pct(row.revenue_share)}</td>
                   <td>{hkd(row.avg_price)}</td>
-                  <td>{row.company_count}</td>
-                  <td>{row.customer_count}</td>
+                  <td>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</td>
+                  <td>{row.growth_value_ly === null || row.growth_value_ly === undefined ? "n/a" : hkd(row.growth_value_ly)}</td>
+                  <td><Growth value={row.growth_ly} /></td>
+                  <td>{row.growth_value_p3m === null || row.growth_value_p3m === undefined ? "n/a" : hkd(row.growth_value_p3m)}</td>
+                  <td><Growth value={row.growth_p3m} /></td>
                 </tr>
               ))}
             </tbody>

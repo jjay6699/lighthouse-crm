@@ -677,6 +677,8 @@ function getDashboard(params) {
   let brandMargins = [];
   let skuBrandLy = [];
   let skuBrandP3m = [];
+  let skuLy = [];
+  let skuP3m = [];
   if (hasSkuSales) {
     const skuFilter = skuWhereFromSearch(params);
     const skuJoin = `
@@ -792,6 +794,33 @@ function getDashboard(params) {
           `
         )
         .all(p3mFilter.values);
+
+      const skuComparisonSql = `
+        SELECT
+          lower(s.brand) || '|' || lower(s.sku) || '|' || lower(s.product_name) AS sku_key,
+          SUM(s.amount_hkd) AS revenue
+        FROM sku_sales s
+        JOIN batches b ON b.id = s.batch_id
+        JOIN companies c ON c.id = s.company_id
+      `;
+      skuLy = db
+        .prepare(
+          `
+          ${skuComparisonSql}
+          ${lyFilter.sql}
+          GROUP BY lower(s.brand), lower(s.sku), lower(s.product_name)
+          `
+        )
+        .all(lyFilter.values);
+      skuP3m = db
+        .prepare(
+          `
+          ${skuComparisonSql}
+          ${p3mFilter.sql}
+          GROUP BY lower(s.brand), lower(s.sku), lower(s.product_name)
+          `
+        )
+        .all(p3mFilter.values);
     }
   }
 
@@ -816,6 +845,10 @@ function getDashboard(params) {
   );
   const skuBrandLyMap = new Map(skuBrandLy.map((row) => [row.brand_key, Number(row.revenue || 0)]));
   const skuBrandP3mMap = new Map(skuBrandP3m.map((row) => [row.brand_key, Number(row.revenue || 0)]));
+  const skuLyMap = new Map(skuLy.map((row) => [row.sku_key, Number(row.revenue || 0)]));
+  const skuP3mMap = new Map(skuP3m.map((row) => [row.sku_key, Number(row.revenue || 0)]));
+  const skuKey = (row) =>
+    `${String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").toLowerCase()}`;
 
   return {
     ready: true,
@@ -842,10 +875,20 @@ function getDashboard(params) {
     },
     sku: {
       totals: skuTotals,
-      rows: skuRows.map((row) => ({
-        ...row,
-        revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
-      })),
+      rows: skuRows.map((row) => {
+        const brandMargin = brandMarginMap.get(String(row.brand || "").toLowerCase());
+        const grossMargin = brandMargin?.gross_margin ?? null;
+        return {
+          ...row,
+          revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
+          gross_margin: grossMargin,
+          gross_profit: grossMargin === null ? null : Number(row.revenue || 0) * grossMargin,
+          growth_ly: safeGrowth(row.revenue, skuLyMap.get(skuKey(row))),
+          growth_p3m: safeGrowth(row.revenue, skuP3mMap.get(skuKey(row))),
+          growth_value_ly: skuLyMap.has(skuKey(row)) ? Number(row.revenue || 0) - skuLyMap.get(skuKey(row)) : null,
+          growth_value_p3m: skuP3mMap.has(skuKey(row)) ? Number(row.revenue || 0) - skuP3mMap.get(skuKey(row)) : null,
+        };
+      }),
       brands: skuBrands.map((row) => ({
         ...row,
         revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
