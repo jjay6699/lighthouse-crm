@@ -111,24 +111,41 @@ function ContributionList({ rows }) {
 function InsightGrid({ insights }) {
   const cards = [
     {
-      label: "Top revenue company",
-      value: insights.topRevenueCompany?.company || "-",
-      note: insights.topRevenueCompany ? hkd(insights.topRevenueCompany.revenue) : "-",
+      label: "Revenue",
+      value: hkd(insights.revenueTotal),
+      lines: [
+        ["vs LY", <Growth value={insights.skuGrowth?.growth_ly} />],
+        ["vs P3M", <Growth value={insights.skuGrowth?.growth_p3m} />],
+        ["Top company", insights.topRevenueCompany ? `${insights.topRevenueCompany.company} · ${pct(insights.topRevenueCompany.revenue_share)}` : "-"],
+        ["Top brand", insights.topRevenueBrand ? `${insights.topRevenueBrand.entity} · ${pct(insights.topRevenueBrand.revenue_share)}` : "-"],
+      ],
     },
     {
-      label: "Best net margin",
-      value: insights.bestMarginCompany?.company || "-",
-      note: insights.bestMarginCompany ? pct(insights.bestMarginCompany.net_margin) : "-",
+      label: "Cost of sales",
+      value: hkd(insights.costOfSalesTotal),
+      lines: [
+        ["% revenue", insights.revenueTotal ? pct(Number(insights.costOfSalesTotal || 0) / Number(insights.revenueTotal || 0)) : "0.0%"],
+        ["Highest brand", insights.topCostOfSalesBrand ? insights.topCostOfSalesBrand.entity : "-"],
+        ["Contribution", insights.topCostOfSalesBrand ? pct(insights.topCostOfSalesBrand.share_of_cost_of_sales) : "-"],
+      ],
     },
     {
-      label: "Largest expense",
-      value: insights.largestExpense?.line_item || "-",
-      note: insights.largestExpense ? `${hkd(insights.largestExpense.amount)} | ${pct(insights.largestExpense.share_of_revenue)} revenue` : "-",
+      label: "Expenses",
+      value: hkd(insights.expenseTotal),
+      lines: [
+        ["% revenue", insights.revenueTotal ? pct(Number(insights.expenseTotal || 0) / Number(insights.revenueTotal || 0)) : "0.0%"],
+        ["Highest item", insights.largestExpense?.line_item || "-"],
+        ["Contribution", insights.largestExpense ? `${pct(insights.largestExpense.share_of_expenses)} of expenses` : "-"],
+      ],
     },
     {
-      label: "Loss-making companies",
-      value: String(insights.lossCompanies?.length || 0),
-      note: insights.lossCompanies?.map((row) => row.company).join(", ") || "None in current filter",
+      label: "Net margin",
+      value: pct(insights.netMargin),
+      lines: [
+        ["Net earnings", hkd(insights.netEarnings)],
+        ["Best company", insights.bestMarginCompany ? `${insights.bestMarginCompany.company} · ${pct(insights.bestMarginCompany.net_margin)}` : "-"],
+        ["Best brand", insights.bestMarginBrand ? `${insights.bestMarginBrand.entity} · ${pct(insights.bestMarginBrand.net_margin)}` : "-"],
+      ],
     },
   ];
 
@@ -138,7 +155,14 @@ function InsightGrid({ insights }) {
         <div className="insightCard" key={card.label}>
           <span>{card.label}</span>
           <strong>{card.value}</strong>
-          <em>{card.note}</em>
+          <div className="insightLines">
+            {card.lines.map(([label, value]) => (
+              <em key={label}>
+                <b>{label}</b>
+                <i>{value}</i>
+              </em>
+            ))}
+          </div>
         </div>
       ))}
     </div>

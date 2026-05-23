@@ -710,6 +710,38 @@ function getDashboard(params) {
     )
     .all(filter.values);
 
+  const costOfSalesTotal = Number(
+    db
+      .prepare(
+        `
+        SELECT SUM(f.amount_hkd) AS amount
+        ${baseJoin}
+        ${appendWhere(filter, "f.line_item = 'Total for Cost of Sales'")}
+        `
+      )
+      .get(filter.values)?.amount || 0
+  );
+  const costOfSalesByEntity = db
+    .prepare(
+      `
+      SELECT f.entity,
+        SUM(f.amount_hkd) AS amount
+      ${baseJoin}
+      ${appendWhere(filter, "f.line_item = 'Total for Cost of Sales'")}
+      GROUP BY f.entity
+      HAVING ABS(amount) > 0.01
+      ORDER BY ABS(amount) DESC
+      LIMIT 10
+      `
+    )
+    .all(filter.values)
+    .filter((row) => String(row.entity || "").toLowerCase() !== "not specified")
+    .map((row) => ({
+      ...row,
+      share_of_cost_of_sales: costOfSalesTotal ? Number(row.amount || 0) / costOfSalesTotal : 0,
+      share_of_revenue: revenueTotal ? Number(row.amount || 0) / revenueTotal : 0,
+    }));
+
   const eliminationWhere = filter.sql
     ? `${filter.sql.replace("f.is_intercompany = 0", "f.is_intercompany = 1")}`
     : "WHERE f.is_intercompany = 1";
@@ -1017,6 +1049,23 @@ function getDashboard(params) {
   const topRevenueCompany = companyPerformance[0];
   const largestExpense = expenseBreakdown[0];
   const lossCompanies = companyPerformance.filter((row) => Number(row.net_earnings || 0) < 0);
+  const topRevenueBrand = byEntity
+    .filter((row) => Number(row.revenue || 0) > 0 && String(row.entity || "").toLowerCase() !== "not specified")
+    .map((row) => ({
+      ...row,
+      revenue_share: revenueTotal ? Number(row.revenue || 0) / revenueTotal : 0,
+      net_margin: Number(row.revenue || 0) ? Number(row.net_earnings || 0) / Number(row.revenue || 0) : 0,
+    }))
+    .sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0))[0];
+  const bestMarginBrand = byEntity
+    .filter((row) => Number(row.revenue || 0) > 0 && String(row.entity || "").toLowerCase() !== "not specified")
+    .map((row) => ({
+      ...row,
+      revenue_share: revenueTotal ? Number(row.revenue || 0) / revenueTotal : 0,
+      net_margin: Number(row.net_earnings || 0) / Number(row.revenue || 0),
+    }))
+    .sort((a, b) => b.net_margin - a.net_margin)[0];
+  const topCostOfSalesBrand = costOfSalesByEntity[0];
 
   const brandMarginMap = new Map(
     brandMargins.map((row) => [
@@ -1035,6 +1084,10 @@ function getDashboard(params) {
   const skuLyMap = new Map(skuLy.map((row) => [row.sku_key, Number(row.revenue || 0)]));
   const skuP3mMap = new Map(skuP3m.map((row) => [row.sku_key, Number(row.revenue || 0)]));
   const hasSkuComparison = Boolean(skuComparison.current.start && skuComparison.current.end);
+  const sumRevenue = (rows) => rows.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
+  const skuCurrentRevenue = sumRevenue(skuBrandCurrent);
+  const skuLyRevenue = sumRevenue(skuBrandLy);
+  const skuP3mRevenue = sumRevenue(skuBrandP3m);
   const skuKey = (row) =>
     `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").toLowerCase()}`;
 
@@ -1051,9 +1104,25 @@ function getDashboard(params) {
     sectionSummary,
     companyEntity,
     insights: {
+      revenueTotal,
+      expenseTotal,
+      costOfSalesTotal,
+      netEarnings: Number((kpiRows[0] || {}).net_earnings || 0),
+      netMargin: revenueTotal ? Number((kpiRows[0] || {}).net_earnings || 0) / revenueTotal : 0,
+      skuGrowth: {
+        current_revenue: skuCurrentRevenue,
+        ly_revenue: skuLyRevenue,
+        p3m_revenue: skuP3mRevenue,
+        growth_ly: safeGrowth(skuCurrentRevenue, skuLyRevenue),
+        growth_p3m: safeGrowth(skuCurrentRevenue, skuP3mRevenue),
+        window: skuComparison,
+      },
       topRevenueCompany,
+      topRevenueBrand,
       bestMarginCompany,
+      bestMarginBrand,
       largestExpense,
+      topCostOfSalesBrand,
       lossCompanies,
     },
     intercompany: {
