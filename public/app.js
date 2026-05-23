@@ -52,6 +52,17 @@ function pctOrDash(value) {
   return value === null || value === undefined ? "n/a" : pct(value);
 }
 
+function hongKongTodayIso() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function hkdOrDash(value) {
   return value === null || value === undefined ? "n/a" : hkd(value);
 }
@@ -62,12 +73,13 @@ function margin(row) {
 }
 
 function currentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const today = hongKongTodayIso();
+  const [year, month] = today.split("-").map(Number);
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endDate = new Date(Date.UTC(year, month, 0));
   return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    start,
+    end: endDate.toISOString().slice(0, 10),
   };
 }
 
@@ -445,7 +457,7 @@ function Kpi({ title, value, note, icon: Icon }) {
 
 function EmptyState({ message }) {
   const monthRange = currentMonthRange();
-  const [batchName, setBatchName] = useState(`Initial import ${new Date().toISOString().slice(0, 10)}`);
+  const [batchName, setBatchName] = useState(`Initial import ${hongKongTodayIso()}`);
   const [periodStart, setPeriodStart] = useState(monthRange.start);
   const [periodEnd, setPeriodEnd] = useState(monthRange.end);
   const [status, setStatus] = useState("");
@@ -517,7 +529,7 @@ function LoadingState() {
 
 function UploadPanel({ uploadState, onFiles }) {
   const monthRange = currentMonthRange();
-  const [batchName, setBatchName] = useState(`Monthly upload ${new Date().toISOString().slice(0, 10)}`);
+  const [batchName, setBatchName] = useState(`Monthly upload ${hongKongTodayIso()}`);
   const [periodStart, setPeriodStart] = useState(monthRange.start);
   const [periodEnd, setPeriodEnd] = useState(monthRange.end);
   return (

@@ -23,6 +23,17 @@ const bundledPython = process.env.USERPROFILE
   ? join(process.env.USERPROFILE, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
   : "";
 
+function currentHongKongDate() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 const mime = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -415,15 +426,15 @@ function brandLabel(key, fallback) {
 
 function skuDateExpression(alias = "s") {
   return `CASE
-    WHEN ${alias}.transaction_date GLOB '____-__-__' THEN ${alias}.transaction_date
-    WHEN ${alias}.transaction_date GLOB '__/__/____' THEN substr(${alias}.transaction_date, 7, 4) || '-' || substr(${alias}.transaction_date, 4, 2) || '-' || substr(${alias}.transaction_date, 1, 2)
-    WHEN ${alias}.transaction_date GLOB '_/__/____' THEN substr(${alias}.transaction_date, 6, 4) || '-' || substr(${alias}.transaction_date, 3, 2) || '-0' || substr(${alias}.transaction_date, 1, 1)
-    WHEN ${alias}.transaction_date GLOB '__/_/____' THEN substr(${alias}.transaction_date, 6, 4) || '-0' || substr(${alias}.transaction_date, 4, 1) || '-' || substr(${alias}.transaction_date, 1, 2)
-    WHEN ${alias}.transaction_date GLOB '_/_/____' THEN substr(${alias}.transaction_date, 5, 4) || '-0' || substr(${alias}.transaction_date, 3, 1) || '-0' || substr(${alias}.transaction_date, 1, 1)
-    WHEN ${alias}.transaction_date GLOB '__.__.____' THEN substr(${alias}.transaction_date, 7, 4) || '-' || substr(${alias}.transaction_date, 4, 2) || '-' || substr(${alias}.transaction_date, 1, 2)
-    WHEN ${alias}.transaction_date GLOB '_.__.____' THEN substr(${alias}.transaction_date, 6, 4) || '-' || substr(${alias}.transaction_date, 3, 2) || '-0' || substr(${alias}.transaction_date, 1, 1)
-    WHEN ${alias}.transaction_date GLOB '__._.____' THEN substr(${alias}.transaction_date, 6, 4) || '-0' || substr(${alias}.transaction_date, 4, 1) || '-' || substr(${alias}.transaction_date, 1, 2)
-    WHEN ${alias}.transaction_date GLOB '_._.____' THEN substr(${alias}.transaction_date, 5, 4) || '-0' || substr(${alias}.transaction_date, 3, 1) || '-0' || substr(${alias}.transaction_date, 1, 1)
+    WHEN ${alias}.transaction_date LIKE '____-__-__' THEN ${alias}.transaction_date
+    WHEN ${alias}.transaction_date LIKE '__/__/____' THEN substr(${alias}.transaction_date, 7, 4) || '-' || substr(${alias}.transaction_date, 4, 2) || '-' || substr(${alias}.transaction_date, 1, 2)
+    WHEN ${alias}.transaction_date LIKE '_/__/____' THEN substr(${alias}.transaction_date, 6, 4) || '-' || substr(${alias}.transaction_date, 3, 2) || '-0' || substr(${alias}.transaction_date, 1, 1)
+    WHEN ${alias}.transaction_date LIKE '__/_/____' THEN substr(${alias}.transaction_date, 6, 4) || '-0' || substr(${alias}.transaction_date, 4, 1) || '-' || substr(${alias}.transaction_date, 1, 2)
+    WHEN ${alias}.transaction_date LIKE '_/_/____' THEN substr(${alias}.transaction_date, 5, 4) || '-0' || substr(${alias}.transaction_date, 3, 1) || '-0' || substr(${alias}.transaction_date, 1, 1)
+    WHEN ${alias}.transaction_date LIKE '__.__.____' THEN substr(${alias}.transaction_date, 7, 4) || '-' || substr(${alias}.transaction_date, 4, 2) || '-' || substr(${alias}.transaction_date, 1, 2)
+    WHEN ${alias}.transaction_date LIKE '_.__.____' THEN substr(${alias}.transaction_date, 6, 4) || '-' || substr(${alias}.transaction_date, 3, 2) || '-0' || substr(${alias}.transaction_date, 1, 1)
+    WHEN ${alias}.transaction_date LIKE '__._.____' THEN substr(${alias}.transaction_date, 6, 4) || '-0' || substr(${alias}.transaction_date, 4, 1) || '-' || substr(${alias}.transaction_date, 1, 2)
+    WHEN ${alias}.transaction_date LIKE '_._.____' THEN substr(${alias}.transaction_date, 5, 4) || '-0' || substr(${alias}.transaction_date, 3, 1) || '-0' || substr(${alias}.transaction_date, 1, 1)
     ELSE NULL
   END`;
 }
@@ -749,6 +760,8 @@ function getDashboard(params) {
     dateRange: db
       .prepare("SELECT MIN(period_start) AS min, MAX(period_end) AS max FROM reports")
       .get(),
+    timezone: "Asia/Hong_Kong",
+    currentDate: currentHongKongDate(),
   };
 
   const hasSkuSales = !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sku_sales'").get();

@@ -92,6 +92,15 @@ def numeric(value):
 
 def parse_period(period_label: str) -> tuple[str | None, str | None]:
     text = period_label.replace(",", "").strip()
+    long_range = re.match(
+        r"(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})\s*-\s*(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})",
+        text,
+    )
+    if long_range:
+        start = date(int(long_range.group(3)), MONTHS[long_range.group(2).lower()], int(long_range.group(1)))
+        end = date(int(long_range.group(6)), MONTHS[long_range.group(5).lower()], int(long_range.group(4)))
+        return start.isoformat(), end.isoformat()
+
     year_match = re.search(r"(20\d{2})", text)
     if not year_match:
         return None, None
