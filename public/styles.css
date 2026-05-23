@@ -963,61 +963,70 @@ th {
 
 .batchRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.85fr) minmax(128px, 0.65fr) minmax(128px, 0.65fr);
-  gap: 10px;
-  align-items: center;
-  padding: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8faf8;
 }
 
-.batchRow strong,
-.batchRow span {
+.batchSummary {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.batchSummary strong,
+.batchSummary span {
   display: block;
 }
 
-.batchRow strong {
+.batchSummary strong {
   overflow-wrap: anywhere;
   line-height: 1.25;
 }
 
-.batchRow span {
+.batchSummary span {
   color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
-.batchRow input {
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 0 10px;
+.batchControls {
   min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
 }
 
-.batchRow button {
-  height: 34px;
+.batchControls > .field:first-child {
+  grid-column: auto;
+}
+
+.batchActions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.batchActions button {
+  height: 36px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #ffffff;
   cursor: pointer;
 }
 
-.batchRow button:nth-of-type(1) {
-  grid-column: 3;
-}
-
-.batchRow button:nth-of-type(2) {
-  grid-column: 4;
-}
-
-.batchRow button:disabled {
+.batchActions button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
-.batchRow .dangerButton {
+.batchActions .dangerButton {
   color: #9a2630;
 }
 

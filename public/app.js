@@ -401,11 +401,11 @@ function Select({ label, value, onChange, options }) {
   );
 }
 
-function DateField({ label, value, onChange }) {
+function DateField({ label, value, onChange, disabled = false }) {
   return (
     <label className="field dateField">
       <span>{label}</span>
-      <input type="date" value={value || ""} onChange={(event) => onChange(event.target.value)} />
+      <input type="date" value={value || ""} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -542,42 +542,49 @@ function BatchManager({ batches, uploadState, onRename, onDelete }) {
           };
           return (
             <div className="batchRow" key={batch.batch_key}>
-              <div>
+              <div className="batchSummary">
                 <strong>{batch.name}</strong>
                 <span>{periodLabel(batch.period_start, batch.period_end)}</span>
                 <span>{locked ? "Original local source files" : batch.uploaded_at || "Uploaded batch"}</span>
               </div>
-              <input
-                value={value.name}
-                disabled={locked || uploadState.busy}
-                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: { ...value, name: event.target.value } })}
-              />
-              <input
-                type="date"
-                value={value.period_start}
-                disabled={locked || uploadState.busy}
-                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: { ...value, period_start: event.target.value } })}
-              />
-              <input
-                type="date"
-                value={value.period_end}
-                disabled={locked || uploadState.busy}
-                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: { ...value, period_end: event.target.value } })}
-              />
-              <button
-                type="button"
-                disabled={
-                  locked ||
-                  uploadState.busy ||
-                  (value.name === batch.name && value.period_start === (batch.period_start || "") && value.period_end === (batch.period_end || ""))
-                }
-                onClick={() => onRename(batch.batch_key, value)}
-              >
-                Save
-              </button>
-              <button className="dangerButton" type="button" disabled={locked || uploadState.busy} onClick={() => onDelete(batch.batch_key)}>
-                Delete
-              </button>
+              <div className="batchControls">
+                <label className="field">
+                  <span>Batch name</span>
+                  <input
+                    value={value.name}
+                    disabled={locked || uploadState.busy}
+                    onChange={(event) => setEditing({ ...editing, [batch.batch_key]: { ...value, name: event.target.value } })}
+                  />
+                </label>
+                <DateField
+                  label="From"
+                  value={value.period_start}
+                  disabled={locked || uploadState.busy}
+                  onChange={(next) => setEditing({ ...editing, [batch.batch_key]: { ...value, period_start: next } })}
+                />
+                <DateField
+                  label="To"
+                  value={value.period_end}
+                  disabled={locked || uploadState.busy}
+                  onChange={(next) => setEditing({ ...editing, [batch.batch_key]: { ...value, period_end: next } })}
+                />
+                <div className="batchActions">
+                  <button
+                    type="button"
+                    disabled={
+                      locked ||
+                      uploadState.busy ||
+                      (value.name === batch.name && value.period_start === (batch.period_start || "") && value.period_end === (batch.period_end || ""))
+                    }
+                    onClick={() => onRename(batch.batch_key, value)}
+                  >
+                    Save
+                  </button>
+                  <button className="dangerButton" type="button" disabled={locked || uploadState.busy} onClick={() => onDelete(batch.batch_key)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
             </div>
           );
         })}
