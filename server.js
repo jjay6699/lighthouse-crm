@@ -397,6 +397,27 @@ function skuWhereFromSearch(params) {
   };
 }
 
+function shiftDate(value, { years = 0, months = 0, days = 0 }) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCFullYear(date.getUTCFullYear() + years);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function periodParams(params, dateFrom, dateTo) {
+  const next = new URLSearchParams(params);
+  next.set("dateFrom", dateFrom);
+  next.set("dateTo", dateTo);
+  return next;
+}
+
+function safeGrowth(current, previous) {
+  const base = Number(previous || 0);
+  if (Math.abs(base) < 0.01) return null;
+  return (Number(current || 0) - base) / Math.abs(base);
+}
+
 function appendWhere(filter, condition) {
   return filter.sql ? `AND ${condition}` : `WHERE ${condition}`;
 }
@@ -653,6 +674,9 @@ function getDashboard(params) {
   let skuTotals = {};
   let skuRows = [];
   let skuBrands = [];
+  let brandMargins = [];
+  let skuBrandLy = [];
+  let skuBrandP3m = [];
   if (hasSkuSales) {
     const skuFilter = skuWhereFromSearch(params);
     const skuJoin = `
@@ -710,6 +734,65 @@ function getDashboard(params) {
         `
       )
       .all(skuFilter.values);
+
+    const brandMarginParams = new URLSearchParams(params);
+    brandMarginParams.set("dimension", "class");
+    brandMarginParams.delete("entity");
+    const brandMarginFilter = whereFromSearch(brandMarginParams);
+    const brandMarginJoin = `
+      FROM (
+        SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+        FROM facts raw_f
+      ) f
+      JOIN reports r ON r.id = f.report_id
+      JOIN batches b ON b.id = r.batch_id
+      JOIN companies c ON c.id = r.company_id
+      ${brandMarginFilter.sql}
+    `;
+    brandMargins = db
+      .prepare(
+        `
+        SELECT
+          lower(f.entity) AS brand_key,
+          SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS pnl_revenue,
+          SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit
+        ${brandMarginJoin}
+        GROUP BY lower(f.entity)
+        HAVING ABS(pnl_revenue) + ABS(gross_profit) > 0.01
+        `
+      )
+      .all(brandMarginFilter.values);
+
+    const currentFrom = params.get("dateFrom") || meta.dateRange?.min;
+    const currentTo = params.get("dateTo") || meta.dateRange?.max;
+    if (currentFrom && currentTo) {
+      const lyFilter = skuWhereFromSearch(periodParams(params, shiftDate(currentFrom, { years: -1 }), shiftDate(currentTo, { years: -1 })));
+      const p3mFilter = skuWhereFromSearch(periodParams(params, shiftDate(currentFrom, { months: -3 }), shiftDate(currentFrom, { days: -1 })));
+      const comparisonSql = `
+        SELECT lower(s.brand) AS brand_key, SUM(s.amount_hkd) AS revenue
+        FROM sku_sales s
+        JOIN batches b ON b.id = s.batch_id
+        JOIN companies c ON c.id = s.company_id
+      `;
+      skuBrandLy = db
+        .prepare(
+          `
+          ${comparisonSql}
+          ${lyFilter.sql}
+          GROUP BY lower(s.brand)
+          `
+        )
+        .all(lyFilter.values);
+      skuBrandP3m = db
+        .prepare(
+          `
+          ${comparisonSql}
+          ${p3mFilter.sql}
+          GROUP BY lower(s.brand)
+          `
+        )
+        .all(p3mFilter.values);
+    }
   }
 
   db.close();
@@ -720,6 +803,19 @@ function getDashboard(params) {
   const topRevenueCompany = companyPerformance[0];
   const largestExpense = expenseBreakdown[0];
   const lossCompanies = companyPerformance.filter((row) => Number(row.net_earnings || 0) < 0);
+
+  const brandMarginMap = new Map(
+    brandMargins.map((row) => [
+      row.brand_key,
+      {
+        gross_profit: Number(row.gross_profit || 0),
+        pnl_revenue: Number(row.pnl_revenue || 0),
+        gross_margin: Number(row.pnl_revenue || 0) ? Number(row.gross_profit || 0) / Number(row.pnl_revenue || 0) : null,
+      },
+    ])
+  );
+  const skuBrandLyMap = new Map(skuBrandLy.map((row) => [row.brand_key, Number(row.revenue || 0)]));
+  const skuBrandP3mMap = new Map(skuBrandP3m.map((row) => [row.brand_key, Number(row.revenue || 0)]));
 
   return {
     ready: true,
@@ -753,6 +849,10 @@ function getDashboard(params) {
       brands: skuBrands.map((row) => ({
         ...row,
         revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
+        gross_profit: brandMarginMap.get(String(row.brand || "").toLowerCase())?.gross_profit ?? null,
+        gross_margin: brandMarginMap.get(String(row.brand || "").toLowerCase())?.gross_margin ?? null,
+        growth_ly: safeGrowth(row.revenue, skuBrandLyMap.get(String(row.brand || "").toLowerCase())),
+        growth_p3m: safeGrowth(row.revenue, skuBrandP3mMap.get(String(row.brand || "").toLowerCase())),
       })),
     },
     meta,

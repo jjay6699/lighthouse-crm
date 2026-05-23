@@ -48,6 +48,10 @@ function pct(value) {
   return `${(Number(value || 0) * 100).toFixed(1)}%`;
 }
 
+function pctOrDash(value) {
+  return value === null || value === undefined ? "n/a" : pct(value);
+}
+
 function margin(row) {
   const revenue = Number(row.revenue || 0);
   return revenue ? `${((Number(row.net_earnings || 0) / revenue) * 100).toFixed(1)}%` : "0.0%";
@@ -182,6 +186,45 @@ function ExpenseBars({ rows }) {
   );
 }
 
+function BrandRevenueMix({ rows }) {
+  const max = Math.max(...rows.map((row) => Number(row.revenue || 0)), 1);
+  return (
+    <div className="brandMixList">
+      <div className="brandMixHead">
+        <span>Brand</span>
+        <span>Revenue</span>
+        <span>Margin $</span>
+        <span>Share</span>
+        <span>vs LY</span>
+        <span>vs P3M</span>
+      </div>
+      {rows.map((row) => (
+        <div className="brandMixRow" key={row.brand}>
+          <div className="brandMixMain">
+            <strong>{row.brand}</strong>
+            <span>{hkd(row.revenue)} revenue</span>
+            <div className="barTrack">
+              <i style={{ width: `${Math.max(2, (Number(row.revenue || 0) / max) * 100)}%` }} />
+            </div>
+          </div>
+          <em>{hkd(row.revenue)}</em>
+          <em>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</em>
+          <strong>{pct(row.revenue_share)}</strong>
+          <Growth value={row.growth_ly} />
+          <Growth value={row.growth_p3m} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Growth({ value }) {
+  const numeric = Number(value);
+  const empty = value === null || value === undefined || Number.isNaN(numeric);
+  const tone = empty ? "empty" : numeric >= 0 ? "up" : "down";
+  return <span className={`growth ${tone}`}>{pctOrDash(value)}</span>;
+}
+
 function BrandSkuView({ sku }) {
   const [query, setQuery] = useState("");
   const rows = sku.rows.filter((row) =>
@@ -224,10 +267,10 @@ function BrandSkuView({ sku }) {
           <div className="panelHeader">
             <div>
               <h2>Brand revenue mix</h2>
-              <p>Revenue share from Sales by Product reports</p>
+              <p>Revenue, margin dollars, share, and growth from Sales by Product reports</p>
             </div>
           </div>
-          <ContributionList rows={sku.brands.slice(0, 15).map((row) => ({ company: row.brand, revenue: row.revenue, revenue_share: row.revenue_share }))} />
+          <BrandRevenueMix rows={sku.brands.slice(0, 15)} />
         </div>
         <div className="panel">
           <div className="panelHeader">

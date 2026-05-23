@@ -622,6 +622,79 @@ h2 {
   gap: 7px;
 }
 
+.brandMixList {
+  display: grid;
+  gap: 10px;
+}
+
+.brandMixHead,
+.brandMixRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 120px 120px 80px 80px 90px;
+  gap: 12px;
+  align-items: center;
+}
+
+.brandMixHead {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.brandMixRow {
+  min-height: 58px;
+  border-bottom: 1px solid #edf2ef;
+  padding-bottom: 10px;
+}
+
+.brandMixMain {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.brandMixMain strong,
+.brandMixMain span {
+  overflow-wrap: anywhere;
+}
+
+.brandMixMain span,
+.brandMixRow em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.brandMixRow > strong,
+.brandMixRow > em {
+  text-align: right;
+}
+
+.growth {
+  justify-self: end;
+  min-width: 58px;
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.growth.up {
+  background: #dff3ed;
+  color: #137065;
+}
+
+.growth.down {
+  background: #f8dfdf;
+  color: #9a2630;
+}
+
+.growth.empty {
+  background: #eef2ef;
+  color: var(--muted);
+}
+
 .compactList div {
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
@@ -1004,8 +1077,13 @@ th:last-child {
   .filterBar,
   .metricGrid,
   .overviewGrid,
-  .skuStats {
+  .skuStats,
+  .brandMixRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .brandMixHead {
+    display: none;
   }
 }
 
@@ -1025,13 +1103,21 @@ th:last-child {
   .metricGrid,
   .overviewGrid,
   .cleanGrid,
-  .skuStats {
+  .skuStats,
+  .brandMixRow {
     grid-template-columns: 1fr;
   }
 
   .statementHead,
   .statementRow {
     grid-template-columns: minmax(160px, 1fr) 120px 88px;
+  }
+
+  .brandMixRow > strong,
+  .brandMixRow > em,
+  .growth {
+    justify-self: start;
+    text-align: left;
   }
 
   .batchRow {
