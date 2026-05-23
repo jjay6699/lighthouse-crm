@@ -413,6 +413,10 @@ function brandLabel(key, fallback) {
   return labels[key] || fallback;
 }
 
+function skuDateExpression(alias = "s") {
+  return `CASE WHEN ${alias}.transaction_date GLOB '____-__-__' THEN ${alias}.transaction_date ELSE NULL END`;
+}
+
 function skuWhereFromSearch(params) {
   const clauses = [];
   const values = {};
@@ -420,6 +424,7 @@ function skuWhereFromSearch(params) {
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
+  const skuDate = skuDateExpression("s");
 
   clauses.push(`NOT ${intercompanyExpression("s", "customer")}`);
   if (company && company !== "all") {
@@ -431,11 +436,11 @@ function skuWhereFromSearch(params) {
     values.$batch = batch;
   }
   if (dateFrom) {
-    clauses.push("(s.period_end IS NULL OR s.period_end >= $dateFrom)");
+    clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} >= $dateFrom) OR (${skuDate} IS NULL AND (s.period_end IS NULL OR s.period_end >= $dateFrom)))`);
     values.$dateFrom = dateFrom;
   }
   if (dateTo) {
-    clauses.push("(s.period_start IS NULL OR s.period_start <= $dateTo)");
+    clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} <= $dateTo) OR (${skuDate} IS NULL AND (s.period_start IS NULL OR s.period_start <= $dateTo)))`);
     values.$dateTo = dateTo;
   }
   clauses.push("ABS(s.amount_hkd) > 0.01");
@@ -822,7 +827,7 @@ function getDashboard(params) {
     const currentTo = params.get("dateTo") || meta.dateRange?.max;
     if (currentFrom && currentTo) {
       const lyFilter = skuWhereFromSearch(periodParams(params, shiftDate(currentFrom, { years: -1 }), shiftDate(currentTo, { years: -1 })));
-      const p3mFilter = skuWhereFromSearch(periodParams(params, shiftDate(currentFrom, { months: -3 }), shiftDate(currentFrom, { days: -1 })));
+      const p3mFilter = skuWhereFromSearch(periodParams(params, shiftDate(currentTo, { months: -3, days: 1 }), currentTo));
       const comparisonSql = `
         SELECT ${skuBrandKey} AS brand_key, SUM(s.amount_hkd) AS revenue
         FROM sku_sales s

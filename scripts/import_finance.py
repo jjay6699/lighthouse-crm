@@ -128,6 +128,20 @@ def looks_like_transaction(value) -> bool:
     return bool(re.match(r"\d{1,2}[./]\d{1,2}[./]\d{4}", text))
 
 
+def normalize_transaction_date(value) -> str:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return value.date().isoformat()
+    text = str(value).strip()
+    for fmt in ("%d/%m/%Y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(text, fmt).date().isoformat()
+        except ValueError:
+            pass
+    return text
+
+
 def extract_barcode(*values) -> str:
     for value in values:
         if pd.isna(value):
@@ -238,7 +252,7 @@ def parse_sales_file(path: Path):
             brand = current_brand or product_name.split(" - ")[0].strip() or "Unmapped"
             sales.append(
                 {
-                    "transaction_date": transaction_date,
+                    "transaction_date": normalize_transaction_date(transaction_date),
                     "customer": clean_label(df.iat[row, 4]) or "Not specified",
                     "brand": brand,
                     "sku": sku or product_name,
