@@ -500,6 +500,16 @@ function EmptyState({ message }) {
   );
 }
 
+function LoadingState() {
+  return (
+    <main className="empty">
+      <Database size={28} />
+      <h1>Financial Consolidation</h1>
+      <p>Loading finance dashboard...</p>
+    </main>
+  );
+}
+
 function UploadPanel({ uploadState, onFiles }) {
   const monthRange = currentMonthRange();
   const [batchName, setBatchName] = useState(`Monthly upload ${new Date().toISOString().slice(0, 10)}`);
@@ -1048,7 +1058,7 @@ function App() {
     window.location.href = "/login";
   }
 
-  if (!data) return <EmptyState message="Loading finance database..." />;
+  if (!data || loading) return <LoadingState />;
   if (!data.ready) return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
 
   return (
