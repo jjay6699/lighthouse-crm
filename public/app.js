@@ -57,6 +57,22 @@ function margin(row) {
   return revenue ? `${((Number(row.net_earnings || 0) / revenue) * 100).toFixed(1)}%` : "0.0%";
 }
 
+function currentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
+
+function periodLabel(start, end) {
+  if (!start && !end) return "No period set";
+  if (start && end) return `${start} to ${end}`;
+  return start || end;
+}
+
 function ContributionList({ rows }) {
   return (
     <div className="contributionList">
@@ -410,7 +426,10 @@ function Kpi({ title, value, note, icon: Icon }) {
 }
 
 function EmptyState({ message }) {
+  const monthRange = currentMonthRange();
   const [batchName, setBatchName] = useState(`Initial import ${new Date().toISOString().slice(0, 10)}`);
+  const [periodStart, setPeriodStart] = useState(monthRange.start);
+  const [periodEnd, setPeriodEnd] = useState(monthRange.end);
   const [status, setStatus] = useState("");
 
   async function uploadInitial(files) {
@@ -418,6 +437,8 @@ function EmptyState({ message }) {
     setStatus("Uploading reports...");
     const form = new FormData();
     form.append("batchName", batchName || "Initial import");
+    form.append("periodStart", periodStart);
+    form.append("periodEnd", periodEnd);
     Array.from(files).forEach((file) => form.append("files", file));
 
     const upload = await fetch("/api/upload-finance", { method: "POST", body: form }).then((response) => response.json());
@@ -446,6 +467,10 @@ function EmptyState({ message }) {
         <span>Batch name</span>
         <input value={batchName} onChange={(event) => setBatchName(event.target.value)} />
       </label>
+      <div className="datePair emptyField">
+        <DateField label="Batch period from" value={periodStart} onChange={setPeriodStart} />
+        <DateField label="Batch period to" value={periodEnd} onChange={setPeriodEnd} />
+      </div>
       <label className="primaryButton emptyUpload">
         <input type="file" accept=".xlsx" multiple onChange={(event) => uploadInitial(event.target.files)} />
         <UploadCloud size={16} />
@@ -458,7 +483,10 @@ function EmptyState({ message }) {
 }
 
 function UploadPanel({ uploadState, onFiles }) {
+  const monthRange = currentMonthRange();
   const [batchName, setBatchName] = useState(`Monthly upload ${new Date().toISOString().slice(0, 10)}`);
+  const [periodStart, setPeriodStart] = useState(monthRange.start);
+  const [periodEnd, setPeriodEnd] = useState(monthRange.end);
   return (
     <section className="importPanel">
       <div>
@@ -473,8 +501,18 @@ function UploadPanel({ uploadState, onFiles }) {
         <span>Batch name</span>
         <input value={batchName} onChange={(event) => setBatchName(event.target.value)} placeholder="April 2026 closing pack" />
       </label>
+      <div className="datePair">
+        <DateField label="Batch period from" value={periodStart} onChange={setPeriodStart} />
+        <DateField label="Batch period to" value={periodEnd} onChange={setPeriodEnd} />
+      </div>
       <label className={`dropzone ${uploadState.busy ? "busy" : ""}`}>
-        <input type="file" accept=".xlsx" multiple disabled={uploadState.busy} onChange={(event) => onFiles(event.target.files, batchName)} />
+        <input
+          type="file"
+          accept=".xlsx"
+          multiple
+          disabled={uploadState.busy}
+          onChange={(event) => onFiles(event.target.files, { name: batchName, period_start: periodStart, period_end: periodEnd })}
+        />
         <UploadCloud size={24} />
         <strong>Upload Excel reports</strong>
         <span>Multiple files supported</span>
@@ -497,19 +535,44 @@ function BatchManager({ batches, uploadState, onRename, onDelete }) {
       <div className="batchList">
         {batches.map((batch) => {
           const locked = batch.batch_key === "initial-import";
-          const value = editing[batch.batch_key] ?? batch.name;
+          const value = editing[batch.batch_key] ?? {
+            name: batch.name,
+            period_start: batch.period_start || "",
+            period_end: batch.period_end || "",
+          };
           return (
             <div className="batchRow" key={batch.batch_key}>
               <div>
                 <strong>{batch.name}</strong>
+                <span>{periodLabel(batch.period_start, batch.period_end)}</span>
                 <span>{locked ? "Original local source files" : batch.uploaded_at || "Uploaded batch"}</span>
               </div>
               <input
-                value={value}
+                value={value.name}
                 disabled={locked || uploadState.busy}
-                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: event.target.value })}
+                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: { ...value, name: event.target.value } })}
               />
-              <button type="button" disabled={locked || uploadState.busy || value === batch.name} onClick={() => onRename(batch.batch_key, value)}>
+              <input
+                type="date"
+                value={value.period_start}
+                disabled={locked || uploadState.busy}
+                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: { ...value, period_start: event.target.value } })}
+              />
+              <input
+                type="date"
+                value={value.period_end}
+                disabled={locked || uploadState.busy}
+                onChange={(event) => setEditing({ ...editing, [batch.batch_key]: { ...value, period_end: event.target.value } })}
+              />
+              <button
+                type="button"
+                disabled={
+                  locked ||
+                  uploadState.busy ||
+                  (value.name === batch.name && value.period_start === (batch.period_start || "") && value.period_end === (batch.period_end || ""))
+                }
+                onClick={() => onRename(batch.batch_key, value)}
+              >
                 Save
               </button>
               <button className="dangerButton" type="button" disabled={locked || uploadState.busy} onClick={() => onDelete(batch.batch_key)}>
@@ -572,9 +635,14 @@ function Overview({ data, goFinance }) {
           </div>
           <div className="compactList">
             {reports.map((report) => (
-              <div key={report.source_file}>
+              <div key={`${report.batch_key}-${report.source_file}`}>
                 <strong>{report.company}</strong>
-                <span>{report.batch_name} | {report.dimension} | {report.period_label}</span>
+                <span>
+                  {report.batch_name}
+                  {report.batch_period_start || report.batch_period_end ? ` (${periodLabel(report.batch_period_start, report.batch_period_end)})` : ""}
+                  {" | "}
+                  {report.dimension} | {report.period_label}
+                </span>
               </div>
             ))}
           </div>
@@ -605,7 +673,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   ];
   const batchOptions = [
     { value: "all", label: "All batches" },
-    ...data.meta.batches.map((batch) => ({ value: batch.batch_key, label: batch.name })),
+    ...data.meta.batches.map((batch) => ({
+      value: batch.batch_key,
+      label: batch.period_start || batch.period_end ? `${batch.name} (${periodLabel(batch.period_start, batch.period_end)})` : batch.name,
+    })),
   ];
 
   const filteredLines = data.lines.filter((row) => `${row.line_item} ${row.section}`.toLowerCase().includes(search.toLowerCase()));
@@ -775,9 +846,14 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
             </div>
             <div className="compactList">
               {data.meta.reports.map((report) => (
-                <div key={report.source_file}>
+                <div key={`${report.batch_key}-${report.source_file}`}>
                   <strong>{report.company}</strong>
-                  <span>{report.batch_name} | {report.dimension} | {report.period_label}</span>
+                  <span>
+                    {report.batch_name}
+                    {report.batch_period_start || report.batch_period_end ? ` (${periodLabel(report.batch_period_start, report.batch_period_end)})` : ""}
+                    {" | "}
+                    {report.dimension} | {report.period_label}
+                  </span>
                 </div>
               ))}
             </div>
@@ -896,11 +972,14 @@ function App() {
     }
   }, [data, datesInitialized]);
 
-  async function uploadFiles(files, batchName) {
+  async function uploadFiles(files, batchDetails) {
     if (!files.length) return;
     setUploadState({ busy: true, message: "Uploading reports..." });
     const form = new FormData();
-    form.append("batchName", batchName || `Upload ${new Date().toISOString().slice(0, 10)}`);
+    const details = typeof batchDetails === "string" ? { name: batchDetails } : batchDetails || {};
+    form.append("batchName", details.name || `Upload ${new Date().toISOString().slice(0, 10)}`);
+    form.append("periodStart", details.period_start || "");
+    form.append("periodEnd", details.period_end || "");
     Array.from(files).forEach((file) => form.append("files", file));
 
     const upload = await fetch("/api/upload-finance", { method: "POST", body: form }).then((response) => response.json());
@@ -919,12 +998,12 @@ function App() {
     await load();
   }
 
-  async function renameBatch(batchKey, name) {
+  async function renameBatch(batchKey, details) {
     setUploadState({ busy: true, message: "Saving batch..." });
     const result = await fetch(`/api/batches/${encodeURIComponent(batchKey)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(typeof details === "string" ? { name: details } : details),
     }).then((response) => response.json());
     setUploadState({ busy: false, message: result.ok ? result.stdout || "Batch updated." : result.error || result.stderr || "Batch update failed." });
     await load();

@@ -130,6 +130,11 @@ async function readJson(req) {
   return JSON.parse(raw.toString("utf8"));
 }
 
+function cleanDate(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
 function safeFileName(name) {
   return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/\s+/g, " ").trim();
 }
@@ -153,6 +158,8 @@ async function uploadFinanceFiles(req) {
   const body = await readBody(req);
   const files = [];
   let batchName = "";
+  let periodStart = "";
+  let periodEnd = "";
   let batchKey = "";
   let batchDir = "";
   let batchLabel = "";
@@ -172,12 +179,21 @@ async function uploadFinanceFiles(req) {
       if (!filenameMatch && fieldMatch?.[1] === "batchName") {
         batchName = content.toString("utf8").trim();
       }
+      if (!filenameMatch && fieldMatch?.[1] === "periodStart") {
+        periodStart = cleanDate(content.toString("utf8"));
+      }
+      if (!filenameMatch && fieldMatch?.[1] === "periodEnd") {
+        periodEnd = cleanDate(content.toString("utf8"));
+      }
       if (filenameMatch) {
         const originalName = safeFileName(filenameMatch[1]);
         if (!originalName.toLowerCase().endsWith(".xlsx")) {
           files.push({ name: originalName, skipped: true, reason: "Only .xlsx files are accepted." });
         } else {
           if (!batchKey) {
+            if (periodStart && periodEnd && periodStart > periodEnd) {
+              return { ok: false, message: "Batch period start must be before period end." };
+            }
             const now = new Date();
             batchLabel = batchName || `Upload ${now.toISOString().slice(0, 10)}`;
             batchKey = `${now.toISOString().replace(/[:.]/g, "-")}-${slugify(batchLabel) || "batch"}`;
@@ -185,7 +201,7 @@ async function uploadFinanceFiles(req) {
             await mkdir(batchDir, { recursive: true });
             await writeFile(
               join(batchDir, "batch.json"),
-              JSON.stringify({ name: batchLabel, uploaded_at: now.toISOString() }, null, 2)
+              JSON.stringify({ name: batchLabel, uploaded_at: now.toISOString(), period_start: periodStart, period_end: periodEnd }, null, 2)
             );
           }
           const targetPath = join(batchDir, originalName);
@@ -224,10 +240,13 @@ function runImporter() {
   });
 }
 
-async function renameBatch(batchKey, name) {
-  const safeName = String(name || "").trim();
+async function updateBatch(batchKey, details) {
+  const safeName = String(details?.name || "").trim();
+  const periodStart = cleanDate(details?.period_start);
+  const periodEnd = cleanDate(details?.period_end);
   if (!safeName) return { ok: false, error: "Batch name is required." };
-  if (batchKey === "initial-import") return { ok: false, error: "Initial import cannot be renamed from the app." };
+  if (periodStart && periodEnd && periodStart > periodEnd) return { ok: false, error: "Period start must be before period end." };
+  if (batchKey === "initial-import") return { ok: false, error: "Initial import cannot be edited from the app." };
 
   const batchDir = normalize(join(financeDir, "batches", batchKey));
   const batchesRoot = normalize(join(financeDir, "batches"));
@@ -235,10 +254,18 @@ async function renameBatch(batchKey, name) {
     return { ok: false, error: "Batch folder was not found." };
   }
 
-  await writeFile(
-    join(batchDir, "batch.json"),
-    JSON.stringify({ name: safeName, uploaded_at: new Date().toISOString() }, null, 2)
-  );
+  let existing = {};
+  try {
+    existing = JSON.parse(await readFile(join(batchDir, "batch.json"), "utf8"));
+  } catch {}
+
+  await writeFile(join(batchDir, "batch.json"), JSON.stringify({
+    ...existing,
+    name: safeName,
+    uploaded_at: existing.uploaded_at || new Date().toISOString(),
+    period_start: periodStart,
+    period_end: periodEnd,
+  }, null, 2));
   return runImporter();
 }
 
@@ -658,7 +685,7 @@ function getDashboard(params) {
     .all(filter.values);
 
   const meta = {
-    batches: db.prepare("SELECT batch_key, name, uploaded_at FROM batches ORDER BY id DESC").all(),
+    batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
     companies: db.prepare("SELECT name, source_currency AS currency FROM companies ORDER BY name").all(),
     dimensions: db.prepare("SELECT DISTINCT dimension FROM reports ORDER BY dimension").all().map((x) => x.dimension),
     entities: db
@@ -684,7 +711,7 @@ function getDashboard(params) {
     fx: db.prepare("SELECT * FROM fx_rates ORDER BY source_currency").all(),
     reports: db
       .prepare(
-        "SELECT b.batch_key, b.name AS batch_name, r.dimension, r.period_label, r.period_start, r.period_end, r.source_file, c.name AS company FROM reports r JOIN batches b ON b.id = r.batch_id JOIN companies c ON c.id = r.company_id ORDER BY b.id DESC, c.name, r.dimension"
+        "SELECT b.batch_key, b.name AS batch_name, b.period_start AS batch_period_start, b.period_end AS batch_period_end, r.dimension, r.period_label, r.period_start, r.period_end, r.source_file, c.name AS company FROM reports r JOIN batches b ON b.id = r.batch_id JOIN companies c ON c.id = r.company_id ORDER BY COALESCE(b.period_start, b.uploaded_at) DESC, b.id DESC, c.name, r.dimension"
       )
       .all(),
     dateRange: db
@@ -1046,7 +1073,7 @@ createServer(async (req, res) => {
   if (batchMatch && req.method === "PATCH") {
     try {
       const body = await readJson(req);
-      json(res, 200, await renameBatch(decodeURIComponent(batchMatch[1]), body.name));
+      json(res, 200, await updateBatch(decodeURIComponent(batchMatch[1]), body));
     } catch (error) {
       json(res, 500, { ok: false, error: error.message });
     }

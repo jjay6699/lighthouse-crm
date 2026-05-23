@@ -283,6 +283,8 @@ def discover_report_files():
                 "batch_key": "initial-import",
                 "batch_name": "Initial import",
                 "uploaded_at": "",
+                "batch_period_start": "",
+                "batch_period_end": "",
             }
         )
 
@@ -294,11 +296,15 @@ def discover_report_files():
         batch_key = batch_dir.name
         batch_name = batch_key
         uploaded_at = ""
+        period_start = ""
+        period_end = ""
         if meta_path.exists():
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
                 batch_name = meta.get("name") or batch_name
                 uploaded_at = meta.get("uploaded_at") or ""
+                period_start = meta.get("period_start") or ""
+                period_end = meta.get("period_end") or ""
             except Exception:
                 pass
         for path in sorted(batch_dir.glob("*Profit and Loss*.xlsx")):
@@ -308,6 +314,8 @@ def discover_report_files():
                     "batch_key": batch_key,
                     "batch_name": batch_name,
                     "uploaded_at": uploaded_at,
+                    "batch_period_start": period_start,
+                    "batch_period_end": period_end,
                 }
             )
     return items
@@ -322,6 +330,8 @@ def discover_sales_files():
                 "batch_key": "initial-import",
                 "batch_name": "Initial import",
                 "uploaded_at": "",
+                "batch_period_start": "",
+                "batch_period_end": "",
             }
         )
 
@@ -333,11 +343,15 @@ def discover_sales_files():
         batch_key = batch_dir.name
         batch_name = batch_key
         uploaded_at = ""
+        period_start = ""
+        period_end = ""
         if meta_path.exists():
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
                 batch_name = meta.get("name") or batch_name
                 uploaded_at = meta.get("uploaded_at") or ""
+                period_start = meta.get("period_start") or ""
+                period_end = meta.get("period_end") or ""
             except Exception:
                 pass
         for path in sorted(batch_dir.glob("*Sales by Product*.xlsx")):
@@ -347,6 +361,8 @@ def discover_sales_files():
                     "batch_key": batch_key,
                     "batch_name": batch_name,
                     "uploaded_at": uploaded_at,
+                    "batch_period_start": period_start,
+                    "batch_period_end": period_end,
                 }
             )
     return items
@@ -366,7 +382,9 @@ def init_db(conn: sqlite3.Connection):
             id INTEGER PRIMARY KEY,
             batch_key TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
-            uploaded_at TEXT NOT NULL
+            uploaded_at TEXT NOT NULL,
+            period_start TEXT,
+            period_end TEXT
         );
 
         CREATE TABLE companies (
@@ -449,6 +467,8 @@ def main():
                 "batch_key": item["batch_key"],
                 "batch_name": item["batch_name"],
                 "uploaded_at": item["uploaded_at"],
+                "batch_period_start": item["batch_period_start"],
+                "batch_period_end": item["batch_period_end"],
             }
         )
         reports.append(report)
@@ -460,6 +480,8 @@ def main():
                 "batch_key": item["batch_key"],
                 "batch_name": item["batch_name"],
                 "uploaded_at": item["uploaded_at"],
+                "batch_period_start": item["batch_period_start"],
+                "batch_period_end": item["batch_period_end"],
             }
         )
         sales_reports.append(report)
@@ -478,8 +500,14 @@ def main():
 
         for report in reports:
             conn.execute(
-                "INSERT OR IGNORE INTO batches(batch_key, name, uploaded_at) VALUES (?, ?, ?)",
-                (report["batch_key"], report["batch_name"], report["uploaded_at"]),
+                "INSERT OR IGNORE INTO batches(batch_key, name, uploaded_at, period_start, period_end) VALUES (?, ?, ?, ?, ?)",
+                (
+                    report["batch_key"],
+                    report["batch_name"],
+                    report["uploaded_at"],
+                    report["batch_period_start"],
+                    report["batch_period_end"],
+                ),
             )
             batch_id = conn.execute(
                 "SELECT id FROM batches WHERE batch_key = ?", (report["batch_key"],)
@@ -531,8 +559,14 @@ def main():
 
         for report in sales_reports:
             conn.execute(
-                "INSERT OR IGNORE INTO batches(batch_key, name, uploaded_at) VALUES (?, ?, ?)",
-                (report["batch_key"], report["batch_name"], report["uploaded_at"]),
+                "INSERT OR IGNORE INTO batches(batch_key, name, uploaded_at, period_start, period_end) VALUES (?, ?, ?, ?, ?)",
+                (
+                    report["batch_key"],
+                    report["batch_name"],
+                    report["uploaded_at"],
+                    report["batch_period_start"],
+                    report["batch_period_end"],
+                ),
             )
             batch_id = conn.execute(
                 "SELECT id FROM batches WHERE batch_key = ?", (report["batch_key"],)

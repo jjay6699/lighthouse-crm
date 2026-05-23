@@ -22,7 +22,7 @@ Open `http://localhost:3000`.
 
 ## Adding new finance files
 
-Use the dashboard upload panel in `Financial Consolidation` > `Import`. Give the upload a batch name such as `April 2026 closing pack`, then select the `.xlsx` files.
+Use the dashboard upload panel in `Financial Consolidation` > `Import`. Give the upload a batch name such as `April 2026 closing pack`, set the batch period dates, then select the `.xlsx` files.
 
 Each upload is stored as its own batch under:
 
@@ -30,9 +30,18 @@ Each upload is stored as its own batch under:
 finance consilidation/batches/
 ```
 
-The original source files in `finance consilidation/` are treated as the `Initial import` batch. Use the Batch filter in the dashboard to view one upload batch at a time or all batches together.
+The original source files in `finance consilidation/` are treated as the `Initial import` batch. Use the Batch filter in the dashboard to view one upload batch at a time or all batches together. All batches intentionally accumulate, which is useful when each upload is a separate month.
 
 For manual file placement, create a folder inside `finance consilidation/batches/`, add a `batch.json`, place the `.xlsx` files there, then rebuild the SQLite database:
+
+```json
+{
+  "name": "April 2026 closing pack",
+  "uploaded_at": "2026-05-23T00:00:00.000Z",
+  "period_start": "2026-04-01",
+  "period_end": "2026-04-30"
+}
+```
 
 ```powershell
 python scripts/import_finance.py

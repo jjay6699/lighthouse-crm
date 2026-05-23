@@ -225,6 +225,12 @@ h2 {
   min-width: 0;
 }
 
+.datePair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .field span {
   color: var(--muted);
   font-size: 11px;
@@ -957,7 +963,7 @@ th {
 
 .batchRow {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(210px, 1fr) minmax(170px, 0.8fr) 150px 150px auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -1145,6 +1151,10 @@ th:last-child {
   }
 
   .batchRow {
+    grid-template-columns: 1fr;
+  }
+
+  .datePair {
     grid-template-columns: 1fr;
   }
 
