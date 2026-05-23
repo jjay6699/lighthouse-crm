@@ -641,6 +641,19 @@ h2 {
   font-weight: 800;
 }
 
+.brandMixHead span:nth-child(2),
+.brandMixHead span:nth-child(3),
+.brandMixHead span:nth-child(4) {
+  text-align: right;
+}
+
+.brandMixHead span:nth-child(5),
+.brandMixHead span:nth-child(6) {
+  justify-self: end;
+  width: 58px;
+  text-align: center;
+}
+
 .brandMixRow {
   min-height: 58px;
   border-bottom: 1px solid #edf2ef;
