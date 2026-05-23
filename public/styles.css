@@ -1162,42 +1162,40 @@ th:last-child {
   display: grid;
   place-items: center;
   padding: 24px;
-  background:
-    linear-gradient(135deg, rgba(26, 127, 120, 0.08), transparent 36%),
-    linear-gradient(315deg, rgba(228, 154, 56, 0.1), transparent 42%),
-    var(--bg);
+  background: var(--bg);
 }
 
 .loadingCard {
-  width: min(540px, 100%);
-  padding: 36px;
+  width: min(390px, 100%);
+  padding: 28px;
   border: 1px solid rgba(23, 33, 31, 0.08);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--shadow);
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(23, 33, 31, 0.08);
 }
 
 .loadingCard .eyebrow {
   margin: 0;
+  font-size: 11px;
 }
 
 .loadingCard h1 {
-  margin: 6px 0 10px;
-  font-size: clamp(28px, 4vw, 40px);
-  line-height: 1.04;
+  margin: 8px 0 8px;
+  font-size: 24px;
+  line-height: 1.15;
 }
 
 .loadingCopy {
   max-width: 430px;
   margin: 0;
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .loadingBar {
-  height: 8px;
-  margin-top: 28px;
+  height: 4px;
+  margin-top: 22px;
   overflow: hidden;
   border-radius: 999px;
   background: #e7eeeb;
@@ -1205,11 +1203,11 @@ th:last-child {
 
 .loadingBar span {
   display: block;
-  width: 42%;
+  width: 32%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--teal), var(--gold));
-  animation: loadingSlide 1.15s ease-in-out infinite;
+  background: var(--teal);
+  animation: loadingSlide 1.2s ease-in-out infinite;
 }
 
 @keyframes loadingSlide {

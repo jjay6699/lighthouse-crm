@@ -550,8 +550,8 @@ function LoadingState() {
     <main className="loadingScreen">
       <section className="loadingCard" aria-live="polite">
         <p className="eyebrow">Lightmart CRM</p>
-        <h1>Preparing your finance dashboard</h1>
-        <p className="loadingCopy">Loading consolidated reports, SKU sales, batches, and HKD analytics.</p>
+        <h1>Loading dashboard</h1>
+        <p className="loadingCopy">Preparing finance data.</p>
         <div className="loadingBar" aria-hidden="true">
           <span />
         </div>
