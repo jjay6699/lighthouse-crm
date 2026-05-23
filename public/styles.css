@@ -632,7 +632,7 @@ h2 {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) 120px 120px 80px 80px 90px;
   gap: 12px;
-  align-items: center;
+  align-items: start;
 }
 
 .brandMixHead {
@@ -645,6 +645,12 @@ h2 {
   min-height: 58px;
   border-bottom: 1px solid #edf2ef;
   padding-bottom: 10px;
+}
+
+.brandMixRow > em,
+.brandMixRow > strong,
+.brandMixRow > .growth {
+  margin-top: 4px;
 }
 
 .brandMixMain {
@@ -672,12 +678,17 @@ h2 {
 
 .growth {
   justify-self: end;
+  align-self: start;
   min-width: 58px;
+  width: fit-content;
+  max-width: 100%;
   border-radius: 999px;
   padding: 4px 7px;
   font-size: 12px;
   font-weight: 800;
   text-align: center;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .growth.up {
@@ -690,7 +701,7 @@ h2 {
   color: #9a2630;
 }
 
-.growth.empty {
+.growth.na {
   background: #eef2ef;
   color: var(--muted);
 }

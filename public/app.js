@@ -221,7 +221,7 @@ function BrandRevenueMix({ rows }) {
 function Growth({ value }) {
   const numeric = Number(value);
   const empty = value === null || value === undefined || Number.isNaN(numeric);
-  const tone = empty ? "empty" : numeric >= 0 ? "up" : "down";
+  const tone = empty ? "na" : numeric >= 0 ? "up" : "down";
   return <span className={`growth ${tone}`}>{pctOrDash(value)}</span>;
 }
 
