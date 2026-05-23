@@ -465,7 +465,7 @@ function skuWhereFromSearch(params) {
     clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} <= $dateTo) OR (${skuDate} IS NULL AND (s.period_start IS NULL OR s.period_start <= $dateTo)))`);
     values.$dateTo = dateTo;
   }
-  clauses.push("ABS(s.amount_hkd) > 0.01");
+  clauses.push("s.amount_hkd > 0.01");
 
   return {
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
