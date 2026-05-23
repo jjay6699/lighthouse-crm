@@ -52,6 +52,10 @@ function pctOrDash(value) {
   return value === null || value === undefined ? "n/a" : pct(value);
 }
 
+function hkdOrDash(value) {
+  return value === null || value === undefined ? "n/a" : hkd(value);
+}
+
 function margin(row) {
   const revenue = Number(row.revenue || 0);
   return revenue ? `${((Number(row.net_earnings || 0) / revenue) * 100).toFixed(1)}%` : "0.0%";
@@ -328,6 +332,20 @@ function BrandSkuView({ sku }) {
                 <span>{row.brand}</span>
                 <strong>{row.product_name}</strong>
                 <em>{row.sku} | {hkd(row.revenue)}</em>
+                <div className="skuResultMeta">
+                  <span>
+                    <b>Margin $</b>
+                    {hkdOrDash(row.gross_profit)}
+                  </span>
+                  <span>
+                    <b>vs LY</b>
+                    <Growth value={row.growth_ly} />
+                  </span>
+                  <span>
+                    <b>vs P3M</b>
+                    <Growth value={row.growth_p3m} />
+                  </span>
+                </div>
               </button>
             ))}
             {!topRows.length && <p className="emptyMini">No SKU rows match this search.</p>}
