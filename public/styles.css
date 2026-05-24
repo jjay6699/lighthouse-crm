@@ -350,7 +350,7 @@ h2 {
 }
 
 .statementGrid {
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .panel,
@@ -902,9 +902,17 @@ h2 {
 .statementHead,
 .statementRow {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 160px 110px;
+  grid-template-columns: minmax(240px, 1fr) 150px 100px 90px 90px;
   align-items: center;
   gap: 12px;
+}
+
+.statementNote {
+  padding: 9px 14px;
+  background: #fbfcfb;
+  color: var(--muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
 }
 
 .statementHead {
@@ -922,8 +930,10 @@ h2 {
 
 .statementHead span:nth-child(n + 2),
 .statementRow strong,
-.statementRow em {
+.statementRow em,
+.statementRow .growth {
   text-align: right;
+  justify-self: end;
 }
 
 .statementSection {
@@ -941,14 +951,15 @@ h2 {
   border-top: 0;
   cursor: pointer;
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 160px 110px;
+  grid-template-columns: minmax(240px, 1fr) 150px 100px 90px 90px;
   align-items: center;
   gap: 12px;
   text-align: left;
 }
 
 .statementSection strong,
-.statementSection em {
+.statementSection em,
+.statementSection i {
   text-align: right;
 }
 
@@ -966,6 +977,10 @@ h2 {
 
 .statementRow span {
   color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
 }
 
 .statementRow strong {
@@ -995,9 +1010,55 @@ h2 {
   font-size: 14px;
 }
 
+.rowToggle {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--teal);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.expenseContributors {
+  display: grid;
+  gap: 1px;
+  padding: 8px 14px 10px 42px;
+  background: #fbfcfb;
+  border-bottom: 1px solid #edf2ef;
+}
+
+.expenseContributor {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(180px, 1fr) 130px 80px;
+  gap: 10px;
+  align-items: center;
+  min-height: 28px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.expenseContributor strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.expenseContributor em,
+.expenseContributor i {
+  text-align: right;
+  font-style: normal;
+}
+
 .lineTiles {
   display: grid;
   gap: 8px;
+}
+
+.statementGrid .lineTiles {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .lineTile {
@@ -1327,7 +1388,22 @@ th:last-child {
 
   .statementHead,
   .statementRow {
-    grid-template-columns: minmax(160px, 1fr) 120px 88px;
+    grid-template-columns: minmax(170px, 1fr) 112px 82px 82px 82px;
+    overflow-x: auto;
+  }
+
+  .statementSection {
+    grid-template-columns: minmax(170px, 1fr) 112px 82px 82px 82px;
+  }
+
+  .expenseContributors {
+    padding-left: 14px;
+    overflow-x: auto;
+  }
+
+  .expenseContributor {
+    grid-template-columns: 140px 170px 110px 70px;
+    min-width: 520px;
   }
 
   .brandMixRow > strong,

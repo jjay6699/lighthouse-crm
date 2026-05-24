@@ -939,6 +939,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
                 `${row.line_item} ${row.section}`.toLowerCase().includes(search.toLowerCase())
               )}
               revenueBase={revenueBase}
+              comparison={data.meta.pnlComparison}
             />
           </div>
 
@@ -995,8 +996,11 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   );
 }
 
-function ProfitLossStatement({ rows, revenueBase }) {
+function ProfitLossStatement({ rows, revenueBase, comparison }) {
   const [expanded, setExpanded] = useState({ Income: true });
+  const [expandedExpenses, setExpandedExpenses] = useState({});
+  const growthWindow = comparison?.current;
+  const growthWindowLabel = growthWindow?.start && growthWindow?.end ? `${growthWindow.start} to ${growthWindow.end}` : "";
   const groups = rows.reduce((acc, row) => {
     if (!acc[row.section]) acc[row.section] = [];
     acc[row.section].push(row);
@@ -1017,15 +1021,18 @@ function ProfitLossStatement({ rows, revenueBase }) {
 
   return (
     <div className="statement">
+      {growthWindowLabel && <div className="statementNote">Growth window {growthWindowLabel}</div>}
       <div className="statementHead">
         <span>Account</span>
         <span>HKD</span>
         <span>% revenue</span>
+        <span>vs LY</span>
+        <span>vs P3M</span>
       </div>
       {Object.entries(groups).map(([section, sectionRows]) => {
         const open = !!expanded[section];
         const amount = sectionAmount(section, sectionRows);
-        const pct = revenueBase ? `${((Number(amount || 0) / revenueBase) * 100).toFixed(1)}%` : "-";
+        const sectionPct = revenueBase ? `${((Number(amount || 0) / revenueBase) * 100).toFixed(1)}%` : "-";
         const visibleRows = open
           ? sectionRows
           : sectionRows.filter((row) => row.line_item === "Gross Profit" || row.line_item === "Net Earnings");
@@ -1035,17 +1042,51 @@ function ProfitLossStatement({ rows, revenueBase }) {
             <button className="statementSection" type="button" onClick={() => setExpanded({ ...expanded, [section]: !open })}>
               <span>{open ? "-" : "+"} {section}</span>
               <strong>{hkd(amount)}</strong>
-              <em>{pct}</em>
+              <em>{sectionPct}</em>
+              <i />
+              <i />
             </button>
             {visibleRows.map((row) => {
               const rowPct = revenueBase ? `${((Number(row.amount || 0) / revenueBase) * 100).toFixed(1)}%` : "-";
               const isKeyTotal = row.line_item === "Gross Profit" || row.line_item === "Net Earnings";
+              const expenseKey = `${row.section}-${row.line_item}`;
+              const contributors = row.expense_contributors || [];
+              const showContributors = row.section === "Expenses" && contributors.length > 0;
+              const contributorsOpen = !!expandedExpenses[expenseKey];
               return (
-                <div className={`statementRow ${row.is_total ? "total" : ""} ${isKeyTotal ? "keyTotal" : ""}`} key={`${row.section}-${row.line_item}`}>
-                  <span>{row.line_item}</span>
-                  <strong>{hkd(row.amount)}</strong>
-                  <em>{rowPct}</em>
-                </div>
+                <React.Fragment key={`${row.section}-${row.line_item}`}>
+                  <div className={`statementRow ${row.is_total ? "total" : ""} ${isKeyTotal ? "keyTotal" : ""}`}>
+                    <span>
+                      {showContributors && (
+                        <button
+                          className="rowToggle"
+                          type="button"
+                          aria-label={`${contributorsOpen ? "Hide" : "Show"} contributors for ${row.line_item}`}
+                          onClick={() => setExpandedExpenses({ ...expandedExpenses, [expenseKey]: !contributorsOpen })}
+                        >
+                          {contributorsOpen ? "-" : "+"}
+                        </button>
+                      )}
+                      {row.line_item}
+                    </span>
+                    <strong>{hkd(row.amount)}</strong>
+                    <em>{rowPct}</em>
+                    <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
+                    <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
+                  </div>
+                  {showContributors && contributorsOpen && (
+                    <div className="expenseContributors">
+                      {contributors.map((item) => (
+                        <div className="expenseContributor" key={`${expenseKey}-${item.company}-${item.entity}`}>
+                          <span>{item.company}</span>
+                          <strong>{item.entity}</strong>
+                          <em>{hkd(item.amount)}</em>
+                          <i>{pct(item.share_of_line)}</i>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </React.Fragment>
               );
             })}
           </React.Fragment>

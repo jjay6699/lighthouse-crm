@@ -590,6 +590,9 @@ function getDashboard(params) {
     JOIN companies c ON c.id = r.company_id
     ${sectionFilter.sql}
   `;
+  const reportDateRange = db
+    .prepare("SELECT MIN(period_start) AS min, MAX(period_end) AS max FROM reports")
+    .get();
 
   const kpiRows = db
     .prepare(
@@ -683,7 +686,7 @@ function getDashboard(params) {
     )
     .all(sectionFilter.values);
 
-  const pAndL = db
+  let pAndL = db
     .prepare(
       `
       SELECT
@@ -712,8 +715,19 @@ function getDashboard(params) {
             'Total for Expenses',
             'Total for Other Expenses',
             'Net Earnings'
-          ) THEN 900
-          ELSE row_order
+          ) OR f.line_item LIKE 'Total for%' THEN 900
+          ELSE 1
+        END,
+        CASE
+          WHEN f.line_item IN (
+            'Total for Income',
+            'Gross Profit',
+            'Total for Other Income(Loss)',
+            'Total for Expenses',
+            'Total for Other Expenses',
+            'Net Earnings'
+          ) OR f.line_item LIKE 'Total for%' THEN ABS(amount)
+          ELSE ABS(amount) * -1
         END,
         f.line_item
       `
@@ -804,9 +818,6 @@ function getDashboard(params) {
     )
     .all(filter.values);
 
-  const reportDateRange = db
-    .prepare("SELECT MIN(period_start) AS min, MAX(period_end) AS max FROM reports")
-    .get();
   const hasSkuSales = !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sku_sales'").get();
   const skuDate = skuDateExpression("s");
   const skuRangeFilter = hasSkuSales ? skuRangeWhere(params) : { sql: "", values: {} };
@@ -828,6 +839,105 @@ function getDashboard(params) {
     min: minIsoDate(reportDateRange?.min, skuDateRange?.min),
     max: maxIsoDate(reportDateRange?.max, skuDateRange?.max),
   };
+  const pnlCurrentFrom = params.get("dateFrom") || reportDateRange?.min || availableDateRange.min;
+  const pnlUncappedCurrentTo = params.get("dateTo") || reportDateRange?.max || availableDateRange.max;
+  const pnlCurrentTo = clampIsoDate(pnlUncappedCurrentTo, "", minIsoDate(reportDateRange?.max, currentDate) || pnlUncappedCurrentTo);
+  const pnlCompare = comparisonWindow(pnlCurrentFrom, pnlCurrentTo);
+  const pnlComparison = pnlCompare.start && pnlCompare.end
+    ? {
+        current: pnlCompare,
+        ly: {
+          start: shiftDate(pnlCompare.start, { years: -1 }),
+          end: shiftDate(pnlCompare.end, { years: -1 }),
+        },
+        p3m: {
+          start: shiftDate(pnlCompare.start, { months: -3 }),
+          end: shiftDate(pnlCompare.start, { days: -1 }),
+        },
+      }
+    : {
+        current: { start: "", end: "" },
+        ly: { start: "", end: "" },
+        p3m: { start: "", end: "" },
+      };
+
+  function pnlLineKey(row) {
+    return `${row.section || ""}|${row.line_item || ""}`;
+  }
+
+  function pnlRowsForWindow(start, end) {
+    if (!start || !end) return [];
+    const windowFilter = whereFromSearch(periodParams(params, start, end), { includeSection: true });
+    const windowJoin = `
+      FROM (
+        SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+        FROM facts raw_f
+      ) f
+      JOIN reports r ON r.id = f.report_id
+      JOIN batches b ON b.id = r.batch_id
+      JOIN companies c ON c.id = r.company_id
+      ${windowFilter.sql}
+    `;
+    return db
+      .prepare(
+        `
+        SELECT f.section, f.line_item, SUM(f.amount_hkd) AS amount
+        ${windowJoin}
+        GROUP BY f.section, f.line_item
+        HAVING ABS(amount) > 0
+        `
+      )
+      .all(windowFilter.values);
+  }
+
+  const pnlCurrentMap = new Map(pnlRowsForWindow(pnlComparison.current.start, pnlComparison.current.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
+  const pnlLyMap = new Map(pnlRowsForWindow(pnlComparison.ly.start, pnlComparison.ly.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
+  const pnlP3mMap = new Map(pnlRowsForWindow(pnlComparison.p3m.start, pnlComparison.p3m.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
+  const expenseContributorRows = db
+    .prepare(
+      `
+      SELECT f.line_item, c.name AS company, f.entity, SUM(f.amount_hkd) AS amount
+      ${sectionJoin}
+      ${appendWhere(sectionFilter, "f.section = 'Expenses'")}
+      AND f.line_item NOT LIKE 'Total for%'
+      GROUP BY f.line_item, c.name, f.entity
+      HAVING ABS(amount) > 0.01
+      ORDER BY f.line_item, ABS(amount) DESC
+      `
+    )
+    .all(sectionFilter.values);
+  const expenseContributorMap = new Map();
+  for (const row of expenseContributorRows) {
+    const list = expenseContributorMap.get(row.line_item) || [];
+    if (list.length < 5) {
+      list.push(row);
+      expenseContributorMap.set(row.line_item, list);
+    }
+  }
+  pAndL = pAndL.map((row) => {
+    const key = pnlLineKey(row);
+    const currentAmount = pnlCurrentMap.has(key) ? pnlCurrentMap.get(key) : Number(row.amount || 0);
+    const lyMetric = comparisonMetric(currentAmount, pnlLyMap, key);
+    const p3mMetric = comparisonMetric(currentAmount, pnlP3mMap, key);
+    const contributors = row.section === "Expenses" && !row.is_total && !String(row.line_item || "").startsWith("Total for")
+      ? (expenseContributorMap.get(row.line_item) || []).map((item) => ({
+          ...item,
+          share_of_line: Number(row.amount || 0) ? Number(item.amount || 0) / Number(row.amount || 0) : 0,
+        }))
+      : undefined;
+    return {
+      ...row,
+      growth_ly: lyMetric.growth,
+      growth_p3m: p3mMetric.growth,
+      growth_status_ly: lyMetric.status,
+      growth_status_p3m: p3mMetric.status,
+      growth_value_ly: lyMetric.value,
+      growth_value_p3m: p3mMetric.value,
+      comparison_amount_ly: pnlLyMap.has(key) ? pnlLyMap.get(key) : null,
+      comparison_amount_p3m: pnlP3mMap.has(key) ? pnlP3mMap.get(key) : null,
+      ...(contributors ? { expense_contributors: contributors } : {}),
+    };
+  });
 
   const meta = {
     batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
@@ -862,6 +972,7 @@ function getDashboard(params) {
     dateRange: reportDateRange,
     skuDateRange,
     availableDateRange,
+    pnlComparison,
     timezone: "Asia/Hong_Kong",
     currentDate,
   };
