@@ -1104,6 +1104,14 @@ function getDashboard(params) {
   const skuP3mRevenue = sumRevenue(skuBrandP3m);
   const skuKey = (row) =>
     `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}`;
+  const skuGrossProfit = (row) => {
+    if (row.cogs_hkd === null || row.cogs_hkd === undefined) return null;
+    return Number(row.revenue || 0) - Number(row.cogs_hkd || 0);
+  };
+  const skuGrossMargin = (row, grossProfit) => {
+    const revenue = Number(row.revenue || 0);
+    return grossProfit === null || !revenue ? null : grossProfit / revenue;
+  };
 
   return {
     ready: true,
@@ -1153,22 +1161,15 @@ function getDashboard(params) {
         const key = row.brand_key || String(row.brand || "").toLowerCase();
         const rowKey = skuKey(row);
         const currentRevenue = hasSkuComparison ? Number(skuCurrentMap.get(rowKey) || 0) : Number(row.revenue || 0);
-        const brandMargin = brandMarginMap.get(key);
-        const cogs = row.cogs_hkd === null || row.cogs_hkd === undefined ? null : Number(row.cogs_hkd || 0);
-        const mappedGrossProfit = cogs === null ? null : Number(row.revenue || 0) - cogs;
-        const grossMargin =
-          mappedGrossProfit === null
-            ? brandMargin?.gross_margin ?? null
-            : Number(row.revenue || 0)
-              ? mappedGrossProfit / Number(row.revenue || 0)
-              : null;
+        const mappedGrossProfit = skuGrossProfit(row);
+        const grossMargin = skuGrossMargin(row, mappedGrossProfit);
         return {
           ...row,
           brand: brandLabel(key, row.brand),
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
           gross_margin: grossMargin,
-          gross_profit: mappedGrossProfit ?? (grossMargin === null ? null : Number(row.revenue || 0) * grossMargin),
-          margin_source: mappedGrossProfit === null ? "pnl" : "sku_cogs",
+          gross_profit: mappedGrossProfit,
+          margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
           growth_ly: safeGrowth(currentRevenue, skuLyMap.get(rowKey)),
           growth_p3m: safeGrowth(currentRevenue, skuP3mMap.get(rowKey)),
           growth_value_ly: skuLyMap.has(rowKey) ? currentRevenue - skuLyMap.get(rowKey) : null,
@@ -1177,21 +1178,15 @@ function getDashboard(params) {
       }),
       brands: skuBrands.map((row) => {
         const currentRevenue = hasSkuComparison ? Number(skuBrandCurrentMap.get(row.brand_key) || 0) : Number(row.revenue || 0);
-        const cogs = row.cogs_hkd === null || row.cogs_hkd === undefined ? null : Number(row.cogs_hkd || 0);
-        const mappedGrossProfit = cogs === null ? null : Number(row.revenue || 0) - cogs;
-        const grossMargin =
-          mappedGrossProfit === null
-            ? brandMarginMap.get(row.brand_key)?.gross_margin ?? null
-            : Number(row.revenue || 0)
-              ? mappedGrossProfit / Number(row.revenue || 0)
-              : null;
+        const mappedGrossProfit = skuGrossProfit(row);
+        const grossMargin = skuGrossMargin(row, mappedGrossProfit);
         return {
           ...row,
           brand: brandLabel(row.brand_key, row.brand),
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
-          gross_profit: mappedGrossProfit ?? brandMarginMap.get(row.brand_key)?.gross_profit ?? null,
+          gross_profit: mappedGrossProfit,
           gross_margin: grossMargin,
-          margin_source: mappedGrossProfit === null ? "pnl" : "sku_cogs",
+          margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
           growth_ly: safeGrowth(currentRevenue, skuBrandLyMap.get(row.brand_key)),
           growth_p3m: safeGrowth(currentRevenue, skuBrandP3mMap.get(row.brand_key)),
         };

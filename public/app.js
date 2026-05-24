@@ -360,7 +360,7 @@ function BrandSkuView({ sku, filters, setFilters }) {
           </div>
         </div>
         <p className="sourceNote">
-          SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. SKU margin uses mapped SKU COGS where available, with brand P&L gross margin as fallback.
+          SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. SKU margin uses mapped SKU COGS and stays n/a when SKU cost is missing.
         </p>
         <div className={`skuRangeNotice ${narrowRange ? "warning" : ""}`}>
           <div>

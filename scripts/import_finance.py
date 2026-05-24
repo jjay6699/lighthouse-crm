@@ -234,6 +234,37 @@ def parse_mapping_file(path: Path):
     return list(cost_by_sku.values())
 
 
+def discover_mapping_files():
+    candidates = []
+    seen = set()
+    for path in [FINANCE_DIR / "MAPPING DATA.xlsx", *sorted(FINANCE_DIR.glob("**/*MAPPING*.xlsx"))]:
+        key = str(path.resolve()).lower()
+        if key in seen or not path.exists():
+            continue
+        seen.add(key)
+        candidates.append(path)
+    return candidates
+
+
+def parse_mapping_files(paths):
+    cost_by_sku = {}
+    for path in paths:
+        for cost in parse_mapping_file(path):
+            current = cost_by_sku.get(cost["sku"])
+            unit_cost = cost["unit_cost_hkd"]
+            if (
+                not current
+                or (unit_cost is not None and current["unit_cost_hkd"] is None)
+                or (
+                    unit_cost is not None
+                    and current["unit_cost_hkd"] is not None
+                    and unit_cost > current["unit_cost_hkd"]
+                )
+            ):
+                cost_by_sku[cost["sku"]] = cost
+    return list(cost_by_sku.values())
+
+
 def parse_file(path: Path):
     df = pd.read_excel(path, sheet_name=0, header=None)
     company = clean_label(df.iat[0, 0]) or path.name.split("_")[0]
@@ -608,7 +639,7 @@ def main():
         )
         sales_reports.append(report)
 
-    sku_costs = parse_mapping_file(FINANCE_DIR / "MAPPING DATA.xlsx")
+    sku_costs = parse_mapping_files(discover_mapping_files())
     currencies = sorted({report["currency"] for report in reports + sales_reports})
     rates = {currency: fetch_rate_to_hkd(currency) for currency in currencies}
 
