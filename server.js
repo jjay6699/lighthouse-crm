@@ -868,6 +868,12 @@ function getDashboard(params) {
   function pnlRowsForWindow(start, end) {
     if (!start || !end) return [];
     const windowFilter = whereFromSearch(periodParams(params, start, end), { includeSection: true });
+    const containedPeriodSql = `
+      AND r.period_start IS NOT NULL
+      AND r.period_end IS NOT NULL
+      AND r.period_start >= $dateFrom
+      AND r.period_end <= $dateTo
+    `;
     const windowJoin = `
       FROM (
         SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
@@ -877,6 +883,7 @@ function getDashboard(params) {
       JOIN batches b ON b.id = r.batch_id
       JOIN companies c ON c.id = r.company_id
       ${windowFilter.sql}
+      ${containedPeriodSql}
     `;
     return db
       .prepare(
