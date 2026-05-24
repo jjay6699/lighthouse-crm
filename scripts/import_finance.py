@@ -162,11 +162,76 @@ def extract_barcode(*values) -> str:
     return ""
 
 
+def normalize_sku(value) -> str:
+    text = clean_label(value) or ""
+    barcode = extract_barcode(text)
+    if barcode:
+        return barcode
+    text = re.sub(r"^Total for\s+", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"^\(?\d{5,14}\)?\s*[-–]?\s*", "", text).strip()
+    text = re.sub(r"\s+", " ", text).strip().lower()
+    return text
+
+
 def clean_product_name(label: str) -> str:
     text = re.sub(r"^Total for\s+", "", label or "").strip()
     text = re.sub(r"^\(?\d{5,14}\)?\s*[-–]?\s*", "", text).strip()
     text = re.sub(r"^\d{5,14}\s*[-–]\s*", "", text).strip()
     return text or label
+
+
+def parse_mapping_file(path: Path):
+    if not path.exists():
+        return []
+
+    try:
+        df = pd.read_excel(path, sheet_name="SKU MASTER")
+    except Exception:
+        return []
+
+    cost_by_sku = {}
+    for _, row in df.iterrows():
+        unit_cost = numeric(row.get("COSGS"))
+        if unit_cost is None:
+            unit_cost = numeric(row.get("COSGS.1"))
+        if unit_cost is None:
+            currency = str(row.get("CURRENCY") or "").strip().upper()
+            cogs = numeric(row.get("COGS"))
+            if cogs is not None and currency in {"", "0", "HK", "HKD"}:
+                unit_cost = cogs
+        if unit_cost is not None and unit_cost <= 0:
+            unit_cost = None
+
+        brand = clean_label(row.get("BRAND")) or ""
+        product_name = clean_label(row.get("NAME (ENG)")) or clean_label(row.get("NAME (CHI)")) or ""
+        aliases = {
+            normalize_sku(row.get("BARCODE")),
+            normalize_sku(row.get("NAME (ENG)")),
+            normalize_sku(row.get("NAME (CHI)")),
+            normalize_sku(row.get("Unnamed: 0")),
+        }
+        for sku in aliases:
+            if not sku:
+                continue
+            current = cost_by_sku.get(sku)
+            if (
+                not current
+                or (unit_cost is not None and current["unit_cost_hkd"] is None)
+                or (
+                    unit_cost is not None
+                    and current["unit_cost_hkd"] is not None
+                    and unit_cost > current["unit_cost_hkd"]
+                )
+            ):
+                cost_by_sku[sku] = {
+                    "sku": sku,
+                    "mapped_brand": brand,
+                    "mapped_product_name": product_name,
+                    "unit_cost_hkd": unit_cost,
+                    "source_file": path.name,
+                }
+
+    return list(cost_by_sku.values())
 
 
 def parse_file(path: Path):
@@ -391,12 +456,35 @@ def discover_sales_files():
     return items
 
 
+def contained_in_broader_report(report, all_reports) -> bool:
+    start = report.get("period_start")
+    end = report.get("period_end")
+    if not start or not end:
+        return False
+
+    for other in all_reports:
+        if other is report:
+            continue
+        if other.get("company") != report.get("company"):
+            continue
+        if other.get("dimension") != report.get("dimension"):
+            continue
+        other_start = other.get("period_start")
+        other_end = other.get("period_end")
+        if not other_start or not other_end:
+            continue
+        if other_start <= start and other_end >= end and (other_start < start or other_end > end):
+            return True
+    return False
+
+
 def init_db(conn: sqlite3.Connection):
     conn.executescript(
         """
         DROP TABLE IF EXISTS facts;
         DROP TABLE IF EXISTS reports;
         DROP TABLE IF EXISTS sku_sales;
+        DROP TABLE IF EXISTS sku_costs;
         DROP TABLE IF EXISTS fx_rates;
         DROP TABLE IF EXISTS companies;
         DROP TABLE IF EXISTS batches;
@@ -467,6 +555,14 @@ def init_db(conn: sqlite3.Connection):
             amount_hkd REAL NOT NULL
         );
 
+        CREATE TABLE sku_costs (
+            sku TEXT PRIMARY KEY,
+            mapped_brand TEXT,
+            mapped_product_name TEXT,
+            unit_cost_hkd REAL,
+            source_file TEXT NOT NULL
+        );
+
         CREATE INDEX idx_facts_report ON facts(report_id);
         CREATE INDEX idx_facts_entity ON facts(entity);
         CREATE INDEX idx_facts_line_item ON facts(line_item);
@@ -474,6 +570,7 @@ def init_db(conn: sqlite3.Connection):
         CREATE INDEX idx_sku_sales_brand ON sku_sales(brand);
         CREATE INDEX idx_sku_sales_sku ON sku_sales(sku);
         CREATE INDEX idx_sku_sales_batch ON sku_sales(batch_id);
+        CREATE INDEX idx_sku_costs_sku ON sku_costs(sku);
         """
     )
 
@@ -495,6 +592,8 @@ def main():
             }
         )
         reports.append(report)
+    reports = [report for report in reports if not contained_in_broader_report(report, reports)]
+
     sales_reports = []
     for item in sales_items:
         report = parse_sales_file(item["path"])
@@ -508,6 +607,8 @@ def main():
             }
         )
         sales_reports.append(report)
+
+    sku_costs = parse_mapping_file(FINANCE_DIR / "MAPPING DATA.xlsx")
     currencies = sorted({report["currency"] for report in reports + sales_reports})
     rates = {currency: fetch_rate_to_hkd(currency) for currency in currencies}
 
@@ -520,6 +621,23 @@ def main():
                 "INSERT INTO fx_rates VALUES (?, ?, ?, ?, ?)",
                 (currency, TARGET_CURRENCY, rate, provider, as_of),
             )
+
+        conn.executemany(
+            """
+            INSERT INTO sku_costs(sku, mapped_brand, mapped_product_name, unit_cost_hkd, source_file)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    cost["sku"],
+                    cost["mapped_brand"],
+                    cost["mapped_product_name"],
+                    cost["unit_cost_hkd"],
+                    cost["source_file"],
+                )
+                for cost in sku_costs
+            ],
+        )
 
         for report in reports:
             conn.execute(
@@ -580,6 +698,7 @@ def main():
                 ],
             )
 
+        seen_sales = set()
         for report in sales_reports:
             conn.execute(
                 "INSERT OR IGNORE INTO batches(batch_key, name, uploaded_at, period_start, period_end) VALUES (?, ?, ?, ?, ?)",
@@ -602,15 +721,21 @@ def main():
                 "SELECT id FROM companies WHERE name = ?", (report["company"],)
             ).fetchone()[0]
             rate = rates[report["currency"]][0]
-            conn.executemany(
-                """
-                INSERT INTO sku_sales(
-                    batch_id, company_id, source_file, period_label, period_start, period_end,
-                    transaction_date, customer, brand, sku, product_name, quantity, amount_original, amount_hkd
+            sale_rows = []
+            for sale in report["sales"]:
+                dedupe_key = (
+                    report["company"],
+                    sale["transaction_date"],
+                    sale["customer"].strip().lower(),
+                    normalize_sku(sale["sku"]),
+                    sale["product_name"].strip().lower(),
+                    round(float(sale["quantity"] or 0), 6),
+                    round(float(sale["amount_original"] or 0), 6),
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
+                if dedupe_key in seen_sales:
+                    continue
+                seen_sales.add(dedupe_key)
+                sale_rows.append(
                     (
                         batch_id,
                         company_id,
@@ -621,20 +746,33 @@ def main():
                         sale["transaction_date"],
                         sale["customer"],
                         sale["brand"],
-                        sale["sku"],
+                        normalize_sku(sale["sku"]),
                         sale["product_name"],
                         sale["quantity"],
                         sale["amount_original"],
                         sale["amount_original"] * rate,
                     )
-                    for sale in report["sales"]
-                ],
+                )
+
+            conn.executemany(
+                """
+                INSERT INTO sku_sales(
+                    batch_id, company_id, source_file, period_label, period_start, period_end,
+                    transaction_date, customer, brand, sku, product_name, quantity, amount_original, amount_hkd
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                sale_rows,
             )
 
     total_facts = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
     total_sku_sales = conn.execute("SELECT COUNT(*) FROM sku_sales").fetchone()[0]
+    total_sku_costs = conn.execute("SELECT COUNT(*) FROM sku_costs").fetchone()[0]
     conn.close()
-    print(f"Imported {len(reports)} P&L reports, {total_facts:,} facts, and {total_sku_sales:,} SKU sales rows into {DB_PATH}")
+    print(
+        f"Imported {len(reports)} P&L reports, {total_facts:,} facts, "
+        f"{total_sku_sales:,} SKU sales rows, and {total_sku_costs:,} SKU costs into {DB_PATH}"
+    )
 
 
 if __name__ == "__main__":
