@@ -109,13 +109,16 @@ function ContributionList({ rows }) {
 }
 
 function InsightGrid({ insights }) {
+  const growthWindow = insights.skuGrowth?.window?.current;
+  const growthWindowLabel = growthWindow?.start && growthWindow?.end ? `${growthWindow.start} to ${growthWindow.end}` : "-";
   const cards = [
     {
       label: "Revenue",
       value: hkd(insights.revenueTotal),
       lines: [
-        ["vs LY", <Growth value={insights.skuGrowth?.growth_ly} />],
-        ["vs P3M", <Growth value={insights.skuGrowth?.growth_p3m} />],
+        ["Recent vs LY", <Growth value={insights.skuGrowth?.growth_ly} />],
+        ["Recent vs P3M", <Growth value={insights.skuGrowth?.growth_p3m} />],
+        ["Growth window", growthWindowLabel],
         ["Top company", insights.topRevenueCompany ? `${insights.topRevenueCompany.company} · ${pct(insights.topRevenueCompany.revenue_share)}` : "-"],
         ["Top brand", insights.topRevenueBrand ? `${insights.topRevenueBrand.entity} · ${pct(insights.topRevenueBrand.revenue_share)}` : "-"],
       ],
