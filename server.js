@@ -862,6 +862,14 @@ function getDashboard(params) {
   let skuLy = [];
   let skuP3m = [];
   let skuActiveRange = { from: "", to: "" };
+  let skuCostCoverage = {
+    mapping_rows: 0,
+    valid_cost_rows: 0,
+    matched_sales_rows: 0,
+    sales_rows: 0,
+    matched_revenue: 0,
+    revenue: 0,
+  };
   let skuComparison = {
     current: { start: "", end: "" },
     ly: { start: "", end: "" },
@@ -891,6 +899,21 @@ function getDashboard(params) {
           `
         )
         .get(skuFilter.values) || {};
+    skuCostCoverage =
+      db
+        .prepare(
+          `
+          SELECT
+            (SELECT COUNT(*) FROM sku_costs) AS mapping_rows,
+            (SELECT COUNT(*) FROM sku_costs WHERE unit_cost_hkd IS NOT NULL) AS valid_cost_rows,
+            SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE 1 END) AS matched_sales_rows,
+            COUNT(*) AS sales_rows,
+            SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.amount_hkd END) AS matched_revenue,
+            SUM(s.amount_hkd) AS revenue
+          ${skuJoin}
+          `
+        )
+        .get(skuFilter.values) || skuCostCoverage;
     skuRows = db
       .prepare(
         `
@@ -1157,6 +1180,7 @@ function getDashboard(params) {
       activeRange: skuActiveRange,
       dataRange: meta.skuDateRange,
       comparison: skuComparison,
+      costCoverage: skuCostCoverage,
       rows: skuRows.map((row) => {
         const key = row.brand_key || String(row.brand || "").toLowerCase();
         const rowKey = skuKey(row);

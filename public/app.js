@@ -320,6 +320,12 @@ function BrandSkuView({ sku, filters, setFilters }) {
   const topRows = rows.slice(0, 8);
   const activeRange = sku.activeRange || {};
   const dataRange = sku.dataRange || {};
+  const costCoverage = sku.costCoverage || {};
+  const mappedRevenueShare = Number(costCoverage.revenue || 0)
+    ? Number(costCoverage.matched_revenue || 0) / Number(costCoverage.revenue || 0)
+    : 0;
+  const missingCostMap = !Number(costCoverage.valid_cost_rows || 0);
+  const lowCostCoverage = !missingCostMap && mappedRevenueShare < 0.7;
   const activeDays = isoDays(activeRange.from, activeRange.to);
   const narrowRange = activeDays > 0 && activeDays <= 7;
   const resetSkuFilters = () => {
@@ -362,6 +368,18 @@ function BrandSkuView({ sku, filters, setFilters }) {
         <p className="sourceNote">
           SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. SKU margin uses mapped SKU COGS and stays n/a when SKU cost is missing.
         </p>
+        {(missingCostMap || lowCostCoverage) && (
+          <div className="skuRangeNotice warning">
+            <div>
+              <strong>{missingCostMap ? "SKU COGS mapping is not loaded" : "SKU COGS mapping coverage is incomplete"}</strong>
+              <span>
+                {missingCostMap
+                  ? "Upload MAPPING DATA.xlsx with the Sales by Product files, then reimport finance data."
+                  : `${pct(mappedRevenueShare)} of visible SKU revenue has mapped COGS. Rows without COGS show n/a margin.`}
+              </span>
+            </div>
+          </div>
+        )}
         <div className={`skuRangeNotice ${narrowRange ? "warning" : ""}`}>
           <div>
             <strong>Showing SKU sales from {activeRange.from || "-"} to {activeRange.to || "-"}</strong>
@@ -596,7 +614,7 @@ function UploadPanel({ uploadState, onFiles }) {
           <FileUp size={18} />
           <h2>Import new reports</h2>
         </div>
-        <p>Upload QuickBooks Profit and Loss by Class or by Customer `.xlsx` files. The system saves them, rebuilds SQLite, and refreshes the dashboard.</p>
+        <p>Upload QuickBooks Profit and Loss, Sales by Product, and MAPPING DATA `.xlsx` files. The system saves them, rebuilds SQLite, and refreshes the dashboard.</p>
         <p>Each upload becomes a separate batch, so new files do not disappear into one untracked pool.</p>
       </div>
       <label className="field">
@@ -617,7 +635,7 @@ function UploadPanel({ uploadState, onFiles }) {
         />
         <UploadCloud size={24} />
         <strong>Upload Excel reports</strong>
-        <span>Multiple files supported</span>
+        <span>Include MAPPING DATA.xlsx for SKU margin dollars</span>
       </label>
       {uploadState.message && <p className="notice">{uploadState.message}</p>}
     </section>
