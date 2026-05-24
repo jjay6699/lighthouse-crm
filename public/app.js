@@ -266,19 +266,20 @@ function BrandRevenueMix({ rows }) {
           <em>{hkd(row.revenue)}</em>
           <em>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</em>
           <strong>{pct(row.revenue_share)}</strong>
-          <Growth value={row.growth_ly} />
-          <Growth value={row.growth_p3m} />
+          <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
+          <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
         </div>
       ))}
     </div>
   );
 }
 
-function Growth({ value }) {
+function Growth({ value, status, missingLabel = "n/a" }) {
   const numeric = Number(value);
   const empty = value === null || value === undefined || Number.isNaN(numeric);
   const tone = empty ? "na" : numeric >= 0 ? "up" : "down";
-  return <span className={`growth ${tone}`}>{pctOrDash(value)}</span>;
+  const label = empty && status === "no_prior" ? missingLabel : pctOrDash(value);
+  return <span className={`growth ${tone}`}>{label}</span>;
 }
 
 const skuSortOptions = [
@@ -426,11 +427,11 @@ function BrandSkuView({ sku, filters, setFilters }) {
                   </span>
                   <span>
                     <b>vs LY</b>
-                    <Growth value={row.growth_ly} />
+                    <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
                   </span>
                   <span>
                     <b>vs P3M</b>
-                    <Growth value={row.growth_p3m} />
+                    <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
                   </span>
                 </div>
               </button>
@@ -478,9 +479,9 @@ function BrandSkuView({ sku, filters, setFilters }) {
                   <td>{hkd(row.avg_price)}</td>
                   <td>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</td>
                   <td>{row.growth_value_ly === null || row.growth_value_ly === undefined ? "n/a" : hkd(row.growth_value_ly)}</td>
-                  <td><Growth value={row.growth_ly} /></td>
+                  <td><Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" /></td>
                   <td>{row.growth_value_p3m === null || row.growth_value_p3m === undefined ? "n/a" : hkd(row.growth_value_p3m)}</td>
-                  <td><Growth value={row.growth_p3m} /></td>
+                  <td><Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" /></td>
                 </tr>
               ))}
             </tbody>

@@ -540,6 +540,21 @@ function safeGrowth(current, previous) {
   return (Number(current || 0) - base) / Math.abs(base);
 }
 
+function comparisonMetric(current, previousMap, key) {
+  if (!previousMap.has(key)) {
+    return { growth: null, value: null, status: "no_prior" };
+  }
+  const previous = Number(previousMap.get(key) || 0);
+  if (Math.abs(previous) < 0.01) {
+    return { growth: null, value: Number(current || 0) - previous, status: "no_prior" };
+  }
+  return {
+    growth: safeGrowth(current, previous),
+    value: Number(current || 0) - previous,
+    status: "ok",
+  };
+}
+
 function appendWhere(filter, condition) {
   return filter.sql ? `AND ${condition}` : `WHERE ${condition}`;
 }
@@ -1187,6 +1202,8 @@ function getDashboard(params) {
         const currentRevenue = hasSkuComparison ? Number(skuCurrentMap.get(rowKey) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
+        const lyMetric = comparisonMetric(currentRevenue, skuLyMap, rowKey);
+        const p3mMetric = comparisonMetric(currentRevenue, skuP3mMap, rowKey);
         return {
           ...row,
           brand: brandLabel(key, row.brand),
@@ -1194,16 +1211,20 @@ function getDashboard(params) {
           gross_margin: grossMargin,
           gross_profit: mappedGrossProfit,
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
-          growth_ly: safeGrowth(currentRevenue, skuLyMap.get(rowKey)),
-          growth_p3m: safeGrowth(currentRevenue, skuP3mMap.get(rowKey)),
-          growth_value_ly: skuLyMap.has(rowKey) ? currentRevenue - skuLyMap.get(rowKey) : null,
-          growth_value_p3m: skuP3mMap.has(rowKey) ? currentRevenue - skuP3mMap.get(rowKey) : null,
+          growth_ly: lyMetric.growth,
+          growth_p3m: p3mMetric.growth,
+          growth_status_ly: lyMetric.status,
+          growth_status_p3m: p3mMetric.status,
+          growth_value_ly: lyMetric.value,
+          growth_value_p3m: p3mMetric.value,
         };
       }),
       brands: skuBrands.map((row) => {
         const currentRevenue = hasSkuComparison ? Number(skuBrandCurrentMap.get(row.brand_key) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
+        const lyMetric = comparisonMetric(currentRevenue, skuBrandLyMap, row.brand_key);
+        const p3mMetric = comparisonMetric(currentRevenue, skuBrandP3mMap, row.brand_key);
         return {
           ...row,
           brand: brandLabel(row.brand_key, row.brand),
@@ -1211,8 +1232,10 @@ function getDashboard(params) {
           gross_profit: mappedGrossProfit,
           gross_margin: grossMargin,
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
-          growth_ly: safeGrowth(currentRevenue, skuBrandLyMap.get(row.brand_key)),
-          growth_p3m: safeGrowth(currentRevenue, skuBrandP3mMap.get(row.brand_key)),
+          growth_ly: lyMetric.growth,
+          growth_p3m: p3mMetric.growth,
+          growth_status_ly: lyMetric.status,
+          growth_status_p3m: p3mMetric.status,
         };
       }),
     },
