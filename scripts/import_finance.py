@@ -189,7 +189,7 @@ def parse_mapping_file(path: Path):
     except Exception:
         return []
 
-    cost_by_sku = {}
+    costs = []
     for _, row in df.iterrows():
         unit_cost = numeric(row.get("COSGS"))
         if unit_cost is None:
@@ -213,25 +213,17 @@ def parse_mapping_file(path: Path):
         for sku in aliases:
             if not sku:
                 continue
-            current = cost_by_sku.get(sku)
-            if (
-                not current
-                or (unit_cost is not None and current["unit_cost_hkd"] is None)
-                or (
-                    unit_cost is not None
-                    and current["unit_cost_hkd"] is not None
-                    and unit_cost > current["unit_cost_hkd"]
-                )
-            ):
-                cost_by_sku[sku] = {
+            costs.append(
+                {
                     "sku": sku,
                     "mapped_brand": brand,
                     "mapped_product_name": product_name,
                     "unit_cost_hkd": unit_cost,
                     "source_file": path.name,
                 }
+            )
 
-    return list(cost_by_sku.values())
+    return costs
 
 
 def discover_mapping_files():
@@ -247,22 +239,29 @@ def discover_mapping_files():
 
 
 def parse_mapping_files(paths):
-    cost_by_sku = {}
+    candidates_by_sku = {}
     for path in paths:
         for cost in parse_mapping_file(path):
-            current = cost_by_sku.get(cost["sku"])
-            unit_cost = cost["unit_cost_hkd"]
-            if (
-                not current
-                or (unit_cost is not None and current["unit_cost_hkd"] is None)
-                or (
-                    unit_cost is not None
-                    and current["unit_cost_hkd"] is not None
-                    and unit_cost > current["unit_cost_hkd"]
-                )
-            ):
-                cost_by_sku[cost["sku"]] = cost
-    return list(cost_by_sku.values())
+            candidates_by_sku.setdefault(cost["sku"], []).append(cost)
+
+    resolved = []
+    for sku, candidates in candidates_by_sku.items():
+        valid_costs = [cost for cost in candidates if cost["unit_cost_hkd"] is not None]
+        if not valid_costs:
+            chosen = candidates[0]
+            resolved.append(chosen)
+            continue
+
+        counts = {}
+        for cost in valid_costs:
+            rounded = round(float(cost["unit_cost_hkd"]), 6)
+            counts[rounded] = counts.get(rounded, 0) + 1
+        chosen_value = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+        chosen = next(cost for cost in valid_costs if round(float(cost["unit_cost_hkd"]), 6) == chosen_value)
+        chosen["unit_cost_hkd"] = chosen_value
+        resolved.append(chosen)
+
+    return resolved
 
 
 def parse_file(path: Path):
