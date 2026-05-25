@@ -342,7 +342,8 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
       ...filters,
       batch: "all",
       company: "all",
-      entities: [],
+      brand: [],
+      customer: [],
       dateFrom: dataRange.min || "",
       dateTo: dataRange.max || "",
     });
@@ -553,11 +554,12 @@ function MultiSelect({ label, values, onChange, options }) {
   );
 }
 
-function ScopeStrip({ filters, entityLabel }) {
+function ScopeStrip({ filters }) {
   const scopeItems = [
     { label: "Batch", value: filters.batch === "all" ? "All batches" : filters.batch },
     { label: "Company", value: filters.company === "all" ? "All companies" : filters.company },
-    { label: entityLabel, value: filters.entities?.length ? `${filters.entities.length} selected` : `All ${entityLabel.toLowerCase()}s` },
+    { label: "Brand", value: filters.brand?.length ? `${filters.brand.length} selected` : "All brands" },
+    { label: "Customer", value: filters.customer?.length ? `${filters.customer.length} selected` : "All customers" },
     { label: "Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
   ];
   return (
@@ -854,10 +856,15 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
     value: dimension,
     label: dimension === "class" ? "By class / brand" : "By customer",
   }));
-  const entitySource = data.meta.entitiesByDimension?.[filters.dimension] || data.meta.entities || [];
-  const entityOptions = [
-    { value: "all", label: isClassView ? "All brands" : "All customers" },
-    ...entitySource.map((entity) => ({ value: entity, label: entity })),
+  const brandSource = data.meta.entitiesByDimension?.class || [];
+  const brandOptions = [
+    { value: "all", label: "All brands" },
+    ...brandSource.map((brand) => ({ value: brand, label: brand })),
+  ];
+  const customerSource = data.meta.entitiesByDimension?.customer || [];
+  const customerOptions = [
+    { value: "all", label: "All customers" },
+    ...customerSource.map((customer) => ({ value: customer, label: customer })),
   ];
   const sectionOptions = [
     { value: "all", label: "All sections" },
@@ -884,7 +891,9 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const skuGrossMargin = skuGrossProfit === null || !skuRevenue ? null : skuGrossProfit / skuRevenue;
   const statementContext = [
     filters.company !== "all" ? filters.company : "All companies",
-    filters.entities?.length ? `${filters.entities.length} ${isClassView ? "brands" : "customers"}` : isClassView ? "All brands" : "All customers",
+    isClassView
+      ? filters.brand?.length ? `${filters.brand.length} brands` : "All brands"
+      : filters.customer?.length ? `${filters.customer.length} customers` : "All customers",
   ].join(" / ");
   const metricCards = subtab === "sku"
     ? [
@@ -922,16 +931,17 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
 
       <section className="filterBar">
         <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
-        <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, entities: [] })} />
+        <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, brand: [], customer: [] })} />
         <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
-        <MultiSelect label={activeEntityTypeLabel} values={filters.entities} options={entityOptions} onChange={(values) => setFilters({ ...filters, entities: values })} />
+        <MultiSelect label="Brand" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
+        <MultiSelect label="Customer" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...filters, customer: values })} />
         <DateField label="From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
         <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
       </section>
       <p className="filterHelp">
-        Batch keeps uploads separate. Entity options are separated by the selected view (brand for class view, customer for customer view). Date filters use full P&L report periods and transaction dates for Brand / SKU sales.
+        Batch keeps uploads separate. Brand and Customer filters filter P&L lines dynamically based on active dimension view, and apply concurrently to SKU sales analysis.
       </p>
-      <ScopeStrip filters={filters} entityLabel={activeEntityTypeLabel} />
+      <ScopeStrip filters={filters} />
 
       <section className="metricGrid">
         {metricCards.map((card) => (
@@ -1172,7 +1182,8 @@ function App() {
     batch: "all",
     dimension: "class",
     company: "all",
-    entities: [],
+    brand: [],
+    customer: [],
     section: "all",
     dateFrom: "",
     dateTo: "",
@@ -1189,7 +1200,7 @@ function App() {
     Object.entries(filters).forEach(([key, value]) => {
       if (Array.isArray(value)) {
         value.forEach((item) => {
-          if (item && item !== "all") params.append(key === "entities" ? "entity" : key, item);
+          if (item && item !== "all") params.append(key, item);
         });
       } else if (value && value !== "all") {
         params.set(key, value);
@@ -1234,13 +1245,25 @@ function App() {
 
   useEffect(() => {
     if (!data?.ready) return;
-    const source = data.meta.entitiesByDimension?.[filters.dimension] || data.meta.entities || [];
-    const allowed = new Set(source);
-    const normalized = (filters.entities || []).filter((entity) => allowed.has(entity));
-    if (normalized.length !== (filters.entities || []).length) {
-      setFilters((current) => ({ ...current, entities: normalized }));
+    const brandsSource = data.meta.entitiesByDimension?.class || [];
+    const allowedBrands = new Set(brandsSource);
+    const normalizedBrands = (filters.brand || []).filter((brand) => allowedBrands.has(brand));
+
+    const customersSource = data.meta.entitiesByDimension?.customer || [];
+    const allowedCustomers = new Set(customersSource);
+    const normalizedCustomers = (filters.customer || []).filter((customer) => allowedCustomers.has(customer));
+
+    if (
+      normalizedBrands.length !== (filters.brand || []).length ||
+      normalizedCustomers.length !== (filters.customer || []).length
+    ) {
+      setFilters((current) => ({
+        ...current,
+        brand: normalizedBrands,
+        customer: normalizedCustomers,
+      }));
     }
-  }, [data, filters.dimension, filters.entities, setFilters]);
+  }, [data, filters.brand, filters.customer, setFilters]);
 
   async function uploadFiles(files, batchDetails) {
     if (!files.length) return;

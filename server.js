@@ -320,7 +320,8 @@ function whereFromSearch(params, options = {}) {
   const values = {};
   const dimension = params.get("dimension") || "class";
   const company = params.get("company");
-  const entities = selectedEntities(params);
+  const selectedBrands = params.getAll("brand").filter((value) => value && value !== "all");
+  const selectedCustomers = params.getAll("customer").filter((value) => value && value !== "all");
   const section = params.get("section");
   const lineItem = params.get("lineItem");
   const batch = params.get("batch");
@@ -353,17 +354,15 @@ function whereFromSearch(params, options = {}) {
     clauses.push("c.name = $company");
     values.$company = company;
   }
-  if (entities.length) {
-    if (dimension === "class") {
-      const entityConditions = entities.map((entity, index) => {
-        const key = `$entity${index}`;
-        values[key] = entity;
-        return `${brandKeyFromValue("f.entity")} = ${brandKeyFromValue(key)}`;
-      });
-      clauses.push(`(${entityConditions.join(" OR ")})`);
-    } else {
-      addInClause(clauses, values, "f.entity", entities, "entity");
-    }
+  if (dimension === "class" && selectedBrands.length) {
+    const brandConditions = selectedBrands.map((brand, index) => {
+      const key = `$brand${index}`;
+      values[key] = brand;
+      return `${brandKeyFromValue("f.entity")} = ${brandKeyFromValue(key)}`;
+    });
+    clauses.push(`(${brandConditions.join(" OR ")})`);
+  } else if (dimension === "customer" && selectedCustomers.length) {
+    addInClause(clauses, values, "f.entity", selectedCustomers, "customer");
   }
   if (includeSection && section && section !== "all") {
     clauses.push("f.section = $section");
@@ -564,7 +563,8 @@ function skuWhereFromSearch(params) {
   const values = {};
   const dimension = params.get("dimension") || "class";
   const company = params.get("company");
-  const entities = selectedEntities(params);
+  const selectedBrands = params.getAll("brand").filter((value) => value && value !== "all");
+  const selectedCustomers = params.getAll("customer").filter((value) => value && value !== "all");
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
@@ -579,20 +579,19 @@ function skuWhereFromSearch(params) {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
   }
-  if (entities.length) {
-    if (dimension === "customer") {
-      addInClause(clauses, values, "s.customer", entities, "entity");
-    } else {
-      const brandConditions = entities.map((entity, index) => {
-        const key = `$entity${index}`;
-        values[key] = entity;
-        return `(
-          ${brandKeyFromValue("s.brand")} = ${brandKeyFromValue(key)}
-          OR ${brandKeyFromValue("sc.mapped_brand")} = ${brandKeyFromValue(key)}
-        )`;
-      });
-      clauses.push(`(${brandConditions.join(" OR ")})`);
-    }
+  if (selectedBrands.length) {
+    const brandConditions = selectedBrands.map((brand, index) => {
+      const key = `$brand${index}`;
+      values[key] = brand;
+      return `(
+        ${brandKeyFromValue("s.brand")} = ${brandKeyFromValue(key)}
+        OR ${brandKeyFromValue("sc.mapped_brand")} = ${brandKeyFromValue(key)}
+      )`;
+    });
+    clauses.push(`(${brandConditions.join(" OR ")})`);
+  }
+  if (selectedCustomers.length) {
+    addInClause(clauses, values, "s.customer", selectedCustomers, "customer");
   }
   if (dateFrom) {
     clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} >= $dateFrom) OR (${skuDate} IS NULL AND (s.period_start IS NULL OR s.period_start >= $dateFrom)))`);
