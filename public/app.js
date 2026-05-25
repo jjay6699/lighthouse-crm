@@ -355,24 +355,6 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           <h2>Brand / SKU sales</h2>
           <p>Sales by Product/Service detail, external customers only, converted to HKD.</p>
         </div>
-        <div className="skuStats">
-          <div>
-            <span>SKU revenue</span>
-            <strong>{hkd(sku.totals.revenue)}</strong>
-          </div>
-          <div>
-            <span>Units sold</span>
-            <strong>{new Intl.NumberFormat("en-HK").format(Number(sku.totals.quantity || 0))}</strong>
-          </div>
-          <div>
-            <span>Brands</span>
-            <strong>{sku.totals.brand_count || 0}</strong>
-          </div>
-          <div>
-            <span>SKUs</span>
-            <strong>{sku.totals.sku_count || 0}</strong>
-          </div>
-        </div>
         <p className="sourceNote">
           SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. SKU margin uses mapped SKU COGS and stays n/a when SKU cost is missing.
         </p>
