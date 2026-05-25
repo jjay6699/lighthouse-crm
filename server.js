@@ -536,7 +536,9 @@ function skuDateExpression(alias = "s") {
 function skuWhereFromSearch(params) {
   const clauses = [];
   const values = {};
+  const dimension = params.get("dimension") || "class";
   const company = params.get("company");
+  const entity = params.get("entity");
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
@@ -550,6 +552,14 @@ function skuWhereFromSearch(params) {
   if (batch && batch !== "all") {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
+  }
+  if (entity && entity !== "all") {
+    if (dimension === "customer") {
+      clauses.push("s.customer = $entity");
+    } else {
+      clauses.push(`${brandKeyFromValue("COALESCE(NULLIF(sc.mapped_brand, ''), s.brand)")} = ${brandKeyFromValue("$entity")}`);
+    }
+    values.$entity = entity;
   }
   if (dateFrom) {
     clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} >= $dateFrom) OR (${skuDate} IS NULL AND (s.period_start IS NULL OR s.period_start >= $dateFrom)))`);
@@ -1236,7 +1246,9 @@ function getDashboard(params) {
 
     const brandMarginParams = new URLSearchParams(params);
     brandMarginParams.set("dimension", "class");
-    brandMarginParams.delete("entity");
+    if (params.get("dimension") !== "customer") {
+      brandMarginParams.delete("entity");
+    }
     const brandMarginFilter = whereFromSearch(brandMarginParams);
     const brandMarginAmount = pnlAmountExpression(brandMarginParams);
     const pnlBrandKey = brandKeyExpression("f", "entity");
