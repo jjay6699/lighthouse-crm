@@ -17,7 +17,7 @@ Make the finance area easier to navigate, reduce visual clutter, and fix incorre
   - Keep active state synced between sidebar sub-item and content area.
   - Commit and push.
 
-- [ ] 3. Improve filter clarity and page readability
+- [x] 3. Improve filter clarity and page readability
   - Update filter labels/help text to reflect dimension-specific entity filtering.
   - Tighten section spacing and panel hierarchy where needed.
   - Commit and push.

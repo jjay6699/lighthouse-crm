@@ -242,9 +242,10 @@ h2 {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   padding: 12px;
-  background: #eef5f1;
-  border: 1px solid var(--line);
+  background: rgba(238, 245, 241, 0.96);
+  border: 1px solid #d3dfd9;
   border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(23, 33, 31, 0.04);
 }
 
 .filterHelp {
@@ -425,6 +426,7 @@ h2 {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid var(--line);
+  padding-top: 2px;
 }
 
 .subtabs button {
@@ -469,10 +471,20 @@ h2 {
 .importPanel {
   min-width: 0;
   background: var(--panel);
-  border: 1px solid rgba(23, 33, 31, 0.06);
+  border: 1px solid rgba(23, 33, 31, 0.09);
   border-radius: 8px;
   box-shadow: var(--shadow);
   padding: 16px;
+}
+
+.panelHeader h2 {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.panelHeader p {
+  margin-top: 4px;
+  line-height: 1.35;
 }
 
 .panelHeader,
