@@ -246,34 +246,37 @@ function ExpenseBars({ rows }) {
   );
 }
 
-function BrandRevenueMix({ rows }) {
+function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
   const max = Math.max(...rows.map((row) => Number(row.revenue || 0)), 1);
   return (
     <div className="brandMixList">
       <div className="brandMixHead">
-        <span>Brand</span>
+        <span>{entityLabel}</span>
         <span>Revenue</span>
         <span>Margin $</span>
         <span>Share</span>
         <span>vs LY</span>
         <span>vs P3M</span>
       </div>
-      {rows.map((row) => (
-        <div className="brandMixRow" key={row.brand}>
-          <div className="brandMixMain">
-            <strong>{row.brand}</strong>
-            <span>{hkd(row.revenue)} revenue</span>
-            <div className="barTrack">
-              <i style={{ width: `${Math.max(2, (Number(row.revenue || 0) / max) * 100)}%` }} />
+      {rows.map((row) => {
+        const name = row.brand || row.customer || "Unmapped";
+        return (
+          <div className="brandMixRow" key={name}>
+            <div className="brandMixMain">
+              <strong>{name}</strong>
+              <span>{hkd(row.revenue)} revenue</span>
+              <div className="barTrack">
+                <i style={{ width: `${Math.max(2, (Number(row.revenue || 0) / max) * 100)}%` }} />
+              </div>
             </div>
+            <em>{hkd(row.revenue)}</em>
+            <em>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</em>
+            <strong>{pct(row.revenue_share)}</strong>
+            <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
+            <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
           </div>
-          <em>{hkd(row.revenue)}</em>
-          <em>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</em>
-          <strong>{pct(row.revenue_share)}</strong>
-          <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
-          <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -319,8 +322,11 @@ function isoDays(start, end) {
 function BrandSkuView({ sku, filters, setFilters, kpis }) {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("revenue");
+  const isClassView = filters.dimension === "class";
+  const entityLabel = isClassView ? "Brand" : "Customer";
+  const entityMixRows = isClassView ? sku.brands : sku.customers;
   const rows = sortSkuRows(sku.rows.filter((row) =>
-    `${row.brand} ${row.sku} ${row.product_name}`.toLowerCase().includes(query.toLowerCase())
+    `${row.brand} ${row.customer || ""} ${row.sku} ${row.product_name}`.toLowerCase().includes(query.toLowerCase())
   ), sortBy);
   const topRows = rows.slice(0, 8);
   const activeRange = sku.activeRange || {};
@@ -353,7 +359,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     <section className="summaryStack">
       <section className="skuHeader panel">
         <div>
-          <h2>Brand / SKU sales</h2>
+          <h2>{entityLabel} / SKU sales</h2>
           <p>Sales by Product/Service detail, external customers only, converted to HKD.</p>
         </div>
         <p className="sourceNote">
@@ -392,11 +398,11 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
         <div className="panel">
           <div className="panelHeader">
             <div>
-              <h2>Brand revenue mix</h2>
+              <h2>{entityLabel} revenue mix</h2>
               <p>Revenue, margin dollars, share, and growth from Sales by Product reports</p>
             </div>
           </div>
-          <BrandRevenueMix rows={sku.brands.slice(0, 15)} />
+          <EntityRevenueMix rows={entityMixRows.slice(0, 15)} entityLabel={entityLabel} />
         </div>
         <div className="panel">
           <div className="panelHeader">
@@ -407,12 +413,12 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           </div>
           <label className="search wideSearch">
             <Search size={15} />
-            <input value={query} placeholder="Search SKU, product, brand" onChange={(event) => setQuery(event.target.value)} />
+            <input value={query} placeholder={`Search SKU, product, ${entityLabel.toLowerCase()}`} onChange={(event) => setQuery(event.target.value)} />
           </label>
           <div className="skuResultList">
             {topRows.map((row) => (
-              <button className="skuResult" key={`${row.brand}-${row.sku}-${row.product_name}`} type="button" onClick={() => setQuery(row.sku)}>
-                <span>{row.brand}</span>
+              <button className="skuResult" key={`${isClassView ? row.brand : row.customer}-${row.sku}-${row.product_name}`} type="button" onClick={() => setQuery(row.sku)}>
+                <span>{isClassView ? row.brand : row.customer || "Not specified"}</span>
                 <strong>{row.product_name}</strong>
                 <em>{row.sku} | {hkd(row.revenue)}</em>
                 <div className="skuResultMeta">
@@ -448,7 +454,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           <table>
             <thead>
               <tr>
-                <th>Brand</th>
+                <th>{entityLabel}</th>
                 <th>SKU</th>
                 <th>Product</th>
                 <th>Quantity</th>
@@ -464,8 +470,8 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={`${row.brand}-${row.sku}-${row.product_name}`}>
-                  <td>{row.brand}</td>
+                <tr key={`${isClassView ? row.brand : row.customer}-${row.sku}-${row.product_name}`}>
+                  <td>{isClassView ? row.brand : row.customer || "Not specified"}</td>
                   <td>{row.sku}</td>
                   <td>{row.product_name}</td>
                   <td>{new Intl.NumberFormat("en-HK").format(Number(row.quantity || 0))}</td>
@@ -1352,7 +1358,7 @@ function App() {
             <div className="subNav">
               {[
                 ["summary", "Summary"],
-                ["sku", "Brand / SKU"],
+                ["sku", "Brand / Customer / SKU"],
                 ["lines", "P&L lines"],
                 ["import", "Import"],
               ].map(([id, label]) => (

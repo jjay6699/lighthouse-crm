@@ -1190,10 +1190,14 @@ function getDashboard(params) {
   let skuTotals = {};
   let skuRows = [];
   let skuBrands = [];
+  let skuCustomers = [];
   let brandMargins = [];
   let skuBrandCurrent = [];
   let skuBrandLy = [];
   let skuBrandP3m = [];
+  let skuCustomerCurrent = [];
+  let skuCustomerLy = [];
+  let skuCustomerP3m = [];
   let skuCurrent = [];
   let skuLy = [];
   let skuP3m = [];
@@ -1294,6 +1298,25 @@ function getDashboard(params) {
         `
       )
       .all(skuFilter.values);
+    skuCustomers = db
+      .prepare(
+        `
+        SELECT
+          s.customer AS customer_key,
+          s.customer AS customer,
+          SUM(s.quantity) AS quantity,
+          SUM(s.amount_hkd) AS revenue,
+          SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN NULL ELSE s.quantity * sc.unit_cost_hkd END) AS cogs_hkd,
+          SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.quantity END) AS costed_quantity,
+          COUNT(DISTINCT s.sku) AS sku_count
+        ${skuJoin}
+        GROUP BY s.customer
+        HAVING ABS(revenue) > 0.01
+        ORDER BY revenue DESC
+        LIMIT 80
+        `
+      )
+      .all(skuFilter.values);
 
     const brandMarginParams = new URLSearchParams(params);
     brandMarginParams.set("dimension", "class");
@@ -1380,6 +1403,41 @@ function getDashboard(params) {
         )
         .all(p3mFilter.values);
 
+      const comparisonCustomerSql = `
+        SELECT s.customer AS customer_key, SUM(s.amount_hkd) AS revenue
+        FROM sku_sales s
+        JOIN batches b ON b.id = s.batch_id
+        JOIN companies c ON c.id = s.company_id
+        LEFT JOIN sku_costs sc ON sc.sku = lower(s.sku)
+      `;
+      skuCustomerCurrent = db
+        .prepare(
+          `
+          ${comparisonCustomerSql}
+          ${currentFilter.sql}
+          GROUP BY s.customer
+          `
+        )
+        .all(currentFilter.values);
+      skuCustomerLy = db
+        .prepare(
+          `
+          ${comparisonCustomerSql}
+          ${lyFilter.sql}
+          GROUP BY s.customer
+          `
+        )
+        .all(lyFilter.values);
+      skuCustomerP3m = db
+        .prepare(
+          `
+          ${comparisonCustomerSql}
+          ${p3mFilter.sql}
+          GROUP BY s.customer
+          `
+        )
+        .all(p3mFilter.values);
+
       const skuComparisonSql = `
         SELECT
           ${skuBrandKey} || '|' || lower(s.sku) AS sku_key,
@@ -1458,6 +1516,9 @@ function getDashboard(params) {
   const skuBrandCurrentMap = new Map(skuBrandCurrent.map((row) => [row.brand_key, Number(row.revenue || 0)]));
   const skuBrandLyMap = new Map(skuBrandLy.map((row) => [row.brand_key, Number(row.revenue || 0)]));
   const skuBrandP3mMap = new Map(skuBrandP3m.map((row) => [row.brand_key, Number(row.revenue || 0)]));
+  const skuCustomerCurrentMap = new Map(skuCustomerCurrent.map((row) => [row.customer_key, Number(row.revenue || 0)]));
+  const skuCustomerLyMap = new Map(skuCustomerLy.map((row) => [row.customer_key, Number(row.revenue || 0)]));
+  const skuCustomerP3mMap = new Map(skuCustomerP3m.map((row) => [row.customer_key, Number(row.revenue || 0)]));
   const skuCurrentMap = new Map(skuCurrent.map((row) => [row.sku_key, Number(row.revenue || 0)]));
   const skuLyMap = new Map(skuLy.map((row) => [row.sku_key, Number(row.revenue || 0)]));
   const skuP3mMap = new Map(skuP3m.map((row) => [row.sku_key, Number(row.revenue || 0)]));
@@ -1554,6 +1615,24 @@ function getDashboard(params) {
         return {
           ...row,
           brand: brandLabel(row.brand_key, row.brand),
+          revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
+          gross_profit: mappedGrossProfit,
+          gross_margin: grossMargin,
+          margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
+          growth_ly: lyMetric.growth,
+          growth_p3m: p3mMetric.growth,
+          growth_status_ly: lyMetric.status,
+          growth_status_p3m: p3mMetric.status,
+        };
+      }),
+      customers: skuCustomers.map((row) => {
+        const currentRevenue = hasSkuComparison ? Number(skuCustomerCurrentMap.get(row.customer_key) || 0) : Number(row.revenue || 0);
+        const mappedGrossProfit = skuGrossProfit(row);
+        const grossMargin = skuGrossMargin(row, mappedGrossProfit);
+        const lyMetric = comparisonMetric(currentRevenue, skuCustomerLyMap, row.customer_key);
+        const p3mMetric = comparisonMetric(currentRevenue, skuCustomerP3mMap, row.customer_key);
+        return {
+          ...row,
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
           gross_profit: mappedGrossProfit,
           gross_margin: grossMargin,
