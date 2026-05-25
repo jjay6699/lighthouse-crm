@@ -843,8 +843,7 @@ function Overview({ data, goFinance }) {
   );
 }
 
-function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh }) {
-  const [subtab, setSubtab] = useState("summary");
+function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh, subtab, setSubtab }) {
   const isClassView = filters.dimension === "class";
   const activeEntityTypeLabel = isClassView ? "Brand" : "Customer";
   const companyOptions = [
@@ -1178,6 +1177,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
 
 function App() {
   const [page, setPage] = useState("overview");
+  const [financeSubtab, setFinanceSubtab] = useState("summary");
+  const [financeNavOpen, setFinanceNavOpen] = useState(true);
   const [filters, setFilters] = useState({
     batch: "all",
     dimension: "class",
@@ -1313,10 +1314,40 @@ function App() {
             <LayoutDashboard size={18} />
             Overview
           </button>
-          <button className={page === "finance" ? "active" : ""} type="button" onClick={() => setPage("finance")}>
+          <button
+            className={`groupButton ${page === "finance" ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setPage("finance");
+              setFinanceNavOpen((open) => (page === "finance" ? !open : true));
+            }}
+          >
             <CircleDollarSign size={18} />
             Financial Consolidation
+            <span className="chevron">{financeNavOpen ? "-" : "+"}</span>
           </button>
+          {financeNavOpen && (
+            <div className="subNav">
+              {[
+                ["summary", "Summary"],
+                ["sku", "Brand / SKU"],
+                ["lines", "P&L lines"],
+                ["import", "Import"],
+              ].map(([id, label]) => (
+                <button
+                  className={page === "finance" && financeSubtab === id ? "active" : ""}
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setPage("finance");
+                    setFinanceSubtab(id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="sidePanel">
           <span>Currency standard</span>
@@ -1343,6 +1374,8 @@ function App() {
           renameBatch={renameBatch}
           deleteBatch={deleteBatch}
           refresh={rebuildDatabase}
+          subtab={financeSubtab}
+          setSubtab={setFinanceSubtab}
         />
       )}
 

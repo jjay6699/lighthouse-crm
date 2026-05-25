@@ -11,7 +11,7 @@ Make the finance area easier to navigate, reduce visual clutter, and fix incorre
   - Ensure changing view resets entity selection safely.
   - Commit and push.
 
-- [ ] 2. Add left sidebar grouped navigation with sub-sections
+- [x] 2. Add left sidebar grouped navigation with sub-sections
   - Add collapsible `Financial Consolidation` group in sidebar.
   - Add sub-items: `Summary`, `Brand / SKU`, `P&L lines`, `Import`.
   - Keep active state synced between sidebar sub-item and content area.

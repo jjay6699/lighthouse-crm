@@ -91,8 +91,42 @@ input {
   text-align: left;
 }
 
+.groupButton {
+  justify-content: flex-start;
+}
+
+.mainNav .chevron {
+  margin-left: auto;
+  font-size: 14px;
+  color: #94a59e;
+}
+
 .mainNav button.active {
   background: #28453f;
+  color: #ffffff;
+}
+
+.mainNav button.active .chevron {
+  color: #d7e3de;
+}
+
+.subNav {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 0 28px;
+}
+
+.subNav button {
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #9bb0a8;
+  background: transparent;
+  text-align: left;
+}
+
+.subNav button.active {
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
 
