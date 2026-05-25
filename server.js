@@ -353,7 +353,18 @@ function whereFromSearch(params, options = {}) {
     clauses.push("c.name = $company");
     values.$company = company;
   }
-  addInClause(clauses, values, "f.entity", entities, "entity");
+  if (entities.length) {
+    if (dimension === "class") {
+      const entityConditions = entities.map((entity, index) => {
+        const key = `$entity${index}`;
+        values[key] = entity;
+        return `${brandKeyFromValue("f.entity")} = ${brandKeyFromValue(key)}`;
+      });
+      clauses.push(`(${entityConditions.join(" OR ")})`);
+    } else {
+      addInClause(clauses, values, "f.entity", entities, "entity");
+    }
+  }
   if (includeSection && section && section !== "all") {
     clauses.push("f.section = $section");
     values.$section = section;
@@ -1114,6 +1125,12 @@ function getDashboard(params) {
     from: params.get("dateFrom") || reportDateRange?.min || availableDateRange.min || "",
     to: params.get("dateTo") || reportDateRange?.max || availableDateRange.max || "",
   };
+  const entityOptionDimension = params.get("dimension") || "class";
+  const entitySelect =
+    entityOptionDimension === "class"
+      ? `${brandKeyFromValue("f.entity")} AS entity_key, MIN(f.entity) AS entity`
+      : `f.entity AS entity_key, f.entity AS entity`;
+  const entityGroup = entityOptionDimension === "class" ? "entity_key" : "f.entity";
 
   const meta = {
     batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
@@ -1122,7 +1139,7 @@ function getDashboard(params) {
     entities: db
       .prepare(
         `
-        SELECT f.entity
+        SELECT ${entitySelect}
         FROM (
           SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
           FROM facts raw_f
@@ -1131,13 +1148,13 @@ function getDashboard(params) {
         JOIN batches b ON b.id = r.batch_id
         JOIN companies c ON c.id = r.company_id
         ${entityOptionsWhere(params).sql}
-        GROUP BY f.entity
+        GROUP BY ${entityGroup}
         HAVING ABS(SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END)) > 0.01
-        ORDER BY f.entity
+        ORDER BY entity
         `
       )
       .all(entityOptionsWhere(params).values)
-      .map((x) => x.entity),
+      .map((x) => brandLabel(x.entity_key, x.entity)),
     sections: db.prepare("SELECT DISTINCT section FROM facts WHERE section IS NOT NULL ORDER BY section").all().map((x) => x.section),
     fx: db.prepare("SELECT * FROM fx_rates ORDER BY source_currency").all(),
     reports: filteredReports,
