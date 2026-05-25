@@ -339,13 +339,30 @@ function whereFromSearch(params, options = {}) {
   }
   clauses.push("f.is_intercompany = 0");
   if (dateFrom) {
-    clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
+    clauses.push("(r.period_start IS NULL OR r.period_start >= $dateFrom)");
     values.$dateFrom = dateFrom;
   }
   if (dateTo) {
-    clauses.push("(r.period_start IS NULL OR r.period_start <= $dateTo)");
+    clauses.push("(r.period_end IS NULL OR r.period_end <= $dateTo)");
     values.$dateTo = dateTo;
   }
+  clauses.push(`NOT EXISTS (
+    SELECT 1
+    FROM reports broader
+    WHERE broader.company_id = r.company_id
+      AND broader.dimension = r.dimension
+      ${batch && batch !== "all" ? "AND broader.batch_id = r.batch_id" : ""}
+      AND broader.id != r.id
+      AND broader.period_start IS NOT NULL
+      AND broader.period_end IS NOT NULL
+      AND r.period_start IS NOT NULL
+      AND r.period_end IS NOT NULL
+      AND broader.period_start <= r.period_start
+      AND broader.period_end >= r.period_end
+      AND (broader.period_start < r.period_start OR broader.period_end > r.period_end)
+      ${dateFrom ? "AND broader.period_start >= $dateFrom" : ""}
+      ${dateTo ? "AND broader.period_end <= $dateTo" : ""}
+  )`);
 
   return {
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
@@ -376,13 +393,30 @@ function entityOptionsWhere(params) {
   }
   clauses.push("f.is_intercompany = 0");
   if (dateFrom) {
-    clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
+    clauses.push("(r.period_start IS NULL OR r.period_start >= $dateFrom)");
     values.$dateFrom = dateFrom;
   }
   if (dateTo) {
-    clauses.push("(r.period_start IS NULL OR r.period_start <= $dateTo)");
+    clauses.push("(r.period_end IS NULL OR r.period_end <= $dateTo)");
     values.$dateTo = dateTo;
   }
+  clauses.push(`NOT EXISTS (
+    SELECT 1
+    FROM reports broader
+    WHERE broader.company_id = r.company_id
+      AND broader.dimension = r.dimension
+      ${batch && batch !== "all" ? "AND broader.batch_id = r.batch_id" : ""}
+      AND broader.id != r.id
+      AND broader.period_start IS NOT NULL
+      AND broader.period_end IS NOT NULL
+      AND r.period_start IS NOT NULL
+      AND r.period_end IS NOT NULL
+      AND broader.period_start <= r.period_start
+      AND broader.period_end >= r.period_end
+      AND (broader.period_start < r.period_start OR broader.period_end > r.period_end)
+      ${dateFrom ? "AND broader.period_start >= $dateFrom" : ""}
+      ${dateTo ? "AND broader.period_end <= $dateTo" : ""}
+  )`);
 
   return {
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
@@ -464,11 +498,11 @@ function skuWhereFromSearch(params) {
     values.$batch = batch;
   }
   if (dateFrom) {
-    clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} >= $dateFrom) OR (${skuDate} IS NULL AND (s.period_end IS NULL OR s.period_end >= $dateFrom)))`);
+    clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} >= $dateFrom) OR (${skuDate} IS NULL AND (s.period_start IS NULL OR s.period_start >= $dateFrom)))`);
     values.$dateFrom = dateFrom;
   }
   if (dateTo) {
-    clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} <= $dateTo) OR (${skuDate} IS NULL AND (s.period_start IS NULL OR s.period_start <= $dateTo)))`);
+    clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} <= $dateTo) OR (${skuDate} IS NULL AND (s.period_end IS NULL OR s.period_end <= $dateTo)))`);
     values.$dateTo = dateTo;
   }
   clauses.push("s.amount_hkd > 0.01");
@@ -973,9 +1007,23 @@ function getDashboard(params) {
     fx: db.prepare("SELECT * FROM fx_rates ORDER BY source_currency").all(),
     reports: db
       .prepare(
-        "SELECT b.batch_key, b.name AS batch_name, b.period_start AS batch_period_start, b.period_end AS batch_period_end, r.dimension, r.period_label, r.period_start, r.period_end, r.source_file, c.name AS company FROM reports r JOIN batches b ON b.id = r.batch_id JOIN companies c ON c.id = r.company_id ORDER BY COALESCE(b.period_start, b.uploaded_at) DESC, b.id DESC, c.name, r.dimension"
+        `
+        SELECT DISTINCT
+          b.batch_key,
+          b.name AS batch_name,
+          b.period_start AS batch_period_start,
+          b.period_end AS batch_period_end,
+          r.dimension,
+          r.period_label,
+          r.period_start,
+          r.period_end,
+          r.source_file,
+          c.name AS company
+        ${baseJoin}
+        ORDER BY COALESCE(b.period_start, b.uploaded_at) DESC, b.id DESC, c.name, r.dimension
+        `
       )
-      .all(),
+      .all(filter.values),
     dateRange: reportDateRange,
     skuDateRange,
     availableDateRange,

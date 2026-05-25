@@ -508,6 +508,21 @@ def contained_in_broader_report(report, all_reports) -> bool:
     return False
 
 
+def dedupe_exact_period_reports(reports):
+    chosen = {}
+    for report in reports:
+        key = (
+            report.get("company"),
+            report.get("dimension"),
+            report.get("period_start"),
+            report.get("period_end"),
+        )
+        current = chosen.get(key)
+        if current is None or (report.get("uploaded_at") or "") >= (current.get("uploaded_at") or ""):
+            chosen[key] = report
+    return list(chosen.values())
+
+
 def init_db(conn: sqlite3.Connection):
     conn.executescript(
         """
@@ -622,7 +637,7 @@ def main():
             }
         )
         reports.append(report)
-    reports = [report for report in reports if not contained_in_broader_report(report, reports)]
+    reports = dedupe_exact_period_reports(reports)
 
     sales_reports = []
     for item in sales_items:

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BarChart3,
@@ -849,7 +849,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
       </section>
       <p className="filterHelp">
-        Batch keeps uploads separate. Internal intercompany transactions are excluded from consolidated reporting. P&L section filtering is available inside the P&L lines tab.
+        Batch keeps uploads separate. Date filters use full P&L report periods and transaction dates for Brand / SKU sales. Internal intercompany transactions are excluded from consolidated reporting.
       </p>
 
       <section className="metricGrid">
@@ -1112,6 +1112,7 @@ function App() {
   const [search, setSearch] = useState("");
   const [uploadState, setUploadState] = useState({ busy: false, message: "" });
   const [datesInitialized, setDatesInitialized] = useState(false);
+  const loadRequestId = useRef(0);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -1122,10 +1123,20 @@ function App() {
   }, [filters]);
 
   async function load() {
+    const requestId = loadRequestId.current + 1;
+    loadRequestId.current = requestId;
     setLoading(true);
-    const response = await fetch(`/api/dashboard?${query}`);
-    setData(await response.json());
-    setLoading(false);
+    try {
+      const response = await fetch(`/api/dashboard?${query}`);
+      const nextData = await response.json();
+      if (requestId === loadRequestId.current) {
+        setData(nextData);
+      }
+    } finally {
+      if (requestId === loadRequestId.current) {
+        setLoading(false);
+      }
+    }
   }
 
   useEffect(() => {
@@ -1196,7 +1207,7 @@ function App() {
     window.location.href = "/login";
   }
 
-  if (!data || loading) return <LoadingState />;
+  if (!data) return <LoadingState />;
   if (!data.ready) return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
 
   return (
