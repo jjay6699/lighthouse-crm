@@ -412,6 +412,27 @@ h2 {
   line-height: 1.45;
 }
 
+.skuReconcile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skuReconcile span,
+.skuReconcile strong {
+  min-height: 30px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.skuReconcile strong {
+  color: var(--ink);
+}
+
 .skuRangeNotice {
   border: 1px solid var(--line);
   border-radius: 8px;

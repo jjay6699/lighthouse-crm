@@ -315,7 +315,7 @@ function isoDays(start, end) {
   return Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
 }
 
-function BrandSkuView({ sku, filters, setFilters }) {
+function BrandSkuView({ sku, filters, setFilters, kpis }) {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("revenue");
   const rows = sortSkuRows(sku.rows.filter((row) =>
@@ -325,6 +325,9 @@ function BrandSkuView({ sku, filters, setFilters }) {
   const activeRange = sku.activeRange || {};
   const dataRange = sku.dataRange || {};
   const costCoverage = sku.costCoverage || {};
+  const pnlRevenue = Number(kpis?.revenue || 0);
+  const skuRevenue = Number(sku.totals.revenue || 0);
+  const revenueGap = pnlRevenue - skuRevenue;
   const mappedRevenueShare = Number(costCoverage.revenue || 0)
     ? Number(costCoverage.matched_revenue || 0) / Number(costCoverage.revenue || 0)
     : 0;
@@ -372,6 +375,11 @@ function BrandSkuView({ sku, filters, setFilters }) {
         <p className="sourceNote">
           SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. SKU margin uses mapped SKU COGS and stays n/a when SKU cost is missing.
         </p>
+        <div className="skuReconcile">
+          <span>P&L revenue {hkd(pnlRevenue)}</span>
+          <span>SKU revenue {hkd(skuRevenue)}</span>
+          <strong>Difference {hkd(revenueGap)}</strong>
+        </div>
         {(missingCostMap || lowCostCoverage) && (
           <div className="skuRangeNotice warning">
             <div>
@@ -979,7 +987,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         </section>
       )}
 
-      {subtab === "sku" && <BrandSkuView sku={data.sku} filters={filters} setFilters={setFilters} />}
+      {subtab === "sku" && <BrandSkuView sku={data.sku} filters={filters} setFilters={setFilters} kpis={data.kpis} />}
 
       {subtab === "import" && (
         <section className="cleanGrid">
