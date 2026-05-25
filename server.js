@@ -300,13 +300,27 @@ function openDb() {
   return new DatabaseSync(dbPath, { readOnly: true });
 }
 
+function selectedEntities(params) {
+  return params.getAll("entity").filter((value) => value && value !== "all");
+}
+
+function addInClause(clauses, values, expression, items, prefix) {
+  if (!items.length) return;
+  const placeholders = items.map((item, index) => {
+    const key = `$${prefix}${index}`;
+    values[key] = item;
+    return key;
+  });
+  clauses.push(`${expression} IN (${placeholders.join(", ")})`);
+}
+
 function whereFromSearch(params, options = {}) {
   const includeSection = options.includeSection ?? false;
   const clauses = [];
   const values = {};
   const dimension = params.get("dimension") || "class";
   const company = params.get("company");
-  const entity = params.get("entity");
+  const entities = selectedEntities(params);
   const section = params.get("section");
   const lineItem = params.get("lineItem");
   const batch = params.get("batch");
@@ -339,10 +353,7 @@ function whereFromSearch(params, options = {}) {
     clauses.push("c.name = $company");
     values.$company = company;
   }
-  if (entity && entity !== "all") {
-    clauses.push("f.entity = $entity");
-    values.$entity = entity;
-  }
+  addInClause(clauses, values, "f.entity", entities, "entity");
   if (includeSection && section && section !== "all") {
     clauses.push("f.section = $section");
     values.$section = section;
@@ -538,7 +549,7 @@ function skuWhereFromSearch(params) {
   const values = {};
   const dimension = params.get("dimension") || "class";
   const company = params.get("company");
-  const entity = params.get("entity");
+  const entities = selectedEntities(params);
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
@@ -553,13 +564,17 @@ function skuWhereFromSearch(params) {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
   }
-  if (entity && entity !== "all") {
+  if (entities.length) {
     if (dimension === "customer") {
-      clauses.push("s.customer = $entity");
+      addInClause(clauses, values, "s.customer", entities, "entity");
     } else {
-      clauses.push(`${brandKeyFromValue("COALESCE(NULLIF(sc.mapped_brand, ''), s.brand)")} = ${brandKeyFromValue("$entity")}`);
+      const brandConditions = entities.map((entity, index) => {
+        const key = `$entity${index}`;
+        values[key] = entity;
+        return `${brandKeyFromValue("COALESCE(NULLIF(sc.mapped_brand, ''), s.brand)")} = ${brandKeyFromValue(key)}`;
+      });
+      clauses.push(`(${brandConditions.join(" OR ")})`);
     }
-    values.$entity = entity;
   }
   if (dateFrom) {
     clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} >= $dateFrom) OR (${skuDate} IS NULL AND (s.period_start IS NULL OR s.period_start >= $dateFrom)))`);

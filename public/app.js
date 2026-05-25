@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LineChart,
   LogOut,
+  X,
   RefreshCw,
   Search,
   TrendingUp,
@@ -341,7 +342,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
       ...filters,
       batch: "all",
       company: "all",
-      entity: "all",
+      entities: [],
       dateFrom: dataRange.min || "",
       dateTo: dataRange.max || "",
     });
@@ -514,6 +515,58 @@ function Select({ label, value, onChange, options }) {
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+function MultiSelect({ label, values, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const selected = Array.isArray(values) ? values : values && values !== "all" ? [values] : [];
+  const optionByValue = new Map(options.map((option) => [option.value, option]));
+  const buttonLabel = selected.length
+    ? selected.length === 1
+      ? optionByValue.get(selected[0])?.label || selected[0]
+      : `${selected.length} selected`
+    : options[0]?.label || "All";
+
+  function toggle(value) {
+    if (value === "all") {
+      onChange([]);
+      return;
+    }
+    onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]);
+  }
+
+  return (
+    <label className="field multiField">
+      <span>{label}</span>
+      <button className="multiButton" type="button" onClick={() => setOpen(!open)}>
+        {buttonLabel}
+      </button>
+      {open && (
+        <div className="multiMenu">
+          <button className={!selected.length ? "active" : ""} type="button" onClick={() => toggle("all")}>
+            {options[0]?.label || "All"}
+          </button>
+          {options.slice(1).map((option) => (
+            <button className={selected.includes(option.value) ? "active" : ""} type="button" onClick={() => toggle(option.value)} key={option.value}>
+              <input type="checkbox" checked={selected.includes(option.value)} readOnly />
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {!!selected.length && (
+        <div className="selectedChips">
+          {selected.slice(0, 4).map((value) => (
+            <button type="button" onClick={() => toggle(value)} key={value}>
+              {optionByValue.get(value)?.label || value}
+              <X size={12} />
+            </button>
+          ))}
+          {selected.length > 4 && <em>+{selected.length - 4}</em>}
+        </div>
+      )}
     </label>
   );
 }
@@ -829,7 +882,9 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const skuGrossMargin = skuGrossProfit === null || !skuRevenue ? null : skuGrossProfit / skuRevenue;
   const statementContext = [
     filters.company !== "all" ? filters.company : "All companies",
-    filters.entity !== "all" ? filters.entity : filters.dimension === "class" ? "All brands" : "All customers",
+    filters.entities?.length
+      ? `${filters.entities.length} ${filters.dimension === "class" ? "brands" : "customers"}`
+      : filters.dimension === "class" ? "All brands" : "All customers",
   ].join(" / ");
   const metricCards = subtab === "sku"
     ? [
@@ -867,9 +922,9 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
 
       <section className="filterBar">
         <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
-        <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, entity: "all" })} />
+        <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, entities: [] })} />
         <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
-        <Select label="Brand / customer" value={filters.entity} options={entityOptions} onChange={(value) => setFilters({ ...filters, entity: value })} />
+        <MultiSelect label="Brand / customer" values={filters.entities} options={entityOptions} onChange={(values) => setFilters({ ...filters, entities: values })} />
         <DateField label="From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
         <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
       </section>
@@ -1126,7 +1181,7 @@ function App() {
     batch: "all",
     dimension: "class",
     company: "all",
-    entity: "all",
+    entities: [],
     section: "all",
     dateFrom: "",
     dateTo: "",
@@ -1141,7 +1196,13 @@ function App() {
   const query = useMemo(() => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
-      if (value && value !== "all") params.set(key, value);
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (item && item !== "all") params.append(key.slice(0, -1), item);
+        });
+      } else if (value && value !== "all") {
+        params.set(key, value);
+      }
     });
     return params.toString();
   }, [filters]);
