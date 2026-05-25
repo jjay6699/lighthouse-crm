@@ -1198,7 +1198,7 @@ function App() {
     Object.entries(filters).forEach(([key, value]) => {
       if (Array.isArray(value)) {
         value.forEach((item) => {
-          if (item && item !== "all") params.append(key.slice(0, -1), item);
+          if (item && item !== "all") params.append(key === "entities" ? "entity" : key, item);
         });
       } else if (value && value !== "all") {
         params.set(key, value);
