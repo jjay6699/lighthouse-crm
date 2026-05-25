@@ -569,7 +569,6 @@ function EmptyState({ message }) {
 
   return (
     <main className="empty">
-      <Database size={28} />
       <h1>Financial Consolidation</h1>
       <p>{message}</p>
       <label className="field emptyField">

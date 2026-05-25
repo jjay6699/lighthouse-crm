@@ -949,6 +949,7 @@ function getDashboard(params) {
           FROM sku_sales s
           JOIN batches b ON b.id = s.batch_id
           JOIN companies c ON c.id = s.company_id
+          LEFT JOIN sku_costs sc ON sc.sku = lower(s.sku)
           ${skuRangeFilter.sql}
           `
         )
