@@ -571,6 +571,24 @@ function MultiSelect({ label, values, onChange, options }) {
   );
 }
 
+function ScopeStrip({ filters, entityLabel }) {
+  const scopeItems = [
+    { label: "Batch", value: filters.batch === "all" ? "All batches" : filters.batch },
+    { label: "Company", value: filters.company === "all" ? "All companies" : filters.company },
+    { label: entityLabel, value: filters.entities?.length ? `${filters.entities.length} selected` : `All ${entityLabel.toLowerCase()}s` },
+    { label: "Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
+  ];
+  return (
+    <div className="scopeStrip">
+      {scopeItems.map((item) => (
+        <span key={item.label}>
+          <b>{item.label}:</b> {item.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function DateField({ label, value, onChange, disabled = false }) {
   return (
     <label className="field dateField">
@@ -931,6 +949,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       <p className="filterHelp">
         Batch keeps uploads separate. Entity options are separated by the selected view (brand for class view, customer for customer view). Date filters use full P&L report periods and transaction dates for Brand / SKU sales.
       </p>
+      <ScopeStrip filters={filters} entityLabel={activeEntityTypeLabel} />
 
       <section className="metricGrid">
         {metricCards.map((card) => (
@@ -1338,6 +1357,7 @@ function App() {
           </button>
           {financeNavOpen && (
             <div className="subNav">
+              <span className="subNavLabel">Finance views</span>
               {[
                 ["summary", "Summary"],
                 ["sku", "Brand / SKU"],

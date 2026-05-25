@@ -28,6 +28,12 @@ Make the finance area easier to navigate, reduce visual clutter, and fix incorre
   - Verify selected entities clear when switching view.
   - Commit and push.
 
+- [x] 5. Make the refactor visually obvious and easier to read
+  - Add a clearer finance sub-navigation label in sidebar.
+  - Add sticky filter controls so context stays visible while scrolling.
+  - Add a "current scope" strip for selected batch/company/entity/date context.
+  - Commit and push.
+
 ## Notes
 - Work in small commits so each completed item can be reviewed independently.
 - Keep existing behavior intact unless directly related to the tasks above.
