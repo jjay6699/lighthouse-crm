@@ -1151,6 +1151,8 @@ function getDashboard(params) {
           SELECT
             SUM(s.quantity) AS quantity,
             SUM(s.amount_hkd) AS revenue,
+            SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN NULL ELSE s.quantity * sc.unit_cost_hkd END) AS cogs_hkd,
+            SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.quantity END) AS costed_quantity,
             COUNT(DISTINCT s.sku) AS sku_count,
             COUNT(DISTINCT ${skuBrandKey}) AS brand_count
           ${skuJoin}

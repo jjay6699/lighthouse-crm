@@ -825,10 +825,29 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const grossMargin = revenueBase ? Number(data.kpis.gross_profit || 0) / revenueBase : 0;
   const expenseRatio = revenueBase ? Number(data.kpis.expenses || 0) / revenueBase : 0;
   const netMargin = revenueBase ? Number(data.kpis.net_earnings || 0) / revenueBase : 0;
+  const skuRevenue = Number(data.sku?.totals?.revenue || 0);
+  const skuCogs = data.sku?.totals?.cogs_hkd === null || data.sku?.totals?.cogs_hkd === undefined
+    ? null
+    : Number(data.sku.totals.cogs_hkd || 0);
+  const skuGrossProfit = skuCogs === null ? null : skuRevenue - skuCogs;
+  const skuGrossMargin = skuGrossProfit === null || !skuRevenue ? null : skuGrossProfit / skuRevenue;
   const statementContext = [
     filters.company !== "all" ? filters.company : "All companies",
     filters.entity !== "all" ? filters.entity : filters.dimension === "class" ? "All brands" : "All customers",
   ].join(" / ");
+  const metricCards = subtab === "sku"
+    ? [
+        { title: "SKU revenue", value: hkd(skuRevenue), note: "Sales by Product rows", icon: TrendingUp },
+        { title: "SKU gross margin", value: pctOrDash(skuGrossMargin), note: skuGrossProfit === null ? "COGS mapping needed" : hkd(skuGrossProfit), icon: LineChart },
+        { title: "Units sold", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.quantity || 0)), note: "Filtered transaction dates", icon: WalletCards },
+        { title: "SKUs", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.sku_count || 0)), note: `${data.sku?.totals?.brand_count || 0} brands`, icon: BarChart3 },
+      ]
+    : [
+        { title: "Revenue", value: hkd(data.kpis.revenue), note: "Total for Income", icon: TrendingUp },
+        { title: "Gross margin", value: pct(grossMargin), note: hkd(data.kpis.gross_profit), icon: LineChart },
+        { title: "Expense ratio", value: pct(expenseRatio), note: hkd(data.kpis.expenses), icon: WalletCards },
+        { title: "Net margin", value: pct(netMargin), note: hkd(data.kpis.net_earnings), icon: CircleDollarSign },
+      ];
 
   return (
     <main className="workspace">
@@ -861,13 +880,12 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       <p className="filterHelp">
         Batch keeps uploads separate. Date filters use full P&L report periods and transaction dates for Brand / SKU sales. Internal intercompany transactions are excluded from consolidated reporting.
       </p>
-      {showPnlCoverage && <p className={`coverageNotice ${pnlCoverage.reportCount ? "" : "warning"}`}>{pnlCoverageMessage}</p>}
+      {subtab !== "sku" && showPnlCoverage && <p className={`coverageNotice ${pnlCoverage.reportCount ? "" : "warning"}`}>{pnlCoverageMessage}</p>}
 
       <section className="metricGrid">
-        <Kpi title="Revenue" value={hkd(data.kpis.revenue)} note="Total for Income" icon={TrendingUp} />
-        <Kpi title="Gross margin" value={pct(grossMargin)} note={hkd(data.kpis.gross_profit)} icon={LineChart} />
-        <Kpi title="Expense ratio" value={pct(expenseRatio)} note={hkd(data.kpis.expenses)} icon={WalletCards} />
-        <Kpi title="Net margin" value={pct(netMargin)} note={hkd(data.kpis.net_earnings)} icon={CircleDollarSign} />
+        {metricCards.map((card) => (
+          <Kpi title={card.title} value={card.value} note={card.note} icon={card.icon} key={card.title} />
+        ))}
       </section>
       <nav className="subtabs">
         {[
