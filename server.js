@@ -503,6 +503,8 @@ function intercompanyExpression(alias = "f", column = "entity") {
 function brandKeyFromValue(valueSql) {
   const value = `lower(trim(${valueSql}))`;
   return `CASE
+    WHEN ${value} IN ('allklear', 'allkear') OR ${value} LIKE '%全清%' THEN 'allklear'
+    WHEN ${value} IN ('better', 'donghwa') THEN 'better'
     WHEN ${value} = 'qol' THEN 'qollabs'
     WHEN ${value} = 'komorebei' THEN 'komorebi'
     WHEN ${value} = 'beauty of joseon' THEN 'boj'
@@ -520,6 +522,8 @@ function brandKeyExpression(alias, column) {
 
 function brandLabel(key, fallback) {
   const labels = {
+    allklear: "AllKlear",
+    better: "Better",
     boj: "BOJ",
     healthall: "Healthall",
     komorebi: "KOMOREBI",
@@ -571,7 +575,10 @@ function skuWhereFromSearch(params) {
       const brandConditions = entities.map((entity, index) => {
         const key = `$entity${index}`;
         values[key] = entity;
-        return `${brandKeyFromValue("COALESCE(NULLIF(sc.mapped_brand, ''), s.brand)")} = ${brandKeyFromValue(key)}`;
+        return `(
+          ${brandKeyFromValue("s.brand")} = ${brandKeyFromValue(key)}
+          OR ${brandKeyFromValue("sc.mapped_brand")} = ${brandKeyFromValue(key)}
+        )`;
       });
       clauses.push(`(${brandConditions.join(" OR ")})`);
     }
@@ -1178,7 +1185,7 @@ function getDashboard(params) {
   };
   if (hasSkuSales) {
     const skuFilter = skuWhereFromSearch(params);
-    const skuBrandValue = "COALESCE(NULLIF(sc.mapped_brand, ''), s.brand)";
+    const skuBrandValue = "s.brand";
     const skuBrandKey = brandKeyFromValue(skuBrandValue);
     const skuJoin = `
       FROM sku_sales s
