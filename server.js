@@ -1125,18 +1125,16 @@ function getDashboard(params) {
     from: params.get("dateFrom") || reportDateRange?.min || availableDateRange.min || "",
     to: params.get("dateTo") || reportDateRange?.max || availableDateRange.max || "",
   };
-  const entityOptionDimension = params.get("dimension") || "class";
-  const entitySelect =
-    entityOptionDimension === "class"
-      ? `${brandKeyFromValue("f.entity")} AS entity_key, MIN(f.entity) AS entity`
-      : `f.entity AS entity_key, f.entity AS entity`;
-  const entityGroup = entityOptionDimension === "class" ? "entity_key" : "f.entity";
-
-  const meta = {
-    batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
-    companies: db.prepare("SELECT name, source_currency AS currency FROM companies ORDER BY name").all(),
-    dimensions: db.prepare("SELECT DISTINCT dimension FROM reports ORDER BY dimension").all().map((x) => x.dimension),
-    entities: db
+  function fetchEntitiesByDimension(dimension) {
+    const entityParams = new URLSearchParams(params);
+    entityParams.set("dimension", dimension);
+    const entityFilter = entityOptionsWhere(entityParams);
+    const entitySelect =
+      dimension === "class"
+        ? `${brandKeyFromValue("f.entity")} AS entity_key, MIN(f.entity) AS entity`
+        : `f.entity AS entity_key, f.entity AS entity`;
+    const entityGroup = dimension === "class" ? "entity_key" : "f.entity";
+    return db
       .prepare(
         `
         SELECT ${entitySelect}
@@ -1147,14 +1145,28 @@ function getDashboard(params) {
         JOIN reports r ON r.id = f.report_id
         JOIN batches b ON b.id = r.batch_id
         JOIN companies c ON c.id = r.company_id
-        ${entityOptionsWhere(params).sql}
+        ${entityFilter.sql}
         GROUP BY ${entityGroup}
         HAVING ABS(SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END)) > 0.01
         ORDER BY entity
         `
       )
-      .all(entityOptionsWhere(params).values)
-      .map((x) => brandLabel(x.entity_key, x.entity)),
+      .all(entityFilter.values)
+      .map((x) => brandLabel(x.entity_key, x.entity));
+  }
+
+  const entitiesByDimension = {
+    class: fetchEntitiesByDimension("class"),
+    customer: fetchEntitiesByDimension("customer"),
+  };
+  const requestedDimension = params.get("dimension") || "class";
+
+  const meta = {
+    batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
+    companies: db.prepare("SELECT name, source_currency AS currency FROM companies ORDER BY name").all(),
+    dimensions: db.prepare("SELECT DISTINCT dimension FROM reports ORDER BY dimension").all().map((x) => x.dimension),
+    entities: entitiesByDimension[requestedDimension] || [],
+    entitiesByDimension,
     sections: db.prepare("SELECT DISTINCT section FROM facts WHERE section IS NOT NULL ORDER BY section").all().map((x) => x.section),
     fx: db.prepare("SELECT * FROM fx_rates ORDER BY source_currency").all(),
     reports: filteredReports,

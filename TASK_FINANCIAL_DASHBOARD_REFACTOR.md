@@ -5,7 +5,7 @@ Make the finance area easier to navigate, reduce visual clutter, and fix incorre
 
 ## Execution Plan
 
-- [ ] 1. Split entity options by dimension in API and UI
+- [x] 1. Split entity options by dimension in API and UI
   - Return `class` entities (brands) separately from `customer` entities.
   - Stop showing mixed `All brands/customers` option.
   - Ensure changing view resets entity selection safely.

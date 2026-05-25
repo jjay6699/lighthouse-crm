@@ -845,6 +845,8 @@ function Overview({ data, goFinance }) {
 
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh }) {
   const [subtab, setSubtab] = useState("summary");
+  const isClassView = filters.dimension === "class";
+  const activeEntityTypeLabel = isClassView ? "Brand" : "Customer";
   const companyOptions = [
     { value: "all", label: "All companies" },
     ...data.meta.companies.map((company) => ({ value: company.name, label: company.name })),
@@ -853,9 +855,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
     value: dimension,
     label: dimension === "class" ? "By class / brand" : "By customer",
   }));
+  const entitySource = data.meta.entitiesByDimension?.[filters.dimension] || data.meta.entities || [];
   const entityOptions = [
-    { value: "all", label: "All brands/customers" },
-    ...data.meta.entities.map((entity) => ({ value: entity, label: entity })),
+    { value: "all", label: isClassView ? "All brands" : "All customers" },
+    ...entitySource.map((entity) => ({ value: entity, label: entity })),
   ];
   const sectionOptions = [
     { value: "all", label: "All sections" },
@@ -882,9 +885,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const skuGrossMargin = skuGrossProfit === null || !skuRevenue ? null : skuGrossProfit / skuRevenue;
   const statementContext = [
     filters.company !== "all" ? filters.company : "All companies",
-    filters.entities?.length
-      ? `${filters.entities.length} ${filters.dimension === "class" ? "brands" : "customers"}`
-      : filters.dimension === "class" ? "All brands" : "All customers",
+    filters.entities?.length ? `${filters.entities.length} ${isClassView ? "brands" : "customers"}` : isClassView ? "All brands" : "All customers",
   ].join(" / ");
   const metricCards = subtab === "sku"
     ? [
@@ -906,7 +907,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <div>
           <p className="eyebrow">Financial Consolidation</p>
           <h1>Profit and loss analytics</h1>
-          <p className="subtitle">Consolidated HKD dashboard with controls for period, company, view, entity, and P&L section.</p>
+          <p className="subtitle">Consolidated HKD dashboard with controls for period, company, view, entity scope, and P&L section.</p>
         </div>
         <div className="headerActions">
           <button className="primaryButton" type="button" onClick={() => setSubtab("import")}>
@@ -924,12 +925,12 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
         <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, entities: [] })} />
         <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
-        <MultiSelect label="Brand / customer" values={filters.entities} options={entityOptions} onChange={(values) => setFilters({ ...filters, entities: values })} />
+        <MultiSelect label={activeEntityTypeLabel} values={filters.entities} options={entityOptions} onChange={(values) => setFilters({ ...filters, entities: values })} />
         <DateField label="From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
         <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
       </section>
       <p className="filterHelp">
-        Batch keeps uploads separate. Date filters use full P&L report periods and transaction dates for Brand / SKU sales. Internal intercompany transactions are excluded from consolidated reporting.
+        Batch keeps uploads separate. Entity options are separated by the selected view (brand for class view, customer for customer view). Date filters use full P&L report periods and transaction dates for Brand / SKU sales.
       </p>
 
       <section className="metricGrid">
