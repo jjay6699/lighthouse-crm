@@ -22,7 +22,7 @@ Make the finance area easier to navigate, reduce visual clutter, and fix incorre
   - Tighten section spacing and panel hierarchy where needed.
   - Commit and push.
 
-- [ ] 4. Add regression checks for entity separation
+- [x] 4. Add regression checks for entity separation
   - Verify brand view only loads brand options.
   - Verify customer view only loads customer options.
   - Verify selected entities clear when switching view.

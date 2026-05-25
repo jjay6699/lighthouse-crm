@@ -1243,6 +1243,16 @@ function App() {
     }
   }, [data, datesInitialized]);
 
+  useEffect(() => {
+    if (!data?.ready) return;
+    const source = data.meta.entitiesByDimension?.[filters.dimension] || data.meta.entities || [];
+    const allowed = new Set(source);
+    const normalized = (filters.entities || []).filter((entity) => allowed.has(entity));
+    if (normalized.length !== (filters.entities || []).length) {
+      setFilters((current) => ({ ...current, entities: normalized }));
+    }
+  }, [data, filters.dimension, filters.entities, setFilters]);
+
   async function uploadFiles(files, batchDetails) {
     if (!files.length) return;
     setUploadState({ busy: true, message: "Uploading reports..." });
