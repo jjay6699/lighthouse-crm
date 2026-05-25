@@ -571,6 +571,24 @@ function MultiSelect({ label, values, onChange, options }) {
   );
 }
 
+function ScopeStrip({ filters, entityLabel }) {
+  const scopeItems = [
+    { label: "Batch", value: filters.batch === "all" ? "All batches" : filters.batch },
+    { label: "Company", value: filters.company === "all" ? "All companies" : filters.company },
+    { label: entityLabel, value: filters.entities?.length ? `${filters.entities.length} selected` : `All ${entityLabel.toLowerCase()}s` },
+    { label: "Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
+  ];
+  return (
+    <div className="scopeStrip">
+      {scopeItems.map((item) => (
+        <span key={item.label}>
+          <b>{item.label}:</b> {item.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function DateField({ label, value, onChange, disabled = false }) {
   return (
     <label className="field dateField">
@@ -843,8 +861,9 @@ function Overview({ data, goFinance }) {
   );
 }
 
-function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh }) {
-  const [subtab, setSubtab] = useState("summary");
+function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh, subtab, setSubtab }) {
+  const isClassView = filters.dimension === "class";
+  const activeEntityTypeLabel = isClassView ? "Brand" : "Customer";
   const companyOptions = [
     { value: "all", label: "All companies" },
     ...data.meta.companies.map((company) => ({ value: company.name, label: company.name })),
@@ -853,9 +872,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
     value: dimension,
     label: dimension === "class" ? "By class / brand" : "By customer",
   }));
+  const entitySource = data.meta.entitiesByDimension?.[filters.dimension] || data.meta.entities || [];
   const entityOptions = [
-    { value: "all", label: "All brands/customers" },
-    ...data.meta.entities.map((entity) => ({ value: entity, label: entity })),
+    { value: "all", label: isClassView ? "All brands" : "All customers" },
+    ...entitySource.map((entity) => ({ value: entity, label: entity })),
   ];
   const sectionOptions = [
     { value: "all", label: "All sections" },
@@ -882,9 +902,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const skuGrossMargin = skuGrossProfit === null || !skuRevenue ? null : skuGrossProfit / skuRevenue;
   const statementContext = [
     filters.company !== "all" ? filters.company : "All companies",
-    filters.entities?.length
-      ? `${filters.entities.length} ${filters.dimension === "class" ? "brands" : "customers"}`
-      : filters.dimension === "class" ? "All brands" : "All customers",
+    filters.entities?.length ? `${filters.entities.length} ${isClassView ? "brands" : "customers"}` : isClassView ? "All brands" : "All customers",
   ].join(" / ");
   const metricCards = subtab === "sku"
     ? [
@@ -906,7 +924,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <div>
           <p className="eyebrow">Financial Consolidation</p>
           <h1>Profit and loss analytics</h1>
-          <p className="subtitle">Consolidated HKD dashboard with controls for period, company, view, entity, and P&L section.</p>
+          <p className="subtitle">Consolidated HKD dashboard with controls for period, company, view, entity scope, and P&L section.</p>
         </div>
         <div className="headerActions">
           <button className="primaryButton" type="button" onClick={() => setSubtab("import")}>
@@ -924,13 +942,14 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
         <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, entities: [] })} />
         <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
-        <MultiSelect label="Brand / customer" values={filters.entities} options={entityOptions} onChange={(values) => setFilters({ ...filters, entities: values })} />
+        <MultiSelect label={activeEntityTypeLabel} values={filters.entities} options={entityOptions} onChange={(values) => setFilters({ ...filters, entities: values })} />
         <DateField label="From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
         <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
       </section>
       <p className="filterHelp">
-        Batch keeps uploads separate. Date filters use full P&L report periods and transaction dates for Brand / SKU sales. Internal intercompany transactions are excluded from consolidated reporting.
+        Batch keeps uploads separate. Entity options are separated by the selected view (brand for class view, customer for customer view). Date filters use full P&L report periods and transaction dates for Brand / SKU sales.
       </p>
+      <ScopeStrip filters={filters} entityLabel={activeEntityTypeLabel} />
 
       <section className="metricGrid">
         {metricCards.map((card) => (
@@ -1177,6 +1196,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
 
 function App() {
   const [page, setPage] = useState("overview");
+  const [financeSubtab, setFinanceSubtab] = useState("summary");
+  const [financeNavOpen, setFinanceNavOpen] = useState(true);
   const [filters, setFilters] = useState({
     batch: "all",
     dimension: "class",
@@ -1240,6 +1261,16 @@ function App() {
       }));
     }
   }, [data, datesInitialized]);
+
+  useEffect(() => {
+    if (!data?.ready) return;
+    const source = data.meta.entitiesByDimension?.[filters.dimension] || data.meta.entities || [];
+    const allowed = new Set(source);
+    const normalized = (filters.entities || []).filter((entity) => allowed.has(entity));
+    if (normalized.length !== (filters.entities || []).length) {
+      setFilters((current) => ({ ...current, entities: normalized }));
+    }
+  }, [data, filters.dimension, filters.entities, setFilters]);
 
   async function uploadFiles(files, batchDetails) {
     if (!files.length) return;
@@ -1312,10 +1343,41 @@ function App() {
             <LayoutDashboard size={18} />
             Overview
           </button>
-          <button className={page === "finance" ? "active" : ""} type="button" onClick={() => setPage("finance")}>
+          <button
+            className={`groupButton ${page === "finance" ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setPage("finance");
+              setFinanceNavOpen((open) => (page === "finance" ? !open : true));
+            }}
+          >
             <CircleDollarSign size={18} />
             Financial Consolidation
+            <span className="chevron">{financeNavOpen ? "-" : "+"}</span>
           </button>
+          {financeNavOpen && (
+            <div className="subNav">
+              <span className="subNavLabel">Finance views</span>
+              {[
+                ["summary", "Summary"],
+                ["sku", "Brand / SKU"],
+                ["lines", "P&L lines"],
+                ["import", "Import"],
+              ].map(([id, label]) => (
+                <button
+                  className={page === "finance" && financeSubtab === id ? "active" : ""}
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setPage("finance");
+                    setFinanceSubtab(id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="sidePanel">
           <span>Currency standard</span>
@@ -1342,6 +1404,8 @@ function App() {
           renameBatch={renameBatch}
           deleteBatch={deleteBatch}
           refresh={rebuildDatabase}
+          subtab={financeSubtab}
+          setSubtab={setFinanceSubtab}
         />
       )}
 
