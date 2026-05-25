@@ -1345,7 +1345,6 @@ function App() {
           </button>
           {financeNavOpen && (
             <div className="subNav">
-              <span className="subNavLabel">Finance views</span>
               {[
                 ["summary", "Summary"],
                 ["sku", "Brand / SKU"],
