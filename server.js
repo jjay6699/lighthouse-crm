@@ -980,6 +980,37 @@ function getDashboard(params) {
     };
   });
 
+  const filteredReports = db
+    .prepare(
+      `
+      SELECT DISTINCT
+        b.batch_key,
+        b.name AS batch_name,
+        b.period_start AS batch_period_start,
+        b.period_end AS batch_period_end,
+        r.dimension,
+        r.period_label,
+        r.period_start,
+        r.period_end,
+        r.source_file,
+        c.name AS company
+      ${baseJoin}
+      ORDER BY COALESCE(b.period_start, b.uploaded_at) DESC, b.id DESC, c.name, r.dimension
+      `
+    )
+    .all(filter.values);
+  const filteredReportDateRange = filteredReports.reduce(
+    (range, report) => ({
+      min: minIsoDate(range.min, report.period_start),
+      max: maxIsoDate(range.max, report.period_end),
+    }),
+    { min: "", max: "" }
+  );
+  const requestedPnlRange = {
+    from: params.get("dateFrom") || reportDateRange?.min || availableDateRange.min || "",
+    to: params.get("dateTo") || reportDateRange?.max || availableDateRange.max || "",
+  };
+
   const meta = {
     batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
     companies: db.prepare("SELECT name, source_currency AS currency FROM companies ORDER BY name").all(),
@@ -1005,28 +1036,20 @@ function getDashboard(params) {
       .map((x) => x.entity),
     sections: db.prepare("SELECT DISTINCT section FROM facts WHERE section IS NOT NULL ORDER BY section").all().map((x) => x.section),
     fx: db.prepare("SELECT * FROM fx_rates ORDER BY source_currency").all(),
-    reports: db
-      .prepare(
-        `
-        SELECT DISTINCT
-          b.batch_key,
-          b.name AS batch_name,
-          b.period_start AS batch_period_start,
-          b.period_end AS batch_period_end,
-          r.dimension,
-          r.period_label,
-          r.period_start,
-          r.period_end,
-          r.source_file,
-          c.name AS company
-        ${baseJoin}
-        ORDER BY COALESCE(b.period_start, b.uploaded_at) DESC, b.id DESC, c.name, r.dimension
-        `
-      )
-      .all(filter.values),
+    reports: filteredReports,
     dateRange: reportDateRange,
     skuDateRange,
     availableDateRange,
+    pnlCoverage: {
+      requested: requestedPnlRange,
+      active: filteredReportDateRange,
+      reportCount: filteredReports.length,
+      exact: Boolean(
+        filteredReports.length &&
+          (!requestedPnlRange.from || requestedPnlRange.from === filteredReportDateRange.min) &&
+          (!requestedPnlRange.to || requestedPnlRange.to === filteredReportDateRange.max)
+      ),
+    },
     pnlComparison,
     timezone: "Asia/Hong_Kong",
     currentDate,

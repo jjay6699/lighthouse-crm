@@ -785,6 +785,16 @@ function Overview({ data, goFinance }) {
 
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh }) {
   const [subtab, setSubtab] = useState("summary");
+  const pnlCoverage = data.meta.pnlCoverage || {};
+  const requestedPnlRange = pnlCoverage.requested || {};
+  const activePnlRange = pnlCoverage.active || {};
+  const showPnlCoverage =
+    filters.dateFrom ||
+    filters.dateTo ||
+    (pnlCoverage.reportCount && !pnlCoverage.exact);
+  const pnlCoverageMessage = pnlCoverage.reportCount
+    ? `P&L is calculated from available report periods ${activePnlRange.min || "-"} to ${activePnlRange.max || "-"} inside the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}.`
+    : `No P&L report period is fully inside the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}. Upload or reimport reports for that period to show P&L values.`;
 
   const companyOptions = [
     { value: "all", label: "All companies" },
@@ -851,6 +861,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       <p className="filterHelp">
         Batch keeps uploads separate. Date filters use full P&L report periods and transaction dates for Brand / SKU sales. Internal intercompany transactions are excluded from consolidated reporting.
       </p>
+      {showPnlCoverage && <p className={`coverageNotice ${pnlCoverage.reportCount ? "" : "warning"}`}>{pnlCoverageMessage}</p>}
 
       <section className="metricGrid">
         <Kpi title="Revenue" value={hkd(data.kpis.revenue)} note="Total for Income" icon={TrendingUp} />
@@ -1176,10 +1187,15 @@ function App() {
   }
 
   async function rebuildDatabase() {
+    setLoading(true);
     setUploadState({ busy: true, message: "Rebuilding finance database..." });
-    const imported = await fetch("/api/reimport-finance", { method: "POST" }).then((response) => response.json());
-    setUploadState({ busy: false, message: imported.ok ? imported.stdout : imported.stderr || "Reimport failed." });
-    await load();
+    try {
+      const imported = await fetch("/api/reimport-finance", { method: "POST" }).then((response) => response.json());
+      setUploadState({ busy: false, message: imported.ok ? imported.stdout : imported.stderr || "Reimport failed." });
+      await load();
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function renameBatch(batchKey, details) {
@@ -1251,7 +1267,7 @@ function App() {
           uploadFiles={uploadFiles}
           renameBatch={renameBatch}
           deleteBatch={deleteBatch}
-          refresh={load}
+          refresh={rebuildDatabase}
         />
       )}
 
