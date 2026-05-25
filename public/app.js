@@ -785,17 +785,6 @@ function Overview({ data, goFinance }) {
 
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh }) {
   const [subtab, setSubtab] = useState("summary");
-  const pnlCoverage = data.meta.pnlCoverage || {};
-  const requestedPnlRange = pnlCoverage.requested || {};
-  const activePnlRange = pnlCoverage.active || {};
-  const showPnlCoverage =
-    filters.dateFrom ||
-    filters.dateTo ||
-    (pnlCoverage.reportCount && !pnlCoverage.exact);
-  const pnlCoverageMessage = pnlCoverage.reportCount
-    ? `P&L is calculated from the best matching report periods ${activePnlRange.min || "-"} to ${activePnlRange.max || "-"} for the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}.`
-    : `No P&L report period overlaps the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}. Upload or reimport reports for that period to show P&L values.`;
-
   const companyOptions = [
     { value: "all", label: "All companies" },
     ...data.meta.companies.map((company) => ({ value: company.name, label: company.name })),
@@ -880,7 +869,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       <p className="filterHelp">
         Batch keeps uploads separate. Date filters use full P&L report periods and transaction dates for Brand / SKU sales. Internal intercompany transactions are excluded from consolidated reporting.
       </p>
-      {subtab !== "sku" && showPnlCoverage && <p className={`coverageNotice ${pnlCoverage.reportCount ? "" : "warning"}`}>{pnlCoverageMessage}</p>}
 
       <section className="metricGrid">
         {metricCards.map((card) => (

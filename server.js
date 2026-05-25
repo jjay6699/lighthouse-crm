@@ -647,6 +647,27 @@ function appendWhere(filter, condition) {
   return filter.sql ? `AND ${condition}` : `WHERE ${condition}`;
 }
 
+function pnlAmountExpression(params, factAlias = "f", reportAlias = "r") {
+  const dateFrom = params.get("dateFrom");
+  const dateTo = params.get("dateTo");
+  if (!dateFrom && !dateTo) return `${factAlias}.amount_hkd`;
+
+  const fromBound = dateFrom ? "$dateFrom" : `COALESCE(${reportAlias}.period_start, '0001-01-01')`;
+  const toBound = dateTo ? "$dateTo" : `COALESCE(${reportAlias}.period_end, '9999-12-31')`;
+  const reportDays = `(julianday(${reportAlias}.period_end) - julianday(${reportAlias}.period_start) + 1)`;
+  const overlapDays = `(
+    julianday(min(${reportAlias}.period_end, ${toBound})) -
+    julianday(max(${reportAlias}.period_start, ${fromBound})) + 1
+  )`;
+  return `(${factAlias}.amount_hkd * CASE
+    WHEN ${reportAlias}.period_start IS NOT NULL
+      AND ${reportAlias}.period_end IS NOT NULL
+      AND ${reportDays} > 0
+    THEN max(0, ${overlapDays}) / ${reportDays}
+    ELSE 1
+  END)`;
+}
+
 function getDashboard(params) {
   const db = openDb();
   if (!db) {
@@ -658,6 +679,7 @@ function getDashboard(params) {
 
   const filter = whereFromSearch(params);
   const sectionFilter = whereFromSearch(params, { includeSection: true });
+  const pnlAmount = pnlAmountExpression(params);
   const baseJoin = `
     FROM (
       SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
@@ -686,10 +708,10 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT
-        SUM(CASE WHEN f.line_item IN ('Total for Income', 'Income') THEN f.amount_hkd ELSE 0 END) AS revenue,
-        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
-        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
-        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+        SUM(CASE WHEN f.line_item IN ('Total for Income', 'Income') THEN ${pnlAmount} ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${pnlAmount} ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN ${pnlAmount} ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${pnlAmount} ELSE 0 END) AS net_earnings
       ${baseJoin}
       `
     )
@@ -699,10 +721,10 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT c.name AS company, c.source_currency AS currency,
-        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
-        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
-        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
-        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${pnlAmount} ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN ${pnlAmount} ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${pnlAmount} ELSE 0 END) AS net_earnings
       ${baseJoin}
       GROUP BY c.name, c.source_currency
       ORDER BY revenue DESC
@@ -727,9 +749,9 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT f.entity,
-        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
-        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
-        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${pnlAmount} ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${pnlAmount} ELSE 0 END) AS net_earnings
       ${baseJoin}
       GROUP BY f.entity
       HAVING ABS(revenue) + ABS(gross_profit) + ABS(net_earnings) > 0
@@ -743,7 +765,7 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT f.line_item,
-        SUM(f.amount_hkd) AS amount
+        SUM(${pnlAmount}) AS amount
       ${baseJoin}
       ${appendWhere(filter, "f.section = 'Expenses'")}
       AND f.line_item NOT LIKE 'Total for%'
@@ -764,7 +786,7 @@ function getDashboard(params) {
   const lines = db
     .prepare(
       `
-      SELECT f.line_item, f.section, SUM(f.amount_hkd) AS amount
+      SELECT f.line_item, f.section, SUM(${pnlAmount}) AS amount
       ${sectionJoin}
       GROUP BY f.section, f.line_item
       HAVING ABS(amount) > 0
@@ -782,7 +804,7 @@ function getDashboard(params) {
         f.line_item,
         MAX(f.is_total) AS is_total,
         MIN(f.row_order) AS row_order,
-        SUM(f.amount_hkd) AS amount
+        SUM(${pnlAmount}) AS amount
       ${sectionJoin}
       GROUP BY f.section, f.line_item
       HAVING ABS(amount) > 0
@@ -825,7 +847,7 @@ function getDashboard(params) {
   const sectionSummary = db
     .prepare(
       `
-      SELECT f.section, SUM(f.amount_hkd) AS amount, COUNT(*) AS rows
+      SELECT f.section, SUM(${pnlAmount}) AS amount, COUNT(*) AS rows
       ${baseJoin}
       GROUP BY f.section
       ORDER BY ABS(amount) DESC
@@ -837,7 +859,7 @@ function getDashboard(params) {
     db
       .prepare(
         `
-        SELECT SUM(f.amount_hkd) AS amount
+        SELECT SUM(${pnlAmount}) AS amount
         ${baseJoin}
         ${appendWhere(filter, "f.line_item = 'Total for Cost of Sales'")}
         `
@@ -848,7 +870,7 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT f.entity,
-        SUM(f.amount_hkd) AS amount
+        SUM(${pnlAmount}) AS amount
       ${baseJoin}
       ${appendWhere(filter, "f.line_item = 'Total for Cost of Sales'")}
       GROUP BY f.entity
@@ -873,10 +895,10 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT
-        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
-        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
-        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
-        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${pnlAmount} ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN ${pnlAmount} ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${pnlAmount} ELSE 0 END) AS net_earnings
       FROM (
         SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
         FROM facts raw_f
@@ -893,10 +915,10 @@ function getDashboard(params) {
     .prepare(
       `
       SELECT c.name AS company, f.entity,
-        SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS revenue,
-        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit,
-        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN f.amount_hkd ELSE 0 END) AS expenses,
-        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN f.amount_hkd ELSE 0 END) AS net_earnings
+        SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END) AS revenue,
+        SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${pnlAmount} ELSE 0 END) AS gross_profit,
+        SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN ${pnlAmount} ELSE 0 END) AS expenses,
+        SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${pnlAmount} ELSE 0 END) AS net_earnings
       ${baseJoin}
       GROUP BY c.name, f.entity
       HAVING ABS(revenue) + ABS(gross_profit) + ABS(expenses) + ABS(net_earnings) > 0
@@ -955,13 +977,9 @@ function getDashboard(params) {
 
   function pnlRowsForWindow(start, end) {
     if (!start || !end) return [];
-    const windowFilter = whereFromSearch(periodParams(params, start, end), { includeSection: true });
-    const containedPeriodSql = `
-      AND r.period_start IS NOT NULL
-      AND r.period_end IS NOT NULL
-      AND r.period_start >= $dateFrom
-      AND r.period_end <= $dateTo
-    `;
+    const windowParams = periodParams(params, start, end);
+    const windowFilter = whereFromSearch(windowParams, { includeSection: true });
+    const windowAmount = pnlAmountExpression(windowParams);
     const windowJoin = `
       FROM (
         SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
@@ -971,12 +989,11 @@ function getDashboard(params) {
       JOIN batches b ON b.id = r.batch_id
       JOIN companies c ON c.id = r.company_id
       ${windowFilter.sql}
-      ${containedPeriodSql}
     `;
     return db
       .prepare(
         `
-        SELECT f.section, f.line_item, SUM(f.amount_hkd) AS amount
+        SELECT f.section, f.line_item, SUM(${windowAmount}) AS amount
         ${windowJoin}
         GROUP BY f.section, f.line_item
         HAVING ABS(amount) > 0
@@ -991,7 +1008,7 @@ function getDashboard(params) {
   const expenseContributorRows = db
     .prepare(
       `
-      SELECT f.line_item, c.name AS company, f.entity, SUM(f.amount_hkd) AS amount
+      SELECT f.line_item, c.name AS company, f.entity, SUM(${pnlAmount}) AS amount
       ${sectionJoin}
       ${appendWhere(sectionFilter, "f.section = 'Expenses'")}
       AND f.line_item NOT LIKE 'Total for%'
@@ -1082,7 +1099,7 @@ function getDashboard(params) {
         JOIN companies c ON c.id = r.company_id
         ${entityOptionsWhere(params).sql}
         GROUP BY f.entity
-        HAVING ABS(SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END)) > 0.01
+        HAVING ABS(SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END)) > 0.01
         ORDER BY f.entity
         `
       )
@@ -1221,6 +1238,7 @@ function getDashboard(params) {
     brandMarginParams.set("dimension", "class");
     brandMarginParams.delete("entity");
     const brandMarginFilter = whereFromSearch(brandMarginParams);
+    const brandMarginAmount = pnlAmountExpression(brandMarginParams);
     const pnlBrandKey = brandKeyExpression("f", "entity");
     const brandMarginJoin = `
       FROM (
@@ -1237,8 +1255,8 @@ function getDashboard(params) {
         `
         SELECT
           ${pnlBrandKey} AS brand_key,
-          SUM(CASE WHEN f.line_item = 'Total for Income' THEN f.amount_hkd ELSE 0 END) AS pnl_revenue,
-          SUM(CASE WHEN f.line_item = 'Gross Profit' THEN f.amount_hkd ELSE 0 END) AS gross_profit
+          SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${brandMarginAmount} ELSE 0 END) AS pnl_revenue,
+          SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${brandMarginAmount} ELSE 0 END) AS gross_profit
         ${brandMarginJoin}
         GROUP BY ${pnlBrandKey}
         HAVING ABS(pnl_revenue) + ABS(gross_profit) > 0.01

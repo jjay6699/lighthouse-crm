@@ -219,23 +219,6 @@ h2 {
   font-size: 12px;
 }
 
-.coverageNotice {
-  margin-top: -8px;
-  padding: 10px 12px;
-  border: 1px solid #cfe1dc;
-  border-radius: 8px;
-  background: #f3faf7;
-  color: #36544d;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.coverageNotice.warning {
-  border-color: #ead6a8;
-  background: #fff8e8;
-  color: #6b4b16;
-}
-
 .field {
   display: grid;
   gap: 5px;
