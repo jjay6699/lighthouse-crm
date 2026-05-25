@@ -793,8 +793,8 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
     filters.dateTo ||
     (pnlCoverage.reportCount && !pnlCoverage.exact);
   const pnlCoverageMessage = pnlCoverage.reportCount
-    ? `P&L is calculated from available report periods ${activePnlRange.min || "-"} to ${activePnlRange.max || "-"} inside the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}.`
-    : `No P&L report period is fully inside the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}. Upload or reimport reports for that period to show P&L values.`;
+    ? `P&L is calculated from the best matching report periods ${activePnlRange.min || "-"} to ${activePnlRange.max || "-"} for the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}.`
+    : `No P&L report period overlaps the selected range ${requestedPnlRange.from || "-"} to ${requestedPnlRange.to || "-"}. Upload or reimport reports for that period to show P&L values.`;
 
   const companyOptions = [
     { value: "all", label: "All companies" },

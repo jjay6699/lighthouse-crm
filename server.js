@@ -312,6 +312,24 @@ function whereFromSearch(params, options = {}) {
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
+  const rankFrom = dateFrom ? "$dateFrom" : "'0001-01-01'";
+  const rankTo = dateTo ? "$dateTo" : "'9999-12-31'";
+  const candidateOverlapDays = `(
+    julianday(min(COALESCE(r.period_end, '9999-12-31'), ${rankTo})) -
+    julianday(max(COALESCE(r.period_start, '0001-01-01'), ${rankFrom})) + 1
+  )`;
+  const candidateReportDays = `(
+    julianday(COALESCE(r.period_end, '9999-12-31')) -
+    julianday(COALESCE(r.period_start, '0001-01-01')) + 1
+  )`;
+  const competitorOverlapDays = `(
+    julianday(min(COALESCE(broader.period_end, '9999-12-31'), ${rankTo})) -
+    julianday(max(COALESCE(broader.period_start, '0001-01-01'), ${rankFrom})) + 1
+  )`;
+  const competitorReportDays = `(
+    julianday(COALESCE(broader.period_end, '9999-12-31')) -
+    julianday(COALESCE(broader.period_start, '0001-01-01')) + 1
+  )`;
 
   if (dimension && dimension !== "all") {
     clauses.push("r.dimension = $dimension");
@@ -339,11 +357,11 @@ function whereFromSearch(params, options = {}) {
   }
   clauses.push("f.is_intercompany = 0");
   if (dateFrom) {
-    clauses.push("(r.period_start IS NULL OR r.period_start >= $dateFrom)");
+    clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
     values.$dateFrom = dateFrom;
   }
   if (dateTo) {
-    clauses.push("(r.period_end IS NULL OR r.period_end <= $dateTo)");
+    clauses.push("(r.period_start IS NULL OR r.period_start <= $dateTo)");
     values.$dateTo = dateTo;
   }
   clauses.push(`NOT EXISTS (
@@ -357,11 +375,20 @@ function whereFromSearch(params, options = {}) {
       AND broader.period_end IS NOT NULL
       AND r.period_start IS NOT NULL
       AND r.period_end IS NOT NULL
-      AND broader.period_start <= r.period_start
-      AND broader.period_end >= r.period_end
-      AND (broader.period_start < r.period_start OR broader.period_end > r.period_end)
-      ${dateFrom ? "AND broader.period_start >= $dateFrom" : ""}
-      ${dateTo ? "AND broader.period_end <= $dateTo" : ""}
+      ${dateFrom ? "AND broader.period_end >= $dateFrom" : ""}
+      ${dateTo ? "AND broader.period_start <= $dateTo" : ""}
+      AND (
+        ${competitorOverlapDays} > ${candidateOverlapDays}
+        OR (
+          ${competitorOverlapDays} = ${candidateOverlapDays}
+          AND ${competitorReportDays} < ${candidateReportDays}
+        )
+        OR (
+          ${competitorOverlapDays} = ${candidateOverlapDays}
+          AND ${competitorReportDays} = ${candidateReportDays}
+          AND broader.period_end > r.period_end
+        )
+      )
   )`);
 
   return {
@@ -378,6 +405,24 @@ function entityOptionsWhere(params) {
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
+  const rankFrom = dateFrom ? "$dateFrom" : "'0001-01-01'";
+  const rankTo = dateTo ? "$dateTo" : "'9999-12-31'";
+  const candidateOverlapDays = `(
+    julianday(min(COALESCE(r.period_end, '9999-12-31'), ${rankTo})) -
+    julianday(max(COALESCE(r.period_start, '0001-01-01'), ${rankFrom})) + 1
+  )`;
+  const candidateReportDays = `(
+    julianday(COALESCE(r.period_end, '9999-12-31')) -
+    julianday(COALESCE(r.period_start, '0001-01-01')) + 1
+  )`;
+  const competitorOverlapDays = `(
+    julianday(min(COALESCE(broader.period_end, '9999-12-31'), ${rankTo})) -
+    julianday(max(COALESCE(broader.period_start, '0001-01-01'), ${rankFrom})) + 1
+  )`;
+  const competitorReportDays = `(
+    julianday(COALESCE(broader.period_end, '9999-12-31')) -
+    julianday(COALESCE(broader.period_start, '0001-01-01')) + 1
+  )`;
 
   if (dimension && dimension !== "all") {
     clauses.push("r.dimension = $dimension");
@@ -393,11 +438,11 @@ function entityOptionsWhere(params) {
   }
   clauses.push("f.is_intercompany = 0");
   if (dateFrom) {
-    clauses.push("(r.period_start IS NULL OR r.period_start >= $dateFrom)");
+    clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
     values.$dateFrom = dateFrom;
   }
   if (dateTo) {
-    clauses.push("(r.period_end IS NULL OR r.period_end <= $dateTo)");
+    clauses.push("(r.period_start IS NULL OR r.period_start <= $dateTo)");
     values.$dateTo = dateTo;
   }
   clauses.push(`NOT EXISTS (
@@ -411,11 +456,20 @@ function entityOptionsWhere(params) {
       AND broader.period_end IS NOT NULL
       AND r.period_start IS NOT NULL
       AND r.period_end IS NOT NULL
-      AND broader.period_start <= r.period_start
-      AND broader.period_end >= r.period_end
-      AND (broader.period_start < r.period_start OR broader.period_end > r.period_end)
-      ${dateFrom ? "AND broader.period_start >= $dateFrom" : ""}
-      ${dateTo ? "AND broader.period_end <= $dateTo" : ""}
+      ${dateFrom ? "AND broader.period_end >= $dateFrom" : ""}
+      ${dateTo ? "AND broader.period_start <= $dateTo" : ""}
+      AND (
+        ${competitorOverlapDays} > ${candidateOverlapDays}
+        OR (
+          ${competitorOverlapDays} = ${candidateOverlapDays}
+          AND ${competitorReportDays} < ${candidateReportDays}
+        )
+        OR (
+          ${competitorOverlapDays} = ${candidateOverlapDays}
+          AND ${competitorReportDays} = ${candidateReportDays}
+          AND broader.period_end > r.period_end
+        )
+      )
   )`);
 
   return {
