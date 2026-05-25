@@ -956,18 +956,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           <Kpi title={card.title} value={card.value} note={card.note} icon={card.icon} key={card.title} />
         ))}
       </section>
-      <nav className="subtabs">
-        {[
-          ["summary", "Summary"],
-          ["sku", "Brand / SKU"],
-          ["lines", "P&L lines"],
-          ["import", "Import"],
-        ].map(([id, label]) => (
-          <button className={subtab === id ? "active" : ""} type="button" onClick={() => setSubtab(id)} key={id}>
-            {label}
-          </button>
-        ))}
-      </nav>
 
       {subtab === "summary" && (
         <section className="summaryStack">
@@ -1197,7 +1185,7 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
 function App() {
   const [page, setPage] = useState("overview");
   const [financeSubtab, setFinanceSubtab] = useState("summary");
-  const [financeNavOpen, setFinanceNavOpen] = useState(true);
+  const [financeNavOpen, setFinanceNavOpen] = useState(false);
   const [filters, setFilters] = useState({
     batch: "all",
     dimension: "class",
@@ -1348,7 +1336,7 @@ function App() {
             type="button"
             onClick={() => {
               setPage("finance");
-              setFinanceNavOpen((open) => (page === "finance" ? !open : true));
+              setFinanceNavOpen((open) => !open);
             }}
           >
             <CircleDollarSign size={18} />

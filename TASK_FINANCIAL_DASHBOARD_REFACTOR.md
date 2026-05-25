@@ -34,6 +34,12 @@ Make the finance area easier to navigate, reduce visual clutter, and fix incorre
   - Add a "current scope" strip for selected batch/company/entity/date context.
   - Commit and push.
 
+- [x] 6. Reduce duplicate navigation and enforce click-to-open sidebar dropdown
+  - Start with finance submenu collapsed by default.
+  - Open/close finance submenu only when the finance menu is clicked.
+  - Remove duplicate top content tabs to reduce page clutter.
+  - Commit and push.
+
 ## Notes
 - Work in small commits so each completed item can be reviewed independently.
 - Keep existing behavior intact unless directly related to the tasks above.
