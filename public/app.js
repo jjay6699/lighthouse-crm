@@ -1594,7 +1594,7 @@ function DebitNoteDashboard() {
       </section>
 
       {/* Tab controls */}
-      <div className="segmentedControl" style={{ marginBottom: "20px" }}>
+      <div className="toggleContainer" style={{ marginBottom: "20px", width: "max-content", maxWidth: "100%" }}>
         {[
           ["summary", "Audit Summary"],
           ["pricing", `Price Discrepancies (${stats.priceDiscrepanciesCount})`],
@@ -1604,7 +1604,7 @@ function DebitNoteDashboard() {
           ["proposals_list", "All Proposals (Excel)"],
           ["import", "Import & Upload"],
         ].map(([id, label]) => (
-          <button key={id} className={subtab === id ? "active" : ""} onClick={() => setSubtab(id)}>
+          <button key={id} className={`toggleButton ${subtab === id ? "active" : ""}`} onClick={() => setSubtab(id)}>
             {label}
           </button>
         ))}
