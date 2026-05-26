@@ -303,10 +303,10 @@ function Growth({ value, status, missingLabel = "n/a" }) {
 const skuSortOptions = [
   { value: "revenue", label: "Sales" },
   { value: "gross_profit", label: "Margin $" },
-  { value: "growth_value_p2", label: "Sales growth $ vs P2" },
-  { value: "growth_p2", label: "Sales growth % vs P2" },
-  { value: "growth_value_p3", label: "Sales growth $ vs P3" },
-  { value: "growth_p3", label: "Sales growth % vs P3" },
+  { value: "growth_value_p2", label: "Sales growth $ (P1 vs P2)" },
+  { value: "growth_p2", label: "Sales growth % (P1 vs P2)" },
+  { value: "growth_value_p3", label: "Sales growth $ (P1 vs P3)" },
+  { value: "growth_p3", label: "Sales growth % (P1 vs P3)" },
 ];
 
 function sortSkuRows(rows, sortBy) {
@@ -376,10 +376,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
       "Revenue Share",
       "Avg Price (HKD)",
       "Margin Dollars (HKD)",
-      "Growth Value vs P2 (HKD)",
-      "Growth % vs P2",
-      "Growth Value vs P3 (HKD)",
-      "Growth % vs P3"
+      "Growth Value (P1 vs P2) (HKD)",
+      "Growth % (P1 vs P2)",
+      "Growth Value (P1 vs P3) (HKD)",
+      "Growth % (P1 vs P3)"
     ];
 
     const csvRows = [headers.join(",")];
@@ -559,10 +559,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                 <th>Share</th>
                 <th>Avg price</th>
                 <th>Margin $</th>
-                <th>Growth $ vs P2</th>
-                <th>Growth % vs P2</th>
-                <th>Growth $ vs P3</th>
-                <th>Growth % vs P3</th>
+                <th>Growth $ (P1 vs P2)</th>
+                <th>Growth % (P1 vs P2)</th>
+                <th>Growth $ (P1 vs P3)</th>
+                <th>Growth % (P1 vs P3)</th>
               </tr>
             </thead>
             <tbody>
@@ -952,7 +952,7 @@ function Overview({ data, goFinance }) {
 
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh, subtab, setSubtab }) {
   const isClassView = filters.dimension === "class";
-  const [comparisonMode, setComparisonMode] = useState("standard");
+  const [comparisonMode, setComparisonMode] = useState("custom");
   
   const comparisonModeOptions = [
     { value: "standard", label: "Standard comparison" },
@@ -1085,10 +1085,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
             <p>Fine-tune manual date ranges for Comparison Period 2 and Comparison Period 3.</p>
           </div>
           <div className="customComparisonGrid">
-            <DateField label="P2 From (Comp A)" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
-            <DateField label="P2 To (Comp A)" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
-            <DateField label="P3 From (Comp B)" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
-            <DateField label="P3 To (Comp B)" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
+            <DateField label="P2 From (Comparison A)" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
+            <DateField label="P2 To (Comparison A)" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
+            <DateField label="P3 From (Comparison B)" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
+            <DateField label="P3 To (Comparison B)" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
           </div>
         </div>
       )}

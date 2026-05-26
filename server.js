@@ -1223,7 +1223,7 @@ function getDashboard(params) {
   };
   if (hasSkuSales) {
     const skuFilter = skuWhereFromSearch(params);
-    const skuBrandValue = "s.brand";
+    const skuBrandValue = "COALESCE(sc.mapped_brand, s.brand)";
     const skuBrandKey = brandKeyFromValue(skuBrandValue);
     const skuJoin = `
       FROM sku_sales s
@@ -1269,7 +1269,7 @@ function getDashboard(params) {
           ${skuBrandKey} AS brand_key,
           MIN(${skuBrandValue}) AS brand,
           s.sku,
-          s.product_name,
+          COALESCE(sc.mapped_product_name, s.product_name) AS product_name,
           SUM(s.quantity) AS quantity,
           SUM(s.amount_hkd) AS revenue,
           SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN NULL ELSE s.quantity * sc.unit_cost_hkd END) AS cogs_hkd,
@@ -1278,7 +1278,7 @@ function getDashboard(params) {
           COUNT(DISTINCT c.name) AS company_count,
           COUNT(DISTINCT s.customer) AS customer_count
         ${skuJoin}
-        GROUP BY ${skuBrandKey}, s.sku, s.product_name
+        GROUP BY ${skuBrandKey}, s.sku, COALESCE(sc.mapped_product_name, s.product_name)
         HAVING ABS(revenue) > 0.01
         ORDER BY revenue DESC
         LIMIT 250
@@ -1438,7 +1438,7 @@ function getDashboard(params) {
 
       const skuComparisonSql = `
         SELECT
-          ${skuBrandKey} || '|' || lower(s.sku) AS sku_key,
+          ${skuBrandKey} || '|' || lower(s.sku) || '|' || lower(trim(COALESCE(sc.mapped_product_name, s.product_name))) AS sku_key,
           SUM(s.amount_hkd) AS revenue
         FROM sku_sales s
         JOIN batches b ON b.id = s.batch_id
@@ -1450,7 +1450,7 @@ function getDashboard(params) {
           `
           ${skuComparisonSql}
           ${currentFilter.sql}
-          GROUP BY ${skuBrandKey}, lower(s.sku)
+          GROUP BY ${skuBrandKey}, lower(s.sku), lower(trim(COALESCE(sc.mapped_product_name, s.product_name)))
           `
         )
         .all(currentFilter.values);
@@ -1459,7 +1459,7 @@ function getDashboard(params) {
           `
           ${skuComparisonSql}
           ${lyFilter.sql}
-          GROUP BY ${skuBrandKey}, lower(s.sku)
+          GROUP BY ${skuBrandKey}, lower(s.sku), lower(trim(COALESCE(sc.mapped_product_name, s.product_name)))
           `
         )
         .all(lyFilter.values);
@@ -1468,7 +1468,7 @@ function getDashboard(params) {
           `
           ${skuComparisonSql}
           ${p3mFilter.sql}
-          GROUP BY ${skuBrandKey}, lower(s.sku)
+          GROUP BY ${skuBrandKey}, lower(s.sku), lower(trim(COALESCE(sc.mapped_product_name, s.product_name)))
           `
         )
         .all(p3mFilter.values);
@@ -1526,7 +1526,7 @@ function getDashboard(params) {
   const skuLyRevenue = sumRevenue(skuBrandLy);
   const skuP3mRevenue = sumRevenue(skuBrandP3m);
   const skuKey = (row) =>
-    `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}`;
+    `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").trim().toLowerCase()}`;
   const skuGrossProfit = (row) => {
     if (row.cogs_hkd === null || row.cogs_hkd === undefined) return null;
     return Number(row.revenue || 0) - Number(row.cogs_hkd || 0);
