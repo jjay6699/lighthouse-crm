@@ -310,21 +310,45 @@ h1 {
   transform: translateY(-0.5px);
 }
 
-/* Glassmorphic Filter Bar & Floating Elements */
 .filterBar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(226, 232, 240, 0.8);
-  border-radius: 10px;
+  border-radius: 12px;
   backdrop-filter: blur(12px);
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.02);
   position: sticky;
   top: 16px;
   z-index: 10;
 }
+
+.filterGroup {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.filterGroup.dateGroup {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dateFieldPair {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.filterDivider {
+  height: 1px;
+  background: rgba(226, 232, 240, 0.5);
+  margin: 2px 0;
+}
+
 
 .filterHelp {
   margin-top: -10px;
@@ -1899,7 +1923,18 @@ tr:hover {
 
   .filterBar {
     position: static;
+  }
+
+  .filterGroup {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filterGroup.dateGroup {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dateFieldPair {
+    grid-column: span 2;
   }
 
   .metricGrid,
@@ -1977,6 +2012,16 @@ tr:hover {
   }
 
   .datePair {
+    grid-template-columns: 1fr;
+  }
+
+  .filterGroup,
+  .filterGroup.dateGroup {
+    grid-template-columns: 1fr;
+  }
+
+  .dateFieldPair {
+    grid-column: span 1;
     grid-template-columns: 1fr;
   }
 

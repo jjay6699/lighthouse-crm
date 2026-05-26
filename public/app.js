@@ -663,9 +663,9 @@ function ScopeStrip({ filters }) {
     { label: "Company", value: filters.company === "all" ? "All companies" : filters.company },
     { label: "Brand", value: filters.brand?.length ? `${filters.brand.length} selected` : "All brands" },
     { label: "Customer", value: filters.customer?.length ? `${filters.customer.length} selected` : "All customers" },
-    { label: "P1 (Main)", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
-    { label: "P2 (Comp A)", value: filters.dateFrom2 && filters.dateTo2 ? `${filters.dateFrom2} to ${filters.dateTo2}` : "Not set" },
-    { label: "P3 (Comp B)", value: filters.dateFrom3 && filters.dateTo3 ? `${filters.dateFrom3} to ${filters.dateTo3}` : "Not set" },
+    { label: "Active Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
+    { label: "Comparison Period A", value: filters.dateFrom2 && filters.dateTo2 ? `${filters.dateFrom2} to ${filters.dateTo2}` : "Not set" },
+    { label: "Comparison Period B", value: filters.dateFrom3 && filters.dateTo3 ? `${filters.dateFrom3} to ${filters.dateTo3}` : "Not set" },
   ];
   return (
     <div className="scopeStrip">
@@ -955,8 +955,8 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const [comparisonMode, setComparisonMode] = useState("custom");
   
   const comparisonModeOptions = [
-    { value: "standard", label: "Standard comparison" },
-    { value: "custom", label: "Custom comparison" }
+    { value: "standard", label: "Auto-comparison (LY / P3M)" },
+    { value: "custom", label: "Custom comparison (Manual dates)" }
   ];
 
   useEffect(() => {
@@ -1065,14 +1065,27 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       </header>
 
       <section className="filterBar">
-        <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
-        <Select label="View" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, brand: [], customer: [] })} />
-        <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
-        <MultiSelect label="Brand" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
-        <MultiSelect label="Customer" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...filters, customer: values })} />
-        <DateField label="P1 From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
-        <DateField label="P1 To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
-        <Select label="Comparison" value={comparisonMode} options={comparisonModeOptions} onChange={(value) => setComparisonMode(value)} />
+        <div className="filterGroup">
+          <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
+          <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
+          <Select label="View By" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, brand: [], customer: [] })} />
+          {isClassView ? (
+            <MultiSelect label="Select Brands" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
+          ) : (
+            <MultiSelect label="Select Customers" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...values, customer: values })} />
+          )}
+        </div>
+        
+        <div className="filterDivider" />
+        
+        <div className="filterGroup dateGroup">
+          <div className="dateFieldPair">
+            <DateField label="Period Start" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
+            <DateField label="Period End" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
+          </div>
+          <Select label="Compare With" value={comparisonMode} options={comparisonModeOptions} onChange={(value) => setComparisonMode(value)} />
+          <div /> {/* Empty balance element */}
+        </div>
       </section>
       <p className="filterHelp">
         Batch keeps uploads separate. Brand and Customer filters filter P&L lines dynamically based on active dimension view, and apply concurrently to SKU sales analysis.
@@ -1085,10 +1098,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
             <p>Fine-tune manual date ranges for Comparison Period 2 and Comparison Period 3.</p>
           </div>
           <div className="customComparisonGrid">
-            <DateField label="P2 From (Comparison A)" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
-            <DateField label="P2 To (Comparison A)" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
-            <DateField label="P3 From (Comparison B)" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
-            <DateField label="P3 To (Comparison B)" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
+            <DateField label="Comparison A Start" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
+            <DateField label="Comparison A End" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
+            <DateField label="Comparison B Start" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
+            <DateField label="Comparison B End" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
           </div>
         </div>
       )}
