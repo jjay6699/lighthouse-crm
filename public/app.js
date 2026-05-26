@@ -1446,6 +1446,7 @@ function DebitNoteDashboard({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadState, setUploadState] = useState({ busy: false, message: "" });
+  const [exploreType, setExploreType] = useState("brand");
 
   async function uploadFiles(files) {
     if (!files.length) return;
@@ -1587,6 +1588,7 @@ function DebitNoteDashboard({
           ["overlaps", `Double Billing / Overlaps (${stats.overlapsCount})`],
           ["duplicates", `Exact Duplicates (${stats.duplicatesCount})`],
           ["unpromoted", `Missing Proposals (${stats.unmatchedPeriodsCount})`],
+          ["explore", "Explore & Drilldown"],
           ["pdf_list", "All Claims (PDF)"],
           ["proposals_list", "All Proposals (Excel)"],
           ["import", "Import & Upload"],
@@ -1948,169 +1950,300 @@ function DebitNoteDashboard({
         </div>
       )}
 
-      {/* BRAND DETAIL DRILLDOWN VIEW */}
-      {subtab === "brand_detail" && selectedBrand && (
-        <div className="panel">
-          <div className="panelHeader" style={{ borderBottom: "1px solid var(--border)", paddingBottom: "20px", marginBottom: "25px" }}>
-            <div>
-              <p className="eyebrow">Brand Audit Drilldown</p>
-              <h2>Brand: {selectedBrand}</h2>
-              <p>Analysis of all debit notes and promotional claims matching this brand</p>
+      {/* EXPLORE & DRILLDOWN SUBTAB */}
+      {subtab === "explore" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "25px" }}>
+          <div className="panel" style={{ padding: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px" }}>
+              <div>
+                <h3 style={{ fontSize: "16px", fontWeight: "bold" }}>Interactive Exploration Center</h3>
+                <p style={{ fontSize: "13px", opacity: 0.7 }}>Select an entity category below to drill down into detailed claims, matching proposals, and exact calculations.</p>
+              </div>
+              <div className="toggleContainer" style={{ margin: 0, padding: "4px", background: "rgba(0,0,0,0.03)", borderRadius: "10px" }}>
+                <button 
+                  className={`toggleButton ${exploreType === "brand" ? "active" : ""}`} 
+                  onClick={() => { setExploreType("brand"); setSelectedBrand(null); setSelectedFile(null); }}
+                  style={{ borderRadius: "8px", fontSize: "13px", padding: "6px 16px" }}
+                >
+                  <Package size={14} style={{ marginRight: "6px", verticalAlign: "middle" }} />
+                  Drill Down by Brand
+                </button>
+                <button 
+                  className={`toggleButton ${exploreType === "document" ? "active" : ""}`} 
+                  onClick={() => { setExploreType("document"); setSelectedBrand(null); setSelectedFile(null); }}
+                  style={{ borderRadius: "8px", fontSize: "13px", padding: "6px 16px" }}
+                >
+                  <Receipt size={14} style={{ marginRight: "6px", verticalAlign: "middle" }} />
+                  Drill Down by Document
+                </button>
+              </div>
             </div>
           </div>
 
-          {(() => {
-            const brandProps = proposals.filter(p => p.brand === selectedBrand);
-            const brandSkus = new Set(brandProps.map(p => p.sku));
-            const brandClaims = debitNotes.filter(d => brandSkus.has(d.sku));
-            
-            const claimedAmt = brandClaims.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0);
-            const matchedCount = brandClaims.filter(c => c.auditStatus === "match").length;
-            const unpromotedCount = brandClaims.filter(c => c.auditStatus === "unpromoted").length;
-
-            return (
-              <>
-                <div className="overviewGrid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginBottom: "25px" }}>
-                  <Kpi title="Brand Claimed Total" value={hkd(claimedAmt)} note={`${brandClaims.length} items billed`} icon={CircleDollarSign} />
-                  <Kpi title="Matches Confirmed" value={matchedCount} note={`${brandProps.length} agreed mechanisms`} icon={CheckCircle2} />
-                  <Kpi title="Missing Proposals" value={unpromotedCount} note="Claims in unpromoted periods" icon={CalendarDays} />
+          {exploreType === "brand" ? (
+            <>
+              {/* Brand Grid Selection */}
+              {!selectedBrand ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "20px" }}>
+                  {Array.from(new Set(proposals.map(p => p.brand).filter(Boolean))).map(brand => {
+                    const brandProps = proposals.filter(p => p.brand === brand);
+                    const brandSkus = new Set(brandProps.map(p => p.sku));
+                    const brandClaims = debitNotes.filter(d => brandSkus.has(d.sku));
+                    const brandAmt = brandClaims.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0);
+                    
+                    return (
+                      <div 
+                        key={brand} 
+                        className="moduleCard" 
+                        onClick={() => setSelectedBrand(brand)}
+                        style={{ cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s", padding: "20px", display: "flex", flexDirection: "column", justifyContent: "space-between", height: "130px" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "var(--shadow-lg)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
+                      >
+                        <div>
+                          <strong style={{ fontSize: "16px", color: "var(--text)" }}>{brand}</strong>
+                          <span style={{ fontSize: "12px", opacity: 0.6, display: "block", marginTop: "4px" }}>
+                            {brandClaims.length} extracted claims
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid rgba(0,0,0,0.03)", paddingTop: "10px", marginTop: "10px" }}>
+                          <span style={{ fontSize: "11px", opacity: 0.5 }}>Claim Total</span>
+                          <strong style={{ fontSize: "14px", color: "var(--primary)" }}>{hkd(brandAmt)}</strong>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                  <button 
+                    className="secondaryButton" 
+                    onClick={() => setSelectedBrand(null)}
+                    style={{ width: "max-content", alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px" }}
+                  >
+                    ← Back to Brand list
+                  </button>
+                  <div className="panel" style={{ padding: "24px" }}>
+                    <div className="panelHeader" style={{ borderBottom: "1px solid var(--border)", paddingBottom: "20px", marginBottom: "25px" }}>
+                      <div>
+                        <p className="eyebrow">Brand Audit Drilldown</p>
+                        <h2>Brand: {selectedBrand}</h2>
+                        <p>Analysis of all debit notes and promotional claims matching this brand</p>
+                      </div>
+                    </div>
 
-                <h3>Extracted Brand Line Items</h3>
-                <div className="tableWrap compactTable" style={{ marginTop: "15px" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>SKU</th>
-                        <th>Description</th>
-                        <th>Claim Dates</th>
-                        <th>Qty</th>
-                        <th>Rate Charged</th>
-                        <th>Rate Agreed</th>
-                        <th>Audit Status</th>
-                        <th>Claim Document (PDF)</th>
-                        <th>Agreed Document (Excel)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {brandClaims.map((row, idx) => (
-                        <tr key={row.id}>
-                          <td><strong>{row.sku}</strong></td>
-                          <td>{row.description}</td>
-                          <td><small>{row.date_from} to {row.date_to}</small></td>
-                          <td>{row.qty}</td>
-                          <td>{hkd(row.unit_cost)}</td>
-                          <td>{row.agreedRate ? hkd(row.agreedRate) : "-"}</td>
-                          <td>
-                            {row.auditStatus === "match" ? (
-                              <span className="badge" style={{ background: "#eafaf1", color: "#27ae60", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
-                                ✔ OK Match
-                              </span>
-                            ) : (
-                              <span className="badge" style={{ background: "#fff9f2", color: "#f2994a", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
-                                ❓ Missing Promo
-                              </span>
-                            )}
-                          </td>
-                          <td><small>{row.file_name}</small></td>
-                          <td><small>{row.matchedProposalFile || "-"}</small></td>
-                        </tr>
-                      ))}
-                      {brandClaims.length === 0 && (
-                        <tr>
-                          <td colSpan="9" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
-                            No claims found for this brand.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                    {(() => {
+                      const brandProps = proposals.filter(p => p.brand === selectedBrand);
+                      const brandSkus = new Set(brandProps.map(p => p.sku));
+                      const brandClaims = debitNotes.filter(d => brandSkus.has(d.sku));
+                      
+                      const claimedAmt = brandClaims.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0);
+                      const matchedCount = brandClaims.filter(c => c.auditStatus === "match").length;
+                      const unpromotedCount = brandClaims.filter(c => c.auditStatus === "unpromoted").length;
+
+                      return (
+                        <>
+                          <div className="overviewGrid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginBottom: "25px" }}>
+                            <Kpi title="Brand Claimed Total" value={hkd(claimedAmt)} note={`${brandClaims.length} items billed`} icon={CircleDollarSign} />
+                            <Kpi title="Matches Confirmed" value={matchedCount} note={`${brandProps.length} agreed mechanisms`} icon={CheckCircle2} />
+                            <Kpi title="Missing Proposals" value={unpromotedCount} note="Claims in unpromoted periods" icon={CalendarDays} />
+                          </div>
+
+                          <h3>Extracted Brand Line Items</h3>
+                          <div className="tableWrap compactTable" style={{ marginTop: "15px" }}>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>SKU</th>
+                                  <th>Description</th>
+                                  <th>Claim Dates</th>
+                                  <th>Qty</th>
+                                  <th>Rate Charged</th>
+                                  <th>Rate Agreed</th>
+                                  <th>Audit Status</th>
+                                  <th>Claim Document (PDF)</th>
+                                  <th>Agreed Document (Excel)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {brandClaims.map((row, idx) => (
+                                  <tr key={row.id}>
+                                    <td><strong>{row.sku}</strong></td>
+                                    <td>{row.description}</td>
+                                    <td><small>{row.date_from} to {row.date_to}</small></td>
+                                    <td>{row.qty}</td>
+                                    <td>{hkd(row.unit_cost)}</td>
+                                    <td>{row.agreedRate ? hkd(row.agreedRate) : "-"}</td>
+                                    <td>
+                                      {row.auditStatus === "match" ? (
+                                        <span className="badge" style={{ background: "#eafaf1", color: "#27ae60", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
+                                          ✔ OK Match
+                                        </span>
+                                      ) : (
+                                        <span className="badge" style={{ background: "#fff9f2", color: "#f2994a", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
+                                          ❓ Missing Promo
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td><small>{row.file_name}</small></td>
+                                    <td><small>{row.matchedProposalFile || "-"}</small></td>
+                                  </tr>
+                                ))}
+                                {brandClaims.length === 0 && (
+                                  <tr>
+                                    <td colSpan="9" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
+                                      No claims found for this brand.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* DOCUMENT/FILE DETAIL DRILLDOWN VIEW */}
-      {subtab === "file_detail" && selectedFile && (
-        <div className="panel">
-          <div className="panelHeader" style={{ borderBottom: "1px solid var(--border)", paddingBottom: "20px", marginBottom: "25px" }}>
-            <div>
-              <p className="eyebrow">Document Audit Drilldown</p>
-              <h2 style={{ wordBreak: "break-all" }}>{selectedFile}</h2>
-              <p>Analysis of all items billed in this specific debit note PDF</p>
-            </div>
-          </div>
-
-          {(() => {
-            const fileClaims = debitNotes.filter(d => d.file_name === selectedFile);
-            const claimedAmt = fileClaims.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0);
-            const matchedCount = fileClaims.filter(c => c.auditStatus === "match").length;
-            const unpromotedCount = fileClaims.filter(c => c.auditStatus === "unpromoted").length;
-            const matchRate = fileClaims.length > 0 ? (matchedCount / fileClaims.length) * 100 : 0;
-
-            return (
-              <>
-                <div className="overviewGrid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginBottom: "25px" }}>
-                  <Kpi title="Document Billed Total" value={hkd(claimedAmt)} note={`${fileClaims.length} items`} icon={CircleDollarSign} />
-                  <Kpi title="Agreed Match Rate" value={`${matchRate.toFixed(1)}%`} note={`${matchedCount} matching items`} icon={CheckCircle2} />
-                  <Kpi title="Missing Proposals" value={unpromotedCount} note="Claims in unpromoted periods" icon={CalendarDays} />
+              )}
+            </>
+          ) : (
+            <>
+              {/* Document Grid Selection */}
+              {!selectedFile ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "20px" }}>
+                  {Array.from(new Set(debitNotes.map(d => d.file_name).filter(Boolean))).map(filename => {
+                    const fileClaims = debitNotes.filter(d => d.file_name === filename);
+                    const fileAmt = fileClaims.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0);
+                    const matchedCount = fileClaims.filter(c => c.auditStatus === "match").length;
+                    const matchRate = fileClaims.length > 0 ? (matchedCount / fileClaims.length) * 100 : 0;
+                    
+                    let displayName = filename;
+                    const dateMatch = filename.match(/_(\d{4})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_/);
+                    if (dateMatch) {
+                      displayName = `Week of ${dateMatch[2]}/${dateMatch[3]}`;
+                    } else {
+                      displayName = filename.replace("pnsrep302a_", "").replace(".pdf", "");
+                    }
+                    
+                    return (
+                      <div 
+                        key={filename} 
+                        className="moduleCard" 
+                        onClick={() => setSelectedFile(filename)}
+                        style={{ cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s", padding: "20px", display: "flex", flexDirection: "column", justifyContent: "space-between", height: "140px" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "var(--shadow-lg)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
+                      >
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <strong style={{ fontSize: "15px", color: "var(--text)" }}>{displayName}</strong>
+                            <span className="badge" style={{ background: matchRate === 100 ? "#eafaf1" : "#27ae60", color: matchRate === 100 ? "#27ae60" : "#f2994a", padding: "2px 6px", borderRadius: "8px", fontSize: "10px", fontWeight: "bold" }}>
+                              {matchRate.toFixed(0)}% Match
+                            </span>
+                          </div>
+                          <span style={{ fontSize: "12px", opacity: 0.5, display: "block", marginTop: "6px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={filename}>
+                            {filename}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid rgba(0,0,0,0.03)", paddingTop: "10px", marginTop: "10px" }}>
+                          <span style={{ fontSize: "11px", opacity: 0.5 }}>{fileClaims.length} items billed</span>
+                          <strong style={{ fontSize: "14px", color: "var(--primary)" }}>{hkd(fileAmt)}</strong>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                  <button 
+                    className="secondaryButton" 
+                    onClick={() => setSelectedFile(null)}
+                    style={{ width: "max-content", alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px" }}
+                  >
+                    ← Back to Document list
+                  </button>
+                  <div className="panel" style={{ padding: "24px" }}>
+                    <div className="panelHeader" style={{ borderBottom: "1px solid var(--border)", paddingBottom: "20px", marginBottom: "25px" }}>
+                      <div>
+                        <p className="eyebrow">Document Audit Drilldown</p>
+                        <h2 style={{ wordBreak: "break-all" }}>{selectedFile}</h2>
+                        <p>Analysis of all items billed in this specific debit note PDF</p>
+                      </div>
+                    </div>
 
-                <h3>Items Billed in this Document</h3>
-                <div className="tableWrap compactTable" style={{ marginTop: "15px" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>SKU</th>
-                        <th>Description</th>
-                        <th>Claim Period</th>
-                        <th>Qty</th>
-                        <th>Rate Charged</th>
-                        <th>Rate Agreed</th>
-                        <th>Audit Status</th>
-                        <th>Matching Proposal (Excel)</th>
-                        <th>Line Claim Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fileClaims.map((row, idx) => (
-                        <tr key={row.id}>
-                          <td><strong>{row.sku}</strong></td>
-                          <td>{row.description}</td>
-                          <td><small>{row.date_from} to {row.date_to}</small></td>
-                          <td>{row.qty}</td>
-                          <td>{hkd(row.unit_cost)}</td>
-                          <td>{row.agreedRate ? hkd(row.agreedRate) : "-"}</td>
-                          <td>
-                            {row.auditStatus === "match" ? (
-                              <span className="badge" style={{ background: "#eafaf1", color: "#27ae60", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
-                                ✔ OK Match
-                              </span>
-                            ) : (
-                              <span className="badge" style={{ background: "#fff9f2", color: "#f2994a", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
-                                ❓ Missing Promo
-                              </span>
-                            )}
-                          </td>
-                          <td><small>{row.matchedProposalFile || "-"}</small></td>
-                          <td><strong>{hkd(row.qty * row.unit_cost)}</strong></td>
-                        </tr>
-                      ))}
-                      {fileClaims.length === 0 && (
-                        <tr>
-                          <td colSpan="9" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
-                            No claims found in this file.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                    {(() => {
+                      const fileClaims = debitNotes.filter(d => d.file_name === selectedFile);
+                      const claimedAmt = fileClaims.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0);
+                      const matchedCount = fileClaims.filter(c => c.auditStatus === "match").length;
+                      const unpromotedCount = fileClaims.filter(c => c.auditStatus === "unpromoted").length;
+                      const matchRate = fileClaims.length > 0 ? (matchedCount / fileClaims.length) * 100 : 0;
+
+                      return (
+                        <>
+                          <div className="overviewGrid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginBottom: "25px" }}>
+                            <Kpi title="Document Billed Total" value={hkd(claimedAmt)} note={`${fileClaims.length} items`} icon={CircleDollarSign} />
+                            <Kpi title="Agreed Match Rate" value={`${matchRate.toFixed(1)}%`} note={`${matchedCount} matching items`} icon={CheckCircle2} />
+                            <Kpi title="Missing Proposals" value={unpromotedCount} note="Claims in unpromoted periods" icon={CalendarDays} />
+                          </div>
+
+                          <h3>Items Billed in this Document</h3>
+                          <div className="tableWrap compactTable" style={{ marginTop: "15px" }}>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>SKU</th>
+                                  <th>Description</th>
+                                  <th>Claim Period</th>
+                                  <th>Qty</th>
+                                  <th>Rate Charged</th>
+                                  <th>Rate Agreed</th>
+                                  <th>Audit Status</th>
+                                  <th>Matching Proposal (Excel)</th>
+                                  <th>Line Claim Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {fileClaims.map((row, idx) => (
+                                  <tr key={row.id}>
+                                    <td><strong>{row.sku}</strong></td>
+                                    <td>{row.description}</td>
+                                    <td><small>{row.date_from} to {row.date_to}</small></td>
+                                    <td>{row.qty}</td>
+                                    <td>{hkd(row.unit_cost)}</td>
+                                    <td>{row.agreedRate ? hkd(row.agreedRate) : "-"}</td>
+                                    <td>
+                                      {row.auditStatus === "match" ? (
+                                        <span className="badge" style={{ background: "#eafaf1", color: "#27ae60", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
+                                          ✔ OK Match
+                                        </span>
+                                      ) : (
+                                        <span className="badge" style={{ background: "#fff9f2", color: "#f2994a", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
+                                          ❓ Missing Promo
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td><small>{row.matchedProposalFile || "-"}</small></td>
+                                    <td><strong>{hkd(row.qty * row.unit_cost)}</strong></td>
+                                  </tr>
+                                ))}
+                                {fileClaims.length === 0 && (
+                                  <tr>
+                                    <td colSpan="9" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
+                                      No claims found in this file.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
-              </>
-            );
-          })()}
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -2511,83 +2644,13 @@ function App() {
                 ["overlaps", "Overlapping Claims"],
                 ["duplicates", "Duplicates Check"],
                 ["unpromoted", "Missing Proposals"],
-              ].map(([id, label]) => (
-                <button
-                  className={page === "debit" && debitSubtab === id && !selectedDebitBrand && !selectedDebitFile ? "active" : ""}
-                  type="button"
-                  key={id}
-                  onClick={() => {
-                    setPage("debit");
-                    setDebitSubtab(id);
-                    setSelectedDebitBrand(null);
-                    setSelectedDebitFile(null);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-
-              {debitAudit && debitAudit.ready && (
-                <>
-                  <div className="subNavHeader" style={{ padding: "8px 16px 4px 20px", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", opacity: 0.5, fontWeight: "bold" }}>
-                    By Brand
-                  </div>
-                  {Array.from(new Set(debitAudit.proposals.map(p => p.brand).filter(Boolean))).map(brand => (
-                    <button
-                      className={page === "debit" && debitSubtab === "brand_detail" && selectedDebitBrand === brand ? "active" : ""}
-                      type="button"
-                      key={brand}
-                      style={{ paddingLeft: "28px" }}
-                      onClick={() => {
-                        setPage("debit");
-                        setDebitSubtab("brand_detail");
-                        setSelectedDebitBrand(brand);
-                        setSelectedDebitFile(null);
-                      }}
-                    >
-                      {brand}
-                    </button>
-                  ))}
-
-                  <div className="subNavHeader" style={{ padding: "8px 16px 4px 20px", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", opacity: 0.5, fontWeight: "bold" }}>
-                    By Document
-                  </div>
-                  {Array.from(new Set(debitAudit.debitNotes.map(d => d.file_name).filter(Boolean))).map(filename => {
-                    let displayName = filename;
-                    const dateMatch = filename.match(/_(\d{4})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})_/);
-                    if (dateMatch) {
-                      displayName = `Week of ${dateMatch[2]}/${dateMatch[3]}`;
-                    } else {
-                      displayName = filename.replace("pnsrep302a_", "").replace(".pdf", "");
-                    }
-                    return (
-                      <button
-                        className={page === "debit" && debitSubtab === "file_detail" && selectedDebitFile === filename ? "active" : ""}
-                        type="button"
-                        key={filename}
-                        style={{ paddingLeft: "28px" }}
-                        title={filename}
-                        onClick={() => {
-                          setPage("debit");
-                          setDebitSubtab("file_detail");
-                          setSelectedDebitFile(filename);
-                          setSelectedDebitBrand(null);
-                        }}
-                      >
-                        {displayName}
-                      </button>
-                    );
-                  })}
-                </>
-              )}
-
-              {[
+                ["explore", "Explore & Drilldown"],
                 ["pdf_list", "All Claims (PDF)"],
                 ["proposals_list", "All Proposals (Excel)"],
                 ["import", "Import & Upload"],
               ].map(([id, label]) => (
                 <button
-                  className={page === "debit" && debitSubtab === id && !selectedDebitBrand && !selectedDebitFile ? "active" : ""}
+                  className={page === "debit" && debitSubtab === id ? "active" : ""}
                   type="button"
                   key={id}
                   onClick={() => {
