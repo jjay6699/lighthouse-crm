@@ -106,11 +106,13 @@ function ContributionList({ rows }) {
     <div className="contributionList">
       {rows.map((row) => (
         <div className="contributionRow" key={row.company}>
-          <div>
+          <div className="rowMeta">
             <strong>{row.company}</strong>
-            <span>{hkd(row.revenue)} revenue</span>
+            <span className="amountBadge">
+              <span className="amountText">{hkd(row.revenue)}</span>
+              <span className="percentagePill">{pct(row.revenue_share)}</span>
+            </span>
           </div>
-          <em>{pct(row.revenue_share)}</em>
           <div className="barTrack">
             <i style={{ width: `${Math.max(2, row.revenue_share * 100)}%` }} />
           </div>
@@ -121,8 +123,6 @@ function ContributionList({ rows }) {
 }
 
 function InsightGrid({ insights }) {
-  const growthWindow = insights.skuGrowth?.window?.current;
-  const growthWindowLabel = growthWindow?.start && growthWindow?.end ? `${growthWindow.start} to ${growthWindow.end}` : "-";
   const cards = [
     {
       label: "Revenue",
@@ -130,36 +130,91 @@ function InsightGrid({ insights }) {
       lines: [
         ["Growth vs P2", <Growth value={insights.skuGrowth?.growth_p2} />],
         ["Growth vs P3", <Growth value={insights.skuGrowth?.growth_p3} />],
-        ["Growth window", growthWindowLabel],
-        ["Top company", insights.topRevenueCompany ? `${insights.topRevenueCompany.company} · ${pct(insights.topRevenueCompany.revenue_share)}` : "-"],
-        ["Top brand", insights.topRevenueBrand ? `${insights.topRevenueBrand.entity} · ${pct(insights.topRevenueBrand.revenue_share)}` : "-"],
+        [
+          "Top company",
+          insights.topRevenueCompany ? (
+            <span className="insightValueWrap">
+              <span className="insightName">{insights.topRevenueCompany.company}</span>
+              <span className="insightPercentageBadge">{pct(insights.topRevenueCompany.revenue_share)}</span>
+            </span>
+          ) : "-"
+        ],
+        [
+          "Top brand",
+          insights.topRevenueBrand ? (
+            <span className="insightValueWrap">
+              <span className="insightName">{insights.topRevenueBrand.entity}</span>
+              <span className="insightPercentageBadge">{pct(insights.topRevenueBrand.revenue_share)}</span>
+            </span>
+          ) : "-"
+        ]
       ],
     },
     {
       label: "Cost of sales",
       value: hkd(insights.costOfSalesTotal),
       lines: [
-        ["% revenue", insights.revenueTotal ? pct(Number(insights.costOfSalesTotal || 0) / Number(insights.revenueTotal || 0)) : "0.0%"],
-        ["Highest brand", insights.topCostOfSalesBrand ? insights.topCostOfSalesBrand.entity : "-"],
-        ["Contribution", insights.topCostOfSalesBrand ? pct(insights.topCostOfSalesBrand.share_of_cost_of_sales) : "-"],
+        [
+          "% revenue",
+          insights.revenueTotal ? (
+            <span className="insightPercentageBadge highlight">{pct(Number(insights.costOfSalesTotal || 0) / Number(insights.revenueTotal || 0))}</span>
+          ) : "0.0%"
+        ],
+        [
+          "Highest brand",
+          insights.topCostOfSalesBrand ? (
+            <span className="insightValueWrap">
+              <span className="insightName">{insights.topCostOfSalesBrand.entity}</span>
+              <span className="insightPercentageBadge">{pct(insights.topCostOfSalesBrand.share_of_cost_of_sales)}</span>
+            </span>
+          ) : "-"
+        ]
       ],
     },
     {
       label: "Expenses",
       value: hkd(insights.expenseTotal),
       lines: [
-        ["% revenue", insights.revenueTotal ? pct(Number(insights.expenseTotal || 0) / Number(insights.revenueTotal || 0)) : "0.0%"],
-        ["Highest item", insights.largestExpense?.line_item || "-"],
-        ["Contribution", insights.largestExpense ? `${pct(insights.largestExpense.share_of_expenses)} of expenses` : "-"],
+        [
+          "% revenue",
+          insights.revenueTotal ? (
+            <span className="insightPercentageBadge highlight">{pct(Number(insights.expenseTotal || 0) / Number(insights.revenueTotal || 0))}</span>
+          ) : "0.0%"
+        ],
+        [
+          "Highest item",
+          insights.largestExpense ? (
+            <span className="insightValueWrap">
+              <span className="insightName">{insights.largestExpense.line_item}</span>
+              <span className="insightPercentageBadge">{pct(insights.largestExpense.share_of_expenses)}</span>
+            </span>
+          ) : "-"
+        ]
       ],
     },
     {
       label: "Net margin",
       value: pct(insights.netMargin),
       lines: [
-        ["Net earnings", hkd(insights.netEarnings)],
-        ["Best company", insights.bestMarginCompany ? `${insights.bestMarginCompany.company} · ${pct(insights.bestMarginCompany.net_margin)}` : "-"],
-        ["Best brand", insights.bestMarginBrand ? `${insights.bestMarginBrand.entity} · ${pct(insights.bestMarginBrand.net_margin)}` : "-"],
+        ["Net earnings", <strong className="insightEarningsText">{hkd(insights.netEarnings)}</strong>],
+        [
+          "Best company",
+          insights.bestMarginCompany ? (
+            <span className="insightValueWrap">
+              <span className="insightName">{insights.bestMarginCompany.company}</span>
+              <span className="insightPercentageBadge positive">{pct(insights.bestMarginCompany.net_margin)}</span>
+            </span>
+          ) : "-"
+        ],
+        [
+          "Best brand",
+          insights.bestMarginBrand ? (
+            <span className="insightValueWrap">
+              <span className="insightName">{insights.bestMarginBrand.entity}</span>
+              <span className="insightPercentageBadge positive">{pct(insights.bestMarginBrand.net_margin)}</span>
+            </span>
+          ) : "-"
+        ]
       ],
     },
   ];
@@ -244,11 +299,15 @@ function ExpenseBars({ rows }) {
     <div className="expenseBars">
       {rows.map((row) => (
         <div className="expenseRow" key={row.line_item}>
-          <div>
+          <div className="rowMeta">
             <strong>{row.line_item}</strong>
-            <span>{hkd(row.amount)} | {pct(row.share_of_expenses)} of expenses | {pct(row.share_of_revenue)} of revenue</span>
+            <span className="amountBadge">
+              <span className="amountText">{hkd(row.amount)}</span>
+              <span className="percentagePill muted">{pct(row.share_of_expenses)} share</span>
+              <span className="percentagePill blue">{pct(row.share_of_revenue)} rev</span>
+            </span>
           </div>
-          <div className="barTrack">
+          <div className="barTrack expenseTrack">
             <i style={{ width: `${Math.max(2, (Number(row.amount || 0) / max) * 100)}%` }} />
           </div>
         </div>
