@@ -1676,7 +1676,7 @@ function DebitNoteDashboard({
                   cursor: "pointer"
                 }}
               >
-                <option value="All Months">📅 All Months</option>
+                <option value="All Months">All Months</option>
                 {uniqueMonths.map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
