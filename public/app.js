@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import {
   BarChart3,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
   CircleDollarSign,
   Database,
   Download,
@@ -17,6 +19,9 @@ import {
   TrendingUp,
   UploadCloud,
   WalletCards,
+  Receipt,
+  Package,
+  Tags,
 } from "lucide-react";
 import {
   Bar,
@@ -1093,13 +1098,13 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
     ? [
         { title: "SKU revenue", value: hkd(skuRevenue), note: "Sales by Product rows", icon: TrendingUp },
         { title: "SKU gross margin", value: pctOrDash(skuGrossMargin), note: skuGrossProfit === null ? "COGS mapping needed" : hkd(skuGrossProfit), icon: LineChart },
-        { title: "Units sold", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.quantity || 0)), note: "Filtered transaction dates", icon: WalletCards },
-        { title: "SKUs", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.sku_count || 0)), note: `${data.sku?.totals?.brand_count || 0} brands`, icon: BarChart3 },
+        { title: "Units sold", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.quantity || 0)), note: "Filtered transaction dates", icon: Package },
+        { title: "SKUs", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.sku_count || 0)), note: `${data.sku?.totals?.brand_count || 0} brands`, icon: Tags },
       ]
     : [
         { title: "Revenue", value: hkd(data.kpis.revenue), note: "Total for Income", icon: TrendingUp },
         { title: "Gross margin", value: pct(grossMargin), note: hkd(data.kpis.gross_profit), icon: LineChart },
-        { title: "Expense ratio", value: pct(expenseRatio), note: hkd(data.kpis.expenses), icon: WalletCards },
+        { title: "Expense ratio", value: pct(expenseRatio), note: hkd(data.kpis.expenses), icon: Receipt },
         { title: "Net margin", value: pct(netMargin), note: hkd(data.kpis.net_earnings), icon: CircleDollarSign },
       ];
 
@@ -1581,7 +1586,9 @@ function App() {
           >
             <CircleDollarSign size={18} />
             Financial Consolidation
-            <span className="chevron">{financeNavOpen ? "-" : "+"}</span>
+            <span className="chevron">
+              {financeNavOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
           </button>
           {financeNavOpen && (
             <div className="subNav">
@@ -1609,7 +1616,16 @@ function App() {
         <div className="sidePanel">
           <span>Currency standard</span>
           <strong>HKD</strong>
-          <small>{data.meta.fx.map((rate) => `${rate.source_currency}->HKD ${Number(rate.rate).toFixed(4)}`).join(" | ")}</small>
+          <div className="fxRatesGrid">
+            {data.meta.fx.map((rate) => (
+              <div className="fxRow" key={rate.source_currency}>
+                <span className="fxCurrency">{rate.source_currency}</span>
+                <span className="fxArrow">→</span>
+                <span className="fxTarget">HKD</span>
+                <span className="fxRate">{Number(rate.rate).toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
         </div>
         <button className="logoutButton" type="button" onClick={logout}>
           <LogOut size={16} />

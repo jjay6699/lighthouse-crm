@@ -53,13 +53,13 @@ input {
   position: sticky;
   top: 0;
   height: 100vh;
-  padding: 24px 16px;
-  background: var(--nav);
+  padding: 28px 20px;
+  background: linear-gradient(180deg, #0b1329, #050b18);
   color: #f8fafc;
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  border-right: 1px solid rgba(255, 255, 255, 0.03);
+  gap: 32px;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .brand {
@@ -101,22 +101,24 @@ input {
 }
 
 .mainNav button {
-  min-height: 40px;
-  border-radius: var(--radius);
+  min-height: 42px;
+  border-radius: 8px;
   padding: 0 14px;
   color: #94a3b8;
   background: transparent;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   text-align: left;
   font-size: 13px;
   font-weight: 500;
+  transition: all 0.2s ease-in-out;
+  border-left: 3px solid transparent;
 }
 
 .mainNav button:hover {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .groupButton {
@@ -126,40 +128,62 @@ input {
 
 .mainNav .chevron {
   margin-left: auto;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #475569;
-  font-weight: 500;
-  transition: var(--transition);
+  transition: all 0.2s;
 }
 
 .mainNav button.active {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(16, 185, 129, 0.08);
   color: #ffffff;
   font-weight: 600;
+  border-left: 3px solid #10b981;
+  box-shadow: inset 0 0 10px rgba(16, 185, 129, 0.05);
 }
 
 .mainNav button.active .chevron {
   color: #94a3b8;
-  transform: rotate(0deg);
 }
 
 .subNav {
   display: grid;
-  gap: 4px;
-  margin: 2px 0 6px 30px;
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
-  padding-left: 10px;
+  gap: 6px;
+  margin: 4px 0 8px 24px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-left: 16px;
 }
 
 .subNav button {
-  min-height: 32px;
+  min-height: 34px;
   border-radius: 6px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: #64748b;
   background: transparent;
   text-align: left;
   font-size: 13px;
   font-weight: 500;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.subNav button::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.15);
+  transition: all 0.2s;
+}
+
+.subNav button:hover::before {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
 }
 
 .subNav button:hover {
@@ -172,41 +196,81 @@ input {
   font-weight: 600;
 }
 
+.subNav button.active::before {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  transform: translateY(-50%) scale(1.2);
+}
+
 .sidePanel {
   margin-top: auto;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(255, 255, 255, 0.01);
-  border-radius: var(--radius);
-  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  padding: 16px;
   display: grid;
   gap: 6px;
 }
 
 .sidePanel span {
-  color: #475569;
+  color: #64748b;
   font-size: 10px;
   text-transform: uppercase;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
 .sidePanel strong {
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 700;
   color: #ffffff;
 }
 
-.sidePanel small {
-  color: #64748b;
+.fxRatesGrid {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+}
+
+.fxRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 11px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.fxCurrency {
+  color: #ffffff;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.fxArrow {
+  color: #475569;
+  margin: 0 4px;
+}
+
+.fxTarget {
+  color: #64748b;
+}
+
+.fxRate {
+  color: #10b981;
+  font-weight: 600;
+  margin-left: auto;
 }
 
 .logoutButton {
-  min-height: 38px;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.03);
+  min-height: 40px;
+  border-radius: 8px;
+  background: rgba(244, 63, 94, 0.02);
+  border: 1px solid rgba(244, 63, 94, 0.08);
   color: #94a3b8;
   display: flex;
   align-items: center;
@@ -214,11 +278,15 @@ input {
   gap: 8px;
   font-size: 13px;
   font-weight: 500;
+  transition: all 0.2s ease-in-out;
+  margin-top: 4px;
 }
 
 .logoutButton:hover {
-  background: rgba(244, 63, 94, 0.08);
-  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.2);
+  color: #ff4b6b;
+  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.05);
 }
 
 /* Workspace Container Styling */
@@ -540,6 +608,7 @@ h1 {
 }
 
 .metric {
+  position: relative;
   min-height: 88px;
   padding: 16px 20px;
   background: #ffffff;
@@ -550,19 +619,30 @@ h1 {
   align-items: center;
   gap: 16px;
   transition: all 0.2s ease-in-out;
+  overflow: hidden;
 }
 
-.metric:nth-child(1) {
-  border-left: 4px solid var(--teal);
+.metric::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  transition: background 0.2s;
 }
-.metric:nth-child(2) {
-  border-left: 4px solid var(--gold);
+
+.metric:nth-child(1)::before {
+  background: var(--teal);
 }
-.metric:nth-child(3) {
-  border-left: 4px solid var(--blue);
+.metric:nth-child(2)::before {
+  background: var(--gold);
 }
-.metric:nth-child(4) {
-  border-left: 4px solid var(--rose);
+.metric:nth-child(3)::before {
+  background: var(--blue);
+}
+.metric:nth-child(4)::before {
+  background: var(--rose);
 }
 
 .metric:hover {
