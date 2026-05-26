@@ -971,7 +971,7 @@ function BatchManager({ batches, uploadState, onRename, onDelete }) {
   );
 }
 
-function Overview({ data, goFinance }) {
+function Overview({ data, goFinance, setPage }) {
   const reports = data.meta.reports;
   return (
     <main className="workspace">
@@ -1003,10 +1003,15 @@ function Overview({ data, goFinance }) {
             </div>
           </div>
           <div className="moduleList">
-            <button className="moduleCard active" type="button" onClick={goFinance}>
+            <button className="moduleCard active" type="button" onClick={goFinance} style={{ marginBottom: "15px" }}>
               <CircleDollarSign size={18} />
               <strong>Financial Consolidation</strong>
               <span>HKD consolidated P&L analytics with company, brand, customer, date, and section filters.</span>
+            </button>
+            <button className="moduleCard" type="button" onClick={() => setPage("debit")}>
+              <Receipt size={18} style={{ color: "var(--primary)" }} />
+              <strong>Debit Note Auditing</strong>
+              <span>Audit and flag WTC trade promotion discrepancies, price overcharges, and overlapping billing.</span>
             </button>
           </div>
         </div>
@@ -1426,6 +1431,591 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
   );
 }
 
+function DebitNoteDashboard() {
+  const [audit, setAudit] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [subtab, setSubtab] = useState("summary"); // summary, overlaps, pricing, duplicates, pdf_list, proposals_list, import
+  const [searchQuery, setSearchQuery] = useState("");
+  const [uploadState, setUploadState] = useState({ busy: false, message: "" });
+
+  async function loadAudit() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/debit-notes/audit");
+      const d = await res.json();
+      if (d.ok) {
+        setAudit(d);
+        setError(null);
+      } else {
+        setError(d.error || "Failed to load audit results.");
+      }
+    } catch (err) {
+      setError(err.message || "Failed to load audit data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAudit();
+  }, []);
+
+  async function uploadFiles(files) {
+    if (!files.length) return;
+    setUploadState({ busy: true, message: "Uploading and processing debit notes..." });
+    const form = new FormData();
+    Array.from(files).forEach((file) => form.append("files", file));
+
+    try {
+      const res = await fetch("/api/upload-debit-note", { method: "POST", body: form });
+      const d = await res.json();
+      if (d.ok) {
+        setUploadState({ busy: false, message: "Upload and processing complete!" });
+        loadAudit();
+      } else {
+        setUploadState({ busy: false, message: d.message || d.error || "Upload failed." });
+      }
+    } catch (err) {
+      setUploadState({ busy: false, message: err.message || "Upload error." });
+    }
+  }
+
+  async function triggerImport() {
+    setUploadState({ busy: true, message: "Parsing existing PDF and XLSM files..." });
+    try {
+      const res = await fetch("/api/reimport-debit-notes", { method: "POST" });
+      const d = await res.json();
+      if (d.ok) {
+        setUploadState({ busy: false, message: "Re-import and parsing complete!" });
+        loadAudit();
+      } else {
+        setUploadState({ busy: false, message: d.stdout || d.stderr || "Re-import failed." });
+      }
+    } catch (err) {
+      setUploadState({ busy: false, message: err.message || "Re-import error." });
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="workspace">
+        <header className="pageHeader">
+          <div>
+            <p className="eyebrow">Debit Note Audit</p>
+            <h1>Loading audit details...</h1>
+          </div>
+        </header>
+        <div style={{ display: "flex", justifyContent: "center", padding: "50px" }}>
+          <i className="loadingSpinner" style={{ width: "32px", height: "32px" }} />
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="workspace">
+        <header className="pageHeader">
+          <div>
+            <p className="eyebrow">Debit Note Audit</p>
+            <h1>Error loading audit</h1>
+            <p className="subtitle" style={{ color: "#d93838" }}>{error}</p>
+          </div>
+          <button className="primaryButton" onClick={loadAudit}>Retry</button>
+        </header>
+      </main>
+    );
+  }
+
+  const { stats, debitNotes, proposals, overlaps, duplicates, priceDiscrepancies, ready, message } = audit;
+
+  if (!ready) {
+    return (
+      <main className="workspace">
+        <header className="pageHeader">
+          <div>
+            <p className="eyebrow">Debit Note Audit</p>
+            <h1>Audit Not Ready</h1>
+            <p className="subtitle">{message || "Audit tables are not populated. Please run import."}</p>
+          </div>
+        </header>
+        <section className="cleanGrid" style={{ gridTemplateColumns: "1fr" }}>
+          <div className="panel" style={{ padding: "40px", textAlign: "center" }}>
+            <FileUp size={48} style={{ opacity: 0.3, marginBottom: "15px" }} />
+            <h3>No data imported yet</h3>
+            <p style={{ maxWidth: "450px", margin: "10px auto 20px" }}>
+              Please run the import process to parse all WTC PDFs and Excel proposals placed in your `debit notes` folder, or drop new files here.
+            </p>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginBottom: "20px" }}>
+              <button className="primaryButton" onClick={triggerImport} disabled={uploadState.busy}>
+                <RefreshCw size={16} /> Run Parser on debit notes folder
+              </button>
+            </div>
+            <label className={`dropzone ${uploadState.busy ? "busy" : ""}`} style={{ maxWidth: "400px", margin: "0 auto" }}>
+              <input type="file" accept=".pdf,.xlsm" multiple disabled={uploadState.busy} onChange={(e) => uploadFiles(e.target.files)} />
+              <UploadCloud size={24} />
+              <strong>Upload PDFs & XLSMs</strong>
+              <span>Audit will process them instantly</span>
+            </label>
+            {uploadState.message && <p className="notice" style={{ marginTop: "15px" }}>{uploadState.message}</p>}
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  function hkd(val) {
+    return new Intl.NumberFormat("zh-HK", { style: "currency", currency: "HKD", minimumFractionDigits: 2 }).format(val);
+  }
+
+  return (
+    <main className="workspace">
+      <header className="pageHeader">
+        <div>
+          <p className="eyebrow">Trade Promotion Auditing</p>
+          <h1>Debit Note Auditing Control</h1>
+          <p className="subtitle">Identify overcharging, duplicate invoice periods, and price differences between claims and proposals.</p>
+        </div>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button className="primaryButton" onClick={triggerImport} disabled={uploadState.busy}>
+            <RefreshCw size={16} className={uploadState.busy ? "loadingSpinner" : ""} />
+            Re-run audit
+          </button>
+        </div>
+      </header>
+
+      {/* KPI Cards Grid */}
+      <section className="overviewGrid" style={{ marginBottom: "25px" }}>
+        <Kpi title="Total Claimed" value={hkd(stats.totalClaimedAmount)} note={`${stats.totalDebitNotes} PDF line items`} icon={CircleDollarSign} />
+        <Kpi title="Audited Discrepancies" value={hkd(stats.totalOverchargeAmount)} note={`${stats.priceDiscrepanciesCount} overcharged products`} icon={TrendingUp} />
+        <Kpi title="Overlapping Periods" value={stats.overlapsCount} note={`${stats.duplicatesCount} exact duplicates`} icon={CalendarDays} />
+        <Kpi title="Proposals Matched" value={stats.totalProposals} note="Agreed trade sheets" icon={Database} />
+      </section>
+
+      {/* Tab controls */}
+      <div className="segmentedControl" style={{ marginBottom: "20px" }}>
+        {[
+          ["summary", "Audit Summary"],
+          ["pricing", `Price Discrepancies (${stats.priceDiscrepanciesCount})`],
+          ["overlaps", `Double Billing / Overlaps (${stats.overlapsCount})`],
+          ["duplicates", `Exact Duplicates (${stats.duplicatesCount})`],
+          ["pdf_list", "All Claims (PDF)"],
+          ["proposals_list", "All Proposals (Excel)"],
+          ["import", "Import & Upload"],
+        ].map(([id, label]) => (
+          <button key={id} className={subtab === id ? "active" : ""} onClick={() => setSubtab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* SUMMARY SUBTAB */}
+      {subtab === "summary" && (
+        <section className="cleanGrid">
+          <div className="panel" style={{ gridColumn: "span 2" }}>
+            <div className="panelHeader">
+              <div>
+                <h2>Audit Findings Overview</h2>
+                <p>Categorized promotion overcharging checks</p>
+              </div>
+            </div>
+            
+            <div className="moduleList" style={{ gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+              <div className="moduleCard" style={{ cursor: "pointer", borderLeft: "4px solid #d93838" }} onClick={() => setSubtab("pricing")}>
+                <CircleDollarSign size={24} style={{ color: "#d93838", marginBottom: "10px" }} />
+                <strong>Price Discrepancies</strong>
+                <span className="badge" style={{ background: "#fdf2f2", color: "#d93838", padding: "4px 8px", borderRadius: "12px", width: "max-content", marginTop: "5px" }}>
+                  {stats.priceDiscrepanciesCount} items flagging higher rates
+                </span>
+                <span style={{ marginTop: "10px", display: "block" }}>
+                  Flagged when WTC charges more per pc (e.g. $71.50) than agreed in the XLSM proposal sheet.
+                </span>
+              </div>
+
+              <div className="moduleCard" style={{ cursor: "pointer", borderLeft: "4px solid #f2994a" }} onClick={() => setSubtab("overlaps")}>
+                <CalendarDays size={24} style={{ color: "#f2994a", marginBottom: "10px" }} />
+                <strong>Double Billing / Overlapping Periods</strong>
+                <span className="badge" style={{ background: "#fff9f2", color: "#f2994a", padding: "4px 8px", borderRadius: "12px", width: "max-content", marginTop: "5px" }}>
+                  {stats.overlapsCount} overlapping periods flagged
+                </span>
+                <span style={{ marginTop: "10px", display: "block" }}>
+                  Flagged when same SKU claims overlap with another period, charging multiple times for the same dates.
+                </span>
+              </div>
+            </div>
+
+            <div className="panelHeader" style={{ marginTop: "30px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+              <div>
+                <h2>Top Cost Recovery SKU items</h2>
+                <p>SKUs that are overcharged the most</p>
+              </div>
+            </div>
+            
+            <div className="tableWrap compactTable">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product SKU</th>
+                    <th>Description</th>
+                    <th>Agreed Rate</th>
+                    <th>Charged Rate</th>
+                    <th>Qty Claimed</th>
+                    <th>Total Claimed</th>
+                    <th>Potential Overcharge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {priceDiscrepancies.slice(0, 10).map((row, idx) => (
+                    <tr key={idx} style={{ background: idx % 2 === 0 ? "rgba(0,0,0,0.01)" : "none" }}>
+                      <td><strong>{row.sku}</strong></td>
+                      <td>{row.description}</td>
+                      <td>{hkd(row.agreed_rate)}</td>
+                      <td style={{ color: "#d93838" }}>{hkd(row.charged_rate)}</td>
+                      <td>{row.qty}</td>
+                      <td>{hkd(row.charged_rate * row.qty)}</td>
+                      <td><span style={{ color: "#d93838", fontWeight: "bold" }}>{hkd(row.total_overcharge)}</span></td>
+                    </tr>
+                  ))}
+                  {priceDiscrepancies.length === 0 && (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
+                        No price discrepancies found. Great work!
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Debit Note Files Scanned</h2>
+                <p>Parsed PDF documents</p>
+              </div>
+            </div>
+            <div className="compactList" style={{ maxHeight: "400px", overflowY: "auto" }}>
+              {Array.from(new Set(debitNotes.map(x => x.file_name))).map(fn => (
+                <div key={fn} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
+                  <span style={{ fontSize: "13px", fontWeight: "500" }}>{fn}</span>
+                  <span className="pill badge" style={{ background: "rgba(0,0,0,0.05)", fontSize: "11px", padding: "2px 6px" }}>
+                    {debitNotes.filter(x => x.file_name === fn).length} rows
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* PRICE DISCREPANCIES SUBTAB */}
+      {subtab === "pricing" && (
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Agreed Rates Auditing (Claims > Proposals)</h2>
+              <p>Flags where charged unit price is higher than agreed trade promo sheet funding support rate</p>
+            </div>
+          </div>
+
+          <div className="tableWrap compactTable">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Description</th>
+                  <th>Claim Source (PDF)</th>
+                  <th>Claim Date Range</th>
+                  <th>Qty</th>
+                  <th>Claim Rate</th>
+                  <th>Agreed Rate</th>
+                  <th>Proposal Source (Excel)</th>
+                  <th>Total Overcharge</th>
+                </tr>
+              </thead>
+              <tbody>
+                {priceDiscrepancies.map((row, idx) => (
+                  <tr key={idx}>
+                    <td><strong>{row.sku}</strong></td>
+                    <td>{row.description}</td>
+                    <td><small>{row.debit_file}</small></td>
+                    <td><small>{row.date_from} to {row.date_to}</small></td>
+                    <td>{row.qty}</td>
+                    <td style={{ color: "#d93838" }}>{hkd(row.charged_rate)}</td>
+                    <td>{hkd(row.agreed_rate)}</td>
+                    <td><small>{row.proposal_file}</small></td>
+                    <td><strong style={{ color: "#d93838" }}>{hkd(row.total_overcharge)}</strong></td>
+                  </tr>
+                ))}
+                {priceDiscrepancies.length === 0 && (
+                  <tr>
+                    <td colSpan="9" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
+                      No pricing discrepancies found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* DOUBLE BILLING / OVERLAPS SUBTAB */}
+      {subtab === "overlaps" && (
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Double Billing Check (Overlapping Period Claims)</h2>
+              <p>Flags multiple claims made for overlapping dates for the same SKU</p>
+            </div>
+          </div>
+
+          <div className="tableWrap compactTable">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Description</th>
+                  <th>Claim A</th>
+                  <th>Period A</th>
+                  <th>Rate A</th>
+                  <th>Qty A</th>
+                  <th>Claim B</th>
+                  <th>Period B</th>
+                  <th>Rate B</th>
+                  <th>Qty B</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overlaps.map((row, idx) => (
+                  <tr key={idx} style={{ background: "rgba(217, 56, 56, 0.02)" }}>
+                    <td><strong>{row.a_sku}</strong></td>
+                    <td>{row.a_desc}</td>
+                    <td><small>{row.a_file}</small></td>
+                    <td style={{ borderLeft: "2px solid #f2994a", paddingLeft: "8px" }}><span style={{ color: "#f2994a", fontWeight: "500" }}>{row.a_date_from} to {row.a_date_to}</span></td>
+                    <td>{hkd(row.a_unit_cost)}</td>
+                    <td>{row.a_qty}</td>
+                    <td><small>{row.b_file}</small></td>
+                    <td style={{ borderLeft: "2px solid #f2994a", paddingLeft: "8px" }}><span style={{ color: "#f2994a", fontWeight: "500" }}>{row.b_date_from} to {row.b_date_to}</span></td>
+                    <td>{hkd(row.b_unit_cost)}</td>
+                    <td>{row.b_qty}</td>
+                  </tr>
+                ))}
+                {overlaps.length === 0 && (
+                  <tr>
+                    <td colSpan="10" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
+                      No overlapping periods found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* EXACT DUPLICATES SUBTAB */}
+      {subtab === "duplicates" && (
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Duplicate Invoices Check</h2>
+              <p>Flags where exact same quantity and date range are charged twice or more</p>
+            </div>
+          </div>
+
+          <div className="tableWrap compactTable">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Description</th>
+                  <th>Quantity</th>
+                  <th>Rate Charged</th>
+                  <th>Period Claimed</th>
+                  <th>First Claim File</th>
+                  <th>Duplicate Claim File</th>
+                </tr>
+              </thead>
+              <tbody>
+                {duplicates.map((row, idx) => (
+                  <tr key={idx} style={{ background: "rgba(217, 56, 56, 0.04)" }}>
+                    <td><strong>{row.a_sku}</strong></td>
+                    <td>{row.a_desc}</td>
+                    <td>{row.a_qty}</td>
+                    <td>{hkd(row.a_unit_cost)}</td>
+                    <td><span style={{ color: "#d93838", fontWeight: "bold" }}>{row.a_date_from} to {row.a_date_to}</span></td>
+                    <td><small>{row.a_file}</small></td>
+                    <td><small>{row.b_file}</small></td>
+                  </tr>
+                ))}
+                {duplicates.length === 0 && (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: "center", padding: "30px", opacity: 0.5 }}>
+                      No exact duplicate claims found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ALL DEBIT NOTES LIST */}
+      {subtab === "pdf_list" && (
+        <div className="panel">
+          <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2>All Extracted Claims (from PDFs)</h2>
+              <p>Raw list of all promotional debit note records parsed</p>
+            </div>
+            <input 
+              type="text" 
+              placeholder="Search SKU or Desc..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "8px", width: "250px", fontSize: "13px" }}
+            />
+          </div>
+
+          <div className="tableWrap compactTable">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Description</th>
+                  <th>Dates Claimed</th>
+                  <th>Quantity</th>
+                  <th>Unit Cost</th>
+                  <th>Total Claim</th>
+                  <th>Source Document</th>
+                </tr>
+              </thead>
+              <tbody>
+                {debitNotes
+                  .filter(row => !searchQuery || row.sku.includes(searchQuery) || row.description.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((row, idx) => (
+                    <tr key={row.id}>
+                      <td><strong>{row.sku}</strong></td>
+                      <td>{row.description}</td>
+                      <td>{row.date_from} to {row.date_to}</td>
+                      <td>{row.qty}</td>
+                      <td>{hkd(row.unit_cost)}</td>
+                      <td>{hkd(row.qty * row.unit_cost)}</td>
+                      <td><small>{row.file_name}</small></td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ALL PROPOSALS LIST */}
+      {subtab === "proposals_list" && (
+        <div className="panel">
+          <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2>All Trade Proposals (from Excels)</h2>
+              <p>Raw list of all agreed trade promotion sheet records parsed</p>
+            </div>
+            <input 
+              type="text" 
+              placeholder="Search SKU or Desc..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "8px", width: "250px", fontSize: "13px" }}
+            />
+          </div>
+
+          <div className="tableWrap compactTable">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Brand</th>
+                  <th>Description</th>
+                  <th>Promo Dates</th>
+                  <th>Agreed Rate</th>
+                  <th>Promo Price</th>
+                  <th>Adjustment</th>
+                  <th>Source Proposal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {proposals
+                  .filter(row => !searchQuery || row.sku.includes(searchQuery) || row.description.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((row, idx) => (
+                    <tr key={row.id}>
+                      <td><strong>{row.sku}</strong></td>
+                      <td>{row.brand}</td>
+                      <td>{row.description}</td>
+                      <td>{row.start_date} to {row.end_date}</td>
+                      <td><strong>{hkd(row.funding_support_pc)}</strong></td>
+                      <td>{row.promo_price ? hkd(row.promo_price) : "-"}</td>
+                      <td>{row.adjustment_basis || "-"}</td>
+                      <td><small>{row.file_name}</small></td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* IMPORT & UPLOAD SUBTAB */}
+      {subtab === "import" && (
+        <section className="cleanGrid" style={{ gridTemplateColumns: "1fr 1.5fr" }}>
+          <div className="panel" style={{ padding: "30px" }}>
+            <div className="sectionTitle" style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "15px" }}>
+              <FileUp size={18} />
+              <h2>Upload new files</h2>
+            </div>
+            <p style={{ marginBottom: "20px", fontSize: "13px", opacity: 0.8 }}>
+              Drag and drop any WTC PDF debit note files or Excel `.xlsm` promotion proposal sheets to instantly run them through the auditing engine.
+            </p>
+            <label className={`dropzone ${uploadState.busy ? "busy" : ""}`}>
+              <input type="file" accept=".pdf,.xlsm" multiple disabled={uploadState.busy} onChange={(e) => uploadFiles(e.target.files)} />
+              <UploadCloud size={24} />
+              <strong>Upload PDFs & XLSMs</strong>
+              <span>Include them in the current audit pool</span>
+            </label>
+            {uploadState.message && <p className="notice" style={{ marginTop: "15px" }}>{uploadState.message}</p>}
+          </div>
+
+          <div className="panel" style={{ padding: "30px" }}>
+            <div className="sectionTitle" style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "15px" }}>
+              <RefreshCw size={18} />
+              <h2>Audit Directory Controls</h2>
+            </div>
+            <p style={{ marginBottom: "20px", fontSize: "13px", opacity: 0.8 }}>
+              The system currently parses files placed in:
+              <br />
+              <code style={{ background: "rgba(0,0,0,0.05)", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", display: "inline-block", marginTop: "5px" }}>
+                D:\Lightmart CRM\debit notes
+              </code>
+            </p>
+            <button className="primaryButton" onClick={triggerImport} disabled={uploadState.busy} style={{ width: "max-content" }}>
+              <RefreshCw size={16} /> Run Full Re-parse on Folder
+            </button>
+            
+            <div style={{ marginTop: "30px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+              <h4>Important Git Notice</h4>
+              <p style={{ fontSize: "12px", opacity: 0.7, marginTop: "5px" }}>
+                The folder `D:\Lightmart CRM\debit notes` contains sensitive client files.
+                It has been successfully added to `.gitignore` to guarantee it will never be uploaded to GitHub.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}
+
 function App() {
   const [page, setPage] = useState("overview");
   const [financeSubtab, setFinanceSubtab] = useState("summary");
@@ -1459,92 +2049,61 @@ function App() {
           if (item && item !== "all") params.append(key, item);
         });
       } else if (value && value !== "all") {
-        params.set(key, value);
+        params.append(key, value);
       }
     });
+    if (search) params.append("search", search);
     return params.toString();
-  }, [filters]);
-
-  async function load() {
-    const requestId = loadRequestId.current + 1;
-    loadRequestId.current = requestId;
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/dashboard?${query}`);
-      const nextData = await response.json();
-      if (requestId === loadRequestId.current) {
-        setData(nextData);
-      }
-    } finally {
-      if (requestId === loadRequestId.current) {
-        setLoading(false);
-      }
-    }
-  }
+  }, [filters, search]);
 
   useEffect(() => {
     load();
   }, [query]);
 
-  useEffect(() => {
-    if (!data?.ready || datesInitialized) return;
-    const defaultRange = data.meta.availableDateRange || data.meta.skuDateRange || data.meta.dateRange || {};
-    if (defaultRange.min || defaultRange.max) {
-      const p1From = defaultRange.min || "";
-      const p1To = defaultRange.max || "";
-
-      setDatesInitialized(true);
-      setFilters((current) => ({
-        ...current,
-        dateFrom: current.dateFrom || p1From,
-        dateTo: current.dateTo || p1To,
-        dateFrom2: current.dateFrom2 || jsShiftDate(p1From, { years: -1 }),
-        dateTo2: current.dateTo2 || jsShiftDate(p1To, { years: -1 }),
-        dateFrom3: current.dateFrom3 || jsShiftDate(p1From, { months: -3 }),
-        dateTo3: current.dateTo3 || jsShiftDate(p1From, { days: -1 }),
-      }));
+  async function load() {
+    const reqId = ++loadRequestId.current;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard?${query}`);
+      const d = await res.json();
+      if (reqId !== loadRequestId.current) return;
+      if (d.ready) {
+        setData(d);
+        if (!datesInitialized && d.meta.dateRange.min && d.meta.dateRange.max) {
+          setFilters((prev) => ({
+            ...prev,
+            dateFrom: d.meta.dateRange.min,
+            dateTo: d.meta.dateRange.max,
+          }));
+          setDatesInitialized(true);
+        }
+      } else {
+        setData({ ready: false, error: d.error || "Dashboard database not ready." });
+      }
+    } catch (error) {
+      if (reqId !== loadRequestId.current) return;
+      setData({ ready: false, error: error.message });
+    } finally {
+      if (reqId === loadRequestId.current) setLoading(false);
     }
-  }, [data, datesInitialized]);
+  }
 
-  useEffect(() => {
-    if (!data?.ready) return;
-    const brandsSource = data.meta.entitiesByDimension?.class || [];
-    const allowedBrands = new Set(brandsSource);
-    const normalizedBrands = (filters.brand || []).filter((brand) => allowedBrands.has(brand));
-
-    const customersSource = data.meta.entitiesByDimension?.customer || [];
-    const allowedCustomers = new Set(customersSource);
-    const normalizedCustomers = (filters.customer || []).filter((customer) => allowedCustomers.has(customer));
-
-    if (
-      normalizedBrands.length !== (filters.brand || []).length ||
-      normalizedCustomers.length !== (filters.customer || []).length
-    ) {
-      setFilters((current) => ({
-        ...current,
-        brand: normalizedBrands,
-        customer: normalizedCustomers,
-      }));
-    }
-  }, [data, filters.brand, filters.customer, setFilters]);
-
-  async function uploadFiles(files, batchDetails) {
-    if (!files.length) return;
+  async function uploadFiles(files, details) {
+    setLoading(true);
     setUploadState({ busy: true, message: "Uploading reports..." });
-    const form = new FormData();
-    const details = typeof batchDetails === "string" ? { name: batchDetails } : batchDetails || {};
-    form.append("batchName", details.name || `Upload ${new Date().toISOString().slice(0, 10)}`);
-    form.append("periodStart", details.period_start || "");
-    form.append("periodEnd", details.period_end || "");
-    Array.from(files).forEach((file) => form.append("files", file));
+    try {
+      const form = new FormData();
+      form.append("batchName", details.name);
+      form.append("periodStart", details.period_start);
+      form.append("periodEnd", details.period_end);
+      Array.from(files).forEach((file) => form.append("files", file));
 
-    const upload = await fetch("/api/upload-finance", { method: "POST", body: form }).then((response) => response.json());
-    if (!upload.ok) {
-      setUploadState({ busy: false, message: upload.message || upload.error || "Upload failed." });
-      return;
+      const upload = await fetch("/api/upload-finance", { method: "POST", body: form }).then((response) => response.json());
+      setUploadState({ busy: false, message: upload.ok ? upload.stdout || "Batch imported successfully!" : upload.message || upload.error || "Upload failed." });
+      await load();
+    } finally {
+      setLoading(false);
     }
-
-    await rebuildDatabase();
   }
 
   async function rebuildDatabase() {
@@ -1585,7 +2144,7 @@ function App() {
   }
 
   if (!data) return <LoadingState />;
-  if (!data.ready) return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
+  if (!data.ready && page !== "debit") return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
 
   return (
     <>
@@ -1635,12 +2194,16 @@ function App() {
               ))}
             </div>
           )}
+          <button className={page === "debit" ? "active" : ""} type="button" onClick={() => setPage("debit")}>
+            <Receipt size={18} />
+            Debit Note
+          </button>
         </nav>
         <div className="sidePanel">
           <span>Currency standard</span>
           <strong>HKD</strong>
           <div className="fxRatesGrid">
-            {data.meta.fx.map((rate) => (
+            {data?.meta?.fx?.map((rate) => (
               <div className="fxRow" key={rate.source_currency}>
                 <span className="fxCurrency">{rate.source_currency}</span>
                 <span className="fxArrow">→</span>
@@ -1657,7 +2220,9 @@ function App() {
       </aside>
 
       {page === "overview" ? (
-        <Overview data={data} goFinance={() => setPage("finance")} />
+        <Overview data={data} goFinance={() => setPage("finance")} setPage={setPage} />
+      ) : page === "debit" ? (
+        <DebitNoteDashboard />
       ) : (
         <FinancialDashboard
           data={data}

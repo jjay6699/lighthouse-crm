@@ -300,6 +300,151 @@ function openDb() {
   return new DatabaseSync(dbPath, { readOnly: true });
 }
 
+function runDebitNoteImporter() {
+  const python = process.env.PYTHON || (bundledPython && existsSync(bundledPython) ? bundledPython : "python3");
+  return new Promise((resolve) => {
+    const child = spawn(python, [join(__dirname, "scripts", "import_debit_notes.py")], {
+      cwd: __dirname,
+      env: {
+        ...process.env,
+        DATA_DIR: dataDir,
+        DATABASE_PATH: dbPath,
+        DEBIT_NOTES_DIR: join(__dirname, "debit notes"),
+      },
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
+    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
+    child.on("close", (code) => {
+      resolve({ ok: code === 0, code, stdout: stdout.trim(), stderr: stderr.trim() });
+    });
+  });
+}
+
+async function uploadDebitNoteFiles(req) {
+  const contentType = req.headers["content-type"] || "";
+  const match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!match) {
+    return { ok: false, message: "Upload must use multipart/form-data." };
+  }
+
+  const boundary = Buffer.from(`--${match[1] || match[2]}`);
+  const body = await readBody(req);
+  const files = [];
+  let cursor = body.indexOf(boundary);
+
+  const debitNotesDir = normalize(join(__dirname, "debit notes"));
+  await mkdir(debitNotesDir, { recursive: true });
+
+  while (cursor !== -1) {
+    const next = body.indexOf(boundary, cursor + boundary.length);
+    if (next === -1) break;
+
+    const part = body.subarray(cursor + boundary.length + 2, next - 2);
+    const headerEnd = part.indexOf(Buffer.from("\r\n\r\n"));
+    if (headerEnd > -1) {
+      const header = part.subarray(0, headerEnd).toString("utf8");
+      const filenameMatch = header.match(/filename="([^"]+)"/i);
+      const content = part.subarray(headerEnd + 4);
+      
+      if (filenameMatch) {
+        const originalName = safeFileName(filenameMatch[1]);
+        const ext = originalName.toLowerCase().split('.').pop();
+        if (ext !== "pdf" && ext !== "xlsm") {
+          files.push({ name: originalName, skipped: true, reason: "Only .pdf and .xlsm files are accepted." });
+        } else {
+          const targetPath = join(debitNotesDir, originalName);
+          await writeFile(targetPath, content);
+          files.push({ name: originalName, size: content.length, skipped: false });
+        }
+      }
+    }
+
+    cursor = next;
+  }
+
+  const importResult = await runDebitNoteImporter();
+  return { ok: true, files, importResult };
+}
+
+function getDebitNotesAudit() {
+  const db = openDb();
+  if (!db) {
+    return { ok: false, error: "Database not found." };
+  }
+
+  try {
+    const hasDebitNotes = !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='debit_notes'").get();
+    if (!hasDebitNotes) {
+      return { ok: true, ready: false, message: "Debit Note tables not initialized. Please run import." };
+    }
+
+    const debitNotes = db.prepare("SELECT * FROM debit_notes ORDER BY date_from DESC, id DESC").all();
+    const proposals = db.prepare("SELECT * FROM promotion_proposals ORDER BY start_date DESC, id DESC").all();
+
+    const overlaps = db.prepare(`
+      SELECT 
+        a.id as a_id, a.file_name as a_file, a.sku as a_sku, a.description as a_desc, a.qty as a_qty, a.unit_cost as a_unit_cost, a.date_from as a_date_from, a.date_to as a_date_to,
+        b.id as b_id, b.file_name as b_file, b.qty as b_qty, b.unit_cost as b_unit_cost, b.date_from as b_date_from, b.date_to as b_date_to
+      FROM debit_notes a
+      JOIN debit_notes b ON a.sku = b.sku AND a.id < b.id
+      WHERE a.date_from <= b.date_to AND a.date_to >= b.date_from
+      ORDER BY a.sku, a.date_from DESC
+    `).all();
+
+    const duplicates = db.prepare(`
+      SELECT 
+        a.id as a_id, a.file_name as a_file, a.sku as a_sku, a.description as a_desc, a.qty as a_qty, a.unit_cost as a_unit_cost, a.date_from as a_date_from, a.date_to as a_date_to,
+        b.id as b_id, b.file_name as b_file
+      FROM debit_notes a
+      JOIN debit_notes b ON a.sku = b.sku AND a.id < b.id
+      WHERE a.date_from = b.date_from AND a.date_to = b.date_to AND a.qty = b.qty AND a.unit_cost = b.unit_cost
+      ORDER BY a.sku, a.date_from DESC
+    `).all();
+
+    const priceDiscrepancies = db.prepare(`
+      SELECT 
+        d.id as debit_id, d.file_name as debit_file, d.sku as sku, d.description as description, 
+        d.qty as qty, d.unit_cost as charged_rate, d.date_from as date_from, d.date_to as date_to,
+        p.file_name as proposal_file, p.funding_support_pc as agreed_rate, p.start_date as proposal_start, p.end_date as proposal_end,
+        (d.unit_cost - p.funding_support_pc) as overcharge_per_pc,
+        ((d.unit_cost - p.funding_support_pc) * d.qty) as total_overcharge
+      FROM debit_notes d
+      JOIN promotion_proposals p ON d.sku = p.sku
+      WHERE d.date_from <= p.end_date AND d.date_to >= p.start_date
+        AND (d.unit_cost - p.funding_support_pc) >= 0.10
+      ORDER BY total_overcharge DESC, d.sku
+    `).all();
+
+    const stats = {
+      totalDebitNotes: debitNotes.length,
+      totalProposals: proposals.length,
+      overlapsCount: overlaps.length,
+      duplicatesCount: duplicates.length,
+      priceDiscrepanciesCount: priceDiscrepancies.length,
+      totalClaimedAmount: debitNotes.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0),
+      totalOverchargeAmount: priceDiscrepancies.reduce((sum, item) => sum + item.total_overcharge, 0),
+    };
+
+    return {
+      ok: true,
+      ready: true,
+      stats,
+      debitNotes,
+      proposals,
+      overlaps,
+      duplicates,
+      priceDiscrepancies,
+    };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  } finally {
+    db.close();
+  }
+}
+
 function selectedEntities(params) {
   return params.getAll("entity").filter((value) => value && value !== "all");
 }
@@ -1754,6 +1899,33 @@ createServer(async (req, res) => {
 
   if (url.pathname === "/api/reimport-finance" && req.method === "POST") {
     json(res, 200, await runImporter());
+    return;
+  }
+
+  if (url.pathname === "/api/debit-notes/audit" && req.method === "GET") {
+    try {
+      json(res, 200, getDebitNotesAudit());
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/upload-debit-note" && req.method === "POST") {
+    try {
+      json(res, 200, await uploadDebitNoteFiles(req));
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/reimport-debit-notes" && req.method === "POST") {
+    try {
+      json(res, 200, await runDebitNoteImporter());
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
     return;
   }
 

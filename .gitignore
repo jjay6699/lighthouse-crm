@@ -8,4 +8,5 @@ __pycache__/
 
 # Sensitive financial source data and generated local database
 finance consilidation/
+debit notes/
 data/
