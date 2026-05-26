@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CircleDollarSign,
   Database,
+  Download,
   FileUp,
   Filter,
   LayoutDashboard,
@@ -355,6 +356,71 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     });
   };
 
+  const exportToCsv = () => {
+    const headers = [
+      entityLabel,
+      "SKU",
+      "Product Name",
+      "Quantity",
+      "Revenue (HKD)",
+      "Revenue Share",
+      "Avg Price (HKD)",
+      "Margin Dollars (HKD)",
+      "Growth Value vs LY (HKD)",
+      "Growth % vs LY",
+      "Growth Value vs P3M (HKD)",
+      "Growth % vs P3M"
+    ];
+
+    const csvRows = [headers.join(",")];
+
+    rows.forEach((row) => {
+      const entityVal = isClassView ? row.brand : row.customer || "Not specified";
+      const formatString = (val) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+      
+      const formatNum = (val) => {
+        if (val === null || val === undefined || Number.isNaN(Number(val))) return "";
+        return Number(val);
+      };
+
+      const formatPct = (val) => {
+        if (val === null || val === undefined || Number.isNaN(Number(val))) return "";
+        return (Number(val) * 100).toFixed(1) + "%";
+      };
+
+      const line = [
+        formatString(entityVal),
+        formatString(row.sku),
+        formatString(row.product_name),
+        formatNum(row.quantity),
+        formatNum(row.revenue),
+        formatPct(row.revenue_share),
+        formatNum(row.avg_price),
+        formatNum(row.gross_profit),
+        formatNum(row.growth_value_ly),
+        formatPct(row.growth_ly),
+        formatNum(row.growth_value_p3m),
+        formatPct(row.growth_p3m)
+      ];
+      csvRows.push(line.join(","));
+    });
+
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute("download", `SKU_Sales_Export_${entityLabel}_${sortBy}_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <section className="summaryStack">
       <section className="skuHeader panel">
@@ -448,7 +514,28 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
             <h2>SKU detail</h2>
             <p>{query ? `Filtered by "${query}"` : `Top SKU rows by ${skuSortOptions.find((option) => option.value === sortBy)?.label || "Sales"}`}</p>
           </div>
-          <Select label="Sort by" value={sortBy} options={skuSortOptions} onChange={setSortBy} />
+          <div className="panelActions" style={{ display: "flex", alignItems: "flex-end", gap: "10px" }}>
+            <button
+              className="ghostButton"
+              type="button"
+              onClick={exportToCsv}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                height: "34px",
+                padding: "0 12px",
+                borderRadius: "6px",
+                border: "1px solid var(--line)",
+                fontWeight: 500,
+                fontSize: "13px"
+              }}
+            >
+              <Download size={14} />
+              Export to CSV
+            </button>
+            <Select label="Sort by" value={sortBy} options={skuSortOptions} onChange={setSortBy} />
+          </div>
         </div>
         <div className="tableWrap compactTable">
           <table>
