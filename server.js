@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -367,6 +367,21 @@ async function uploadDebitNoteFiles(req) {
 
   const importResult = await runDebitNoteImporter();
   return { ok: true, files, importResult };
+}
+
+async function clearDebitNotes() {
+  const debitNotesDir = normalize(join(__dirname, "debit notes"));
+  if (existsSync(debitNotesDir)) {
+    const files = await readdir(debitNotesDir);
+    for (const file of files) {
+      const ext = file.toLowerCase().split('.').pop();
+      if (ext === "pdf" || ext === "xlsm") {
+        await rm(join(debitNotesDir, file), { force: true });
+      }
+    }
+  }
+  const importResult = await runDebitNoteImporter();
+  return { ok: true, importResult };
 }
 
 function getDebitNotesAudit() {
@@ -1998,6 +2013,15 @@ createServer(async (req, res) => {
   if (url.pathname === "/api/reimport-debit-notes" && req.method === "POST") {
     try {
       json(res, 200, await runDebitNoteImporter());
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/clear-debit-notes" && req.method === "POST") {
+    try {
+      json(res, 200, await clearDebitNotes());
     } catch (error) {
       json(res, 500, { ok: false, error: error.message });
     }

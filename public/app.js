@@ -23,6 +23,7 @@ import {
   Package,
   Tags,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import {
   Bar,
@@ -1447,6 +1448,7 @@ function DebitNoteDashboard({
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadState, setUploadState] = useState({ busy: false, message: "" });
   const [exploreType, setExploreType] = useState("brand");
+  const [selectedMonth, setSelectedMonth] = useState("All Months");
 
   async function uploadFiles(files) {
     if (!files.length) return;
@@ -1515,7 +1517,99 @@ function DebitNoteDashboard({
     );
   }
 
-  const { stats, debitNotes, proposals, overlaps, duplicates, priceDiscrepancies, ready, message, unmatchedPeriods } = audit || {};
+  const { stats: rawStats, debitNotes: rawDebitNotes, proposals: rawProposals, overlaps: rawOverlaps, duplicates: rawDuplicates, priceDiscrepancies: rawPriceDiscrepancies, ready, message, unmatchedPeriods: rawUnmatchedPeriods } = audit || {};
+
+  const rawDebitNotesArr = rawDebitNotes || [];
+  const rawProposalsArr = rawProposals || [];
+  const rawOverlapsArr = rawOverlaps || [];
+  const rawDuplicatesArr = rawDuplicates || [];
+  const rawPriceDiscrepanciesArr = rawPriceDiscrepancies || [];
+  const rawUnmatchedPeriodsArr = rawUnmatchedPeriods || [];
+
+  const uniqueMonths = Array.from(new Set(rawDebitNotesArr.map(d => {
+    if (!d.date_from) return null;
+    const parts = d.date_from.split("-");
+    if (parts.length < 2) return null;
+    const monthIndex = parseInt(parts[1], 10) - 1;
+    const year = parts[0];
+    const monthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][monthIndex];
+    return `${monthName} ${year}`;
+  }).filter(Boolean))).sort((a, b) => {
+    const parse = (s) => {
+      const p = s.split(" ");
+      const m = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(p[0]);
+      return new Date(parseInt(p[1]), m, 1);
+    };
+    return parse(b) - parse(a);
+  });
+
+  const filteredDebitNotes = rawDebitNotesArr.filter(d => {
+    if (selectedMonth === "All Months") return true;
+    if (!d.date_from) return false;
+    const parts = d.date_from.split("-");
+    const monthIndex = parseInt(parts[1], 10) - 1;
+    const monthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][monthIndex];
+    return `${monthName} ${parts[0]}` === selectedMonth;
+  });
+
+  const filteredProposals = rawProposalsArr.filter(p => {
+    if (selectedMonth === "All Months") return true;
+    const [monthName, yearStr] = selectedMonth.split(" ");
+    const monthIndex = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(monthName);
+    const year = parseInt(yearStr, 10);
+    const startOfMonth = `${year}-${String(monthIndex + 1).padStart(2, "0")}-01`;
+    const endOfMonth = `${year}-${String(monthIndex + 1).padStart(2, "0")}-31`;
+    return p.start_date <= endOfMonth && p.end_date >= startOfMonth;
+  });
+
+  const filteredOverlaps = rawOverlapsArr.filter(o => {
+    if (selectedMonth === "All Months") return true;
+    const parts = o.a_date_from.split("-");
+    const monthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][parseInt(parts[1], 10) - 1];
+    return `${monthName} ${parts[0]}` === selectedMonth;
+  });
+
+  const filteredDuplicates = rawDuplicatesArr.filter(d => {
+    if (selectedMonth === "All Months") return true;
+    const parts = d.a_date_from.split("-");
+    const monthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][parseInt(parts[1], 10) - 1];
+    return `${monthName} ${parts[0]}` === selectedMonth;
+  });
+
+  const filteredPriceDiscrepancies = rawPriceDiscrepanciesArr.filter(p => {
+    if (selectedMonth === "All Months") return true;
+    const parts = p.date_from.split("-");
+    const monthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][parseInt(parts[1], 10) - 1];
+    return `${monthName} ${parts[0]}` === selectedMonth;
+  });
+
+  const filteredUnmatchedPeriods = rawUnmatchedPeriodsArr.filter(u => {
+    if (selectedMonth === "All Months") return true;
+    const parts = u.date_from.split("-");
+    const monthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][parseInt(parts[1], 10) - 1];
+    return `${monthName} ${parts[0]}` === selectedMonth;
+  });
+
+  const filteredStats = rawStats ? {
+    totalDebitNotes: filteredDebitNotes.length,
+    totalProposals: filteredProposals.length,
+    overlapsCount: filteredOverlaps.length,
+    duplicatesCount: filteredDuplicates.length,
+    priceDiscrepanciesCount: filteredPriceDiscrepancies.length,
+    unmatchedPeriodsCount: filteredUnmatchedPeriods.length,
+    totalClaimedAmount: filteredDebitNotes.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0),
+    totalOverchargeAmount: filteredPriceDiscrepancies.reduce((sum, item) => sum + item.total_overcharge, 0),
+    totalUnpromotedAmount: filteredUnmatchedPeriods.reduce((sum, item) => sum + (item.qty * item.charged_rate), 0)
+  } : {};
+
+  // Shadow variables for out-of-the-box compatibility
+  const stats = filteredStats;
+  const debitNotes = filteredDebitNotes;
+  const proposals = filteredProposals;
+  const overlaps = filteredOverlaps;
+  const duplicates = filteredDuplicates;
+  const priceDiscrepancies = filteredPriceDiscrepancies;
+  const unmatchedPeriods = filteredUnmatchedPeriods;
 
   if (!ready) {
     return (
@@ -1564,7 +1658,31 @@ function DebitNoteDashboard({
           <h1>Debit Note Auditing Control</h1>
           <p className="subtitle">Identify overcharging, duplicate invoice periods, and price differences between claims and proposals.</p>
         </div>
-        <div style={{ display: "flex", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
+          {uniqueMonths.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "13px", fontWeight: "600", color: "#0f172a" }}>Reporting Month:</span>
+              <select 
+                value={selectedMonth} 
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                style={{ 
+                  padding: "8px 12px", 
+                  borderRadius: "8px", 
+                  border: "1px solid #e2e8f0", 
+                  background: "#ffffff", 
+                  fontSize: "13px", 
+                  fontWeight: "500",
+                  color: "#0f172a",
+                  cursor: "pointer"
+                }}
+              >
+                <option value="All Months">📅 All Months</option>
+                {uniqueMonths.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button className="primaryButton" onClick={triggerImport} disabled={uploadState.busy}>
             <RefreshCw size={16} className={uploadState.busy ? "loadingSpinner" : ""} />
             Re-run audit
@@ -1996,19 +2114,39 @@ function DebitNoteDashboard({
                         key={brand} 
                         className="moduleCard" 
                         onClick={() => setSelectedBrand(brand)}
-                        style={{ cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s", padding: "20px", display: "flex", flexDirection: "column", justifyContent: "space-between", height: "130px" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "var(--shadow-lg)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
+                        style={{ 
+                          cursor: "pointer", 
+                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)", 
+                          padding: "20px", 
+                          display: "flex", 
+                          flexDirection: "column", 
+                          justifyContent: "space-between", 
+                          height: "135px",
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "12px",
+                          boxShadow: "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"
+                        }}
+                        onMouseEnter={(e) => { 
+                          e.currentTarget.style.transform = "translateY(-4px)"; 
+                          e.currentTarget.style.boxShadow = "0 12px 20px -8px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.03)"; 
+                          e.currentTarget.style.borderColor = "#059669"; 
+                        }}
+                        onMouseLeave={(e) => { 
+                          e.currentTarget.style.transform = "translateY(0)"; 
+                          e.currentTarget.style.boxShadow = "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"; 
+                          e.currentTarget.style.borderColor = "#e2e8f0"; 
+                        }}
                       >
                         <div>
-                          <strong style={{ fontSize: "16px", color: "var(--text)" }}>{brand}</strong>
-                          <span style={{ fontSize: "12px", opacity: 0.6, display: "block", marginTop: "4px" }}>
+                          <strong style={{ fontSize: "16px", color: "#0f172a", display: "block" }}>{brand}</strong>
+                          <span style={{ fontSize: "12px", color: "#475569", display: "block", marginTop: "6px", fontWeight: "500" }}>
                             {brandClaims.length} extracted claims
                           </span>
                         </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid rgba(0,0,0,0.03)", paddingTop: "10px", marginTop: "10px" }}>
-                          <span style={{ fontSize: "11px", opacity: 0.5 }}>Claim Total</span>
-                          <strong style={{ fontSize: "14px", color: "var(--primary)" }}>{hkd(brandAmt)}</strong>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid #f1f5f9", paddingTop: "10px", marginTop: "10px" }}>
+                          <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "500" }}>Claim Total</span>
+                          <strong style={{ fontSize: "15px", color: "#0f172a" }}>{hkd(brandAmt)}</strong>
                         </div>
                       </div>
                     );
@@ -2130,13 +2268,33 @@ function DebitNoteDashboard({
                         key={filename} 
                         className="moduleCard" 
                         onClick={() => setSelectedFile(filename)}
-                        style={{ cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s", padding: "20px", display: "flex", flexDirection: "column", justifyContent: "space-between", height: "140px" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "var(--shadow-lg)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
+                        style={{ 
+                          cursor: "pointer", 
+                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)", 
+                          padding: "20px", 
+                          display: "flex", 
+                          flexDirection: "column", 
+                          justifyContent: "space-between", 
+                          height: "145px",
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "12px",
+                          boxShadow: "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"
+                        }}
+                        onMouseEnter={(e) => { 
+                          e.currentTarget.style.transform = "translateY(-4px)"; 
+                          e.currentTarget.style.boxShadow = "0 12px 20px -8px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.03)"; 
+                          e.currentTarget.style.borderColor = "#059669"; 
+                        }}
+                        onMouseLeave={(e) => { 
+                          e.currentTarget.style.transform = "translateY(0)"; 
+                          e.currentTarget.style.boxShadow = "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"; 
+                          e.currentTarget.style.borderColor = "#e2e8f0"; 
+                        }}
                       >
                         <div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <strong style={{ fontSize: "15px", color: "var(--text)" }}>{displayName}</strong>
+                            <strong style={{ fontSize: "15px", color: "#0f172a" }}>{displayName}</strong>
                             <span className="badge" style={{ 
                               background: matchRate === 100 ? "#eafaf1" : matchRate >= 70 ? "#fff9f2" : "#fdeded", 
                               color: matchRate === 100 ? "#27ae60" : matchRate >= 70 ? "#f2994a" : "#d93838", 
@@ -2148,13 +2306,13 @@ function DebitNoteDashboard({
                               {matchRate.toFixed(0)}% Match
                             </span>
                           </div>
-                          <span style={{ fontSize: "12px", opacity: 0.5, display: "block", marginTop: "6px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={filename}>
+                          <span style={{ fontSize: "11px", color: "#64748b", display: "block", marginTop: "6px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={filename}>
                             {filename}
                           </span>
                         </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid rgba(0,0,0,0.03)", paddingTop: "10px", marginTop: "10px" }}>
-                          <span style={{ fontSize: "11px", opacity: 0.5 }}>{fileClaims.length} items billed</span>
-                          <strong style={{ fontSize: "14px", color: "var(--primary)" }}>{hkd(fileAmt)}</strong>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid #f1f5f9", paddingTop: "10px", marginTop: "10px" }}>
+                          <span style={{ fontSize: "11px", color: "#475569", fontWeight: "500" }}>{fileClaims.length} items billed</span>
+                          <strong style={{ fontSize: "14px", color: "#0f172a" }}>{hkd(fileAmt)}</strong>
                         </div>
                       </div>
                     );
@@ -2400,9 +2558,51 @@ function DebitNoteDashboard({
                 D:\Lightmart CRM\debit notes
               </code>
             </p>
-            <button className="primaryButton" onClick={triggerImport} disabled={uploadState.busy} style={{ width: "max-content" }}>
-              <RefreshCw size={16} /> Run Full Re-parse on Folder
-            </button>
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              <button className="primaryButton" onClick={triggerImport} disabled={uploadState.busy} style={{ width: "max-content" }}>
+                <RefreshCw size={16} className={uploadState.busy ? "loadingSpinner" : ""} /> Run Full Re-parse on Folder
+              </button>
+              <button 
+                onClick={async () => {
+                  if (confirm("Are you absolutely sure you want to delete all currently uploaded PDF debit notes and Excel promotion sheets? This will completely clear the database and restore a clean slate for your next audit batch.")) {
+                    setUploadState({ busy: true, message: "Wiping workspace and resetting database..." });
+                    try {
+                      const res = await fetch("/api/clear-debit-notes", { method: "POST" });
+                      const d = await res.json();
+                      if (d.ok) {
+                        setUploadState({ busy: false, message: "Workspace reset successfully! Ready for new uploads." });
+                        setSelectedMonth("All Months");
+                        loadAudit();
+                      } else {
+                        setUploadState({ busy: false, message: d.message || d.error || "Wipe failed." });
+                      }
+                    } catch (err) {
+                      setUploadState({ busy: false, message: err.message || "Wipe error." });
+                    }
+                  }
+                }} 
+                disabled={uploadState.busy} 
+                style={{ 
+                  width: "max-content",
+                  background: "#fdeded",
+                  color: "#d93838",
+                  border: "1px solid rgba(217, 56, 56, 0.2)",
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease"
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#fcdada"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "#fdeded"; }}
+              >
+                <Trash2 size={16} /> Wipe Workspace & Clear Data
+              </button>
+            </div>
             
             <div style={{ marginTop: "30px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
               <h4>Important Git Notice</h4>
