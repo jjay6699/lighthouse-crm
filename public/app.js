@@ -1732,36 +1732,129 @@ function DebitNoteDashboard({
               </div>
             </div>
             
-            <div className="moduleList" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "15px" }}>
-              <div className="moduleCard" style={{ cursor: "pointer", borderLeft: "4px solid #27ae60" }} onClick={() => setSubtab("pricing")}>
-                <CircleDollarSign size={24} style={{ color: "#27ae60", marginBottom: "10px" }} />
-                <strong>Price Discrepancies</strong>
-                <span className="badge" style={{ background: "#eafaf1", color: "#27ae60", padding: "4px 8px", borderRadius: "12px", width: "max-content", marginTop: "5px" }}>
+            <div className="moduleList" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginTop: "10px" }}>
+              {/* PRICE DISCREPANCIES CARD */}
+              <div 
+                className="moduleCard" 
+                onClick={() => setSubtab("pricing")}
+                style={{ 
+                  cursor: "pointer", 
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)", 
+                  padding: "24px", 
+                  display: "flex", 
+                  flexDirection: "column", 
+                  gap: "12px",
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderLeft: "4px solid #27ae60",
+                  borderRadius: "12px",
+                  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"
+                }}
+                onMouseEnter={(e) => { 
+                  e.currentTarget.style.transform = "translateY(-4px)"; 
+                  e.currentTarget.style.boxShadow = "0 12px 20px -8px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.03)"; 
+                  e.currentTarget.style.background = "#f4fbf7";
+                  e.currentTarget.style.borderColor = "#27ae60";
+                }}
+                onMouseLeave={(e) => { 
+                  e.currentTarget.style.transform = "translateY(0)"; 
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"; 
+                  e.currentTarget.style.background = "#ffffff";
+                  e.currentTarget.style.borderColor = "#e2e8f0";
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <CircleDollarSign size={20} style={{ color: "#27ae60" }} />
+                  <strong style={{ fontSize: "15px", color: "#0f172a" }}>Price Discrepancies</strong>
+                </div>
+                <span className="badge" style={{ background: "#eafaf1", color: "#27ae60", padding: "4px 10px", borderRadius: "12px", width: "max-content", fontSize: "11px", fontWeight: "bold" }}>
                   {stats.priceDiscrepanciesCount} overcharged items
                 </span>
-                <span style={{ marginTop: "10px", display: "block", fontSize: "12px" }}>
+                <span style={{ fontSize: "12.5px", color: "#475569", lineHeight: "1.5", marginTop: "4px" }}>
                   Flagged when WTC unit price charged exceeds all active promotion proposal sheet rates.
                 </span>
               </div>
 
-              <div className="moduleCard" style={{ cursor: "pointer", borderLeft: "4px solid #f2994a" }} onClick={() => setSubtab("overlaps")}>
-                <CalendarDays size={24} style={{ color: "#f2994a", marginBottom: "10px" }} />
-                <strong>Double Billing Checks</strong>
-                <span className="badge" style={{ background: "#fff9f2", color: "#f2994a", padding: "4px 8px", borderRadius: "12px", width: "max-content", marginTop: "5px" }}>
+              {/* DOUBLE BILLING CARD */}
+              <div 
+                className="moduleCard" 
+                onClick={() => setSubtab("overlaps")}
+                style={{ 
+                  cursor: "pointer", 
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)", 
+                  padding: "24px", 
+                  display: "flex", 
+                  flexDirection: "column", 
+                  gap: "12px",
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderLeft: "4px solid #f2994a",
+                  borderRadius: "12px",
+                  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"
+                }}
+                onMouseEnter={(e) => { 
+                  e.currentTarget.style.transform = "translateY(-4px)"; 
+                  e.currentTarget.style.boxShadow = "0 12px 20px -8px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.03)"; 
+                  e.currentTarget.style.background = "#fffbf7";
+                  e.currentTarget.style.borderColor = "#f2994a";
+                }}
+                onMouseLeave={(e) => { 
+                  e.currentTarget.style.transform = "translateY(0)"; 
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"; 
+                  e.currentTarget.style.background = "#ffffff";
+                  e.currentTarget.style.borderColor = "#e2e8f0";
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <CalendarDays size={20} style={{ color: "#f2994a" }} />
+                  <strong style={{ fontSize: "15px", color: "#0f172a" }}>Double Billing Checks</strong>
+                </div>
+                <span className="badge" style={{ background: "#fff9f2", color: "#f2994a", padding: "4px 10px", borderRadius: "12px", width: "max-content", fontSize: "11px", fontWeight: "bold" }}>
                   {stats.overlapsCount} overlaps flagged
                 </span>
-                <span style={{ marginTop: "10px", display: "block", fontSize: "12px" }}>
+                <span style={{ fontSize: "12.5px", color: "#475569", lineHeight: "1.5", marginTop: "4px" }}>
                   Overlapping periods claimed for the same SKU in different debit note files.
                 </span>
               </div>
 
-              <div className="moduleCard" style={{ cursor: "pointer", borderLeft: "4px solid #f2c94c" }} onClick={() => setSubtab("unpromoted")}>
-                <Database size={24} style={{ color: "#f2c94c", marginBottom: "10px" }} />
-                <strong>Missing Proposals</strong>
-                <span className="badge" style={{ background: "#fefdf0", color: "#b8860b", padding: "4px 8px", borderRadius: "12px", width: "max-content", marginTop: "5px" }}>
+              {/* MISSING PROPOSALS CARD */}
+              <div 
+                className="moduleCard" 
+                onClick={() => setSubtab("unpromoted")}
+                style={{ 
+                  cursor: "pointer", 
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)", 
+                  padding: "24px", 
+                  display: "flex", 
+                  flexDirection: "column", 
+                  gap: "12px",
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderLeft: "4px solid #f2c94c",
+                  borderRadius: "12px",
+                  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"
+                }}
+                onMouseEnter={(e) => { 
+                  e.currentTarget.style.transform = "translateY(-4px)"; 
+                  e.currentTarget.style.boxShadow = "0 12px 20px -8px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.03)"; 
+                  e.currentTarget.style.background = "#fffdf3";
+                  e.currentTarget.style.borderColor = "#f2c94c";
+                }}
+                onMouseLeave={(e) => { 
+                  e.currentTarget.style.transform = "translateY(0)"; 
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.03)"; 
+                  e.currentTarget.style.background = "#ffffff";
+                  e.currentTarget.style.borderColor = "#e2e8f0";
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <Database size={20} style={{ color: "#f2c94c" }} />
+                  <strong style={{ fontSize: "15px", color: "#0f172a" }}>Missing Proposals</strong>
+                </div>
+                <span className="badge" style={{ background: "#fefdf0", color: "#b8860b", padding: "4px 10px", borderRadius: "12px", width: "max-content", fontSize: "11px", fontWeight: "bold" }}>
                   {stats.unmatchedPeriodsCount} items missing sheets
                 </span>
-                <span style={{ marginTop: "10px", display: "block", fontSize: "12px" }}>
+                <span style={{ fontSize: "12.5px", color: "#475569", lineHeight: "1.5", marginTop: "4px" }}>
                   Claimed periods where no trade promotion proposal was found in the database.
                 </span>
               </div>
