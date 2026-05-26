@@ -657,9 +657,19 @@ h1 {
   border-radius: 10px;
   background: var(--teal-light);
   color: var(--teal);
-  display: grid;
-  place-items: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   flex: 0 0 auto;
+}
+
+.metricIcon svg {
+  display: block !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: static !important;
 }
 
 .metric:nth-child(2) .metricIcon {
