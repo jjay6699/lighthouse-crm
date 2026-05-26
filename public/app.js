@@ -50,6 +50,16 @@ function pct(value) {
   return `${(Number(value || 0) * 100).toFixed(1)}%`;
 }
 
+function jsShiftDate(val, { years = 0, months = 0, days = 0 }) {
+  if (!val) return "";
+  const d = new Date(`${val}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setUTCFullYear(d.getUTCFullYear() + years);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function pctOrDash(value) {
   return value === null || value === undefined ? "n/a" : pct(value);
 }
@@ -942,6 +952,36 @@ function Overview({ data, goFinance }) {
 
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh, subtab, setSubtab }) {
   const isClassView = filters.dimension === "class";
+  const [comparisonMode, setComparisonMode] = useState("standard");
+  
+  const comparisonModeOptions = [
+    { value: "standard", label: "Standard comparison" },
+    { value: "custom", label: "Custom comparison" }
+  ];
+
+  useEffect(() => {
+    if (comparisonMode === "standard" && filters.dateFrom && filters.dateTo) {
+      const from2 = jsShiftDate(filters.dateFrom, { years: -1 });
+      const to2 = jsShiftDate(filters.dateTo, { years: -1 });
+      const from3 = jsShiftDate(filters.dateFrom, { months: -3 });
+      const to3 = jsShiftDate(filters.dateFrom, { days: -1 });
+      
+      if (
+        from2 !== filters.dateFrom2 ||
+        to2 !== filters.dateTo2 ||
+        from3 !== filters.dateFrom3 ||
+        to3 !== filters.dateTo3
+      ) {
+        setFilters((current) => ({
+          ...current,
+          dateFrom2: from2,
+          dateTo2: to2,
+          dateFrom3: from3,
+          dateTo3: to3,
+        }));
+      }
+    }
+  }, [filters.dateFrom, filters.dateTo, comparisonMode, setFilters]);
   const activeEntityTypeLabel = isClassView ? "Brand" : "Customer";
   const companyOptions = [
     { value: "all", label: "All companies" },
@@ -1032,14 +1072,27 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <MultiSelect label="Customer" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...filters, customer: values })} />
         <DateField label="P1 From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
         <DateField label="P1 To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
-        <DateField label="P2 From (Comp A)" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
-        <DateField label="P2 To (Comp A)" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
-        <DateField label="P3 From (Comp B)" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
-        <DateField label="P3 To (Comp B)" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
+        <Select label="Comparison" value={comparisonMode} options={comparisonModeOptions} onChange={(value) => setComparisonMode(value)} />
       </section>
       <p className="filterHelp">
         Batch keeps uploads separate. Brand and Customer filters filter P&L lines dynamically based on active dimension view, and apply concurrently to SKU sales analysis.
       </p>
+
+      {comparisonMode === "custom" && (
+        <div className="customComparisonBar animateFadeIn">
+          <div className="customComparisonHeader">
+            <h3>Custom comparison periods</h3>
+            <p>Fine-tune manual date ranges for Comparison Period 2 and Comparison Period 3.</p>
+          </div>
+          <div className="customComparisonGrid">
+            <DateField label="P2 From (Comp A)" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
+            <DateField label="P2 To (Comp A)" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
+            <DateField label="P3 From (Comp B)" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
+            <DateField label="P3 To (Comp B)" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
+          </div>
+        </div>
+      )}
+
       <ScopeStrip filters={filters} />
 
       <section className="metricGrid">
@@ -1337,16 +1390,6 @@ function App() {
     if (!data?.ready || datesInitialized) return;
     const defaultRange = data.meta.availableDateRange || data.meta.skuDateRange || data.meta.dateRange || {};
     if (defaultRange.min || defaultRange.max) {
-      const jsShiftDate = (val, { years = 0, months = 0, days = 0 }) => {
-        if (!val) return "";
-        const d = new Date(`${val}T00:00:00Z`);
-        if (Number.isNaN(d.getTime())) return "";
-        d.setUTCFullYear(d.getUTCFullYear() + years);
-        d.setUTCMonth(d.getUTCMonth() + months);
-        d.setUTCDate(d.getUTCDate() + days);
-        return d.toISOString().slice(0, 10);
-      };
-      
       const p1From = defaultRange.min || "";
       const p1To = defaultRange.max || "";
 

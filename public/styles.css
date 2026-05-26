@@ -1940,3 +1940,54 @@ tr:hover {
     font-size: 22px;
   }
 }
+
+/* Custom Comparison Drawer */
+.customComparisonBar {
+  margin-top: 12px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+
+.customComparisonHeader {
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.customComparisonHeader h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 2px 0;
+}
+
+.customComparisonHeader p {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.customComparisonGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+/* Smooth Fade In Animation */
+.animateFadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
