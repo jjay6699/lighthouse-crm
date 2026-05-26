@@ -2155,9 +2155,9 @@ function DebitNoteDashboard({
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
                   <button 
-                    className="secondaryButton" 
+                    className="ghostButton" 
                     onClick={() => setSelectedBrand(null)}
-                    style={{ width: "max-content", alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px" }}
+                    style={{ width: "max-content", alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px", cursor: "pointer" }}
                   >
                     ← Back to Brand list
                   </button>
@@ -2321,9 +2321,9 @@ function DebitNoteDashboard({
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
                   <button 
-                    className="secondaryButton" 
+                    className="ghostButton" 
                     onClick={() => setSelectedFile(null)}
-                    style={{ width: "max-content", alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px" }}
+                    style={{ width: "max-content", alignSelf: "flex-start", padding: "6px 12px", fontSize: "12px", cursor: "pointer" }}
                   >
                     ← Back to Document list
                   </button>
