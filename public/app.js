@@ -2137,7 +2137,14 @@ function DebitNoteDashboard({
                         <div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <strong style={{ fontSize: "15px", color: "var(--text)" }}>{displayName}</strong>
-                            <span className="badge" style={{ background: matchRate === 100 ? "#eafaf1" : "#27ae60", color: matchRate === 100 ? "#27ae60" : "#f2994a", padding: "2px 6px", borderRadius: "8px", fontSize: "10px", fontWeight: "bold" }}>
+                            <span className="badge" style={{ 
+                              background: matchRate === 100 ? "#eafaf1" : matchRate >= 70 ? "#fff9f2" : "#fdeded", 
+                              color: matchRate === 100 ? "#27ae60" : matchRate >= 70 ? "#f2994a" : "#d93838", 
+                              padding: "2px 6px", 
+                              borderRadius: "8px", 
+                              fontSize: "10px", 
+                              fontWeight: "bold" 
+                            }}>
                               {matchRate.toFixed(0)}% Match
                             </span>
                           </div>
