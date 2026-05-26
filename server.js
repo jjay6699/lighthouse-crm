@@ -1365,7 +1365,7 @@ function getDashboard(params) {
     if (p1From && p1To) {
       const currentFilter = skuWhereFromSearch(periodParams(params, p1From, p1To));
       const lyFilter = skuWhereFromSearch(periodParams(params, p2From, p2To));
-      const p3mFilter = skuWhereFromSearch(periodParams(params, p3mFrom, p3mTo));
+      const p3mFilter = skuWhereFromSearch(periodParams(params, p3From, p3To));
       const comparisonSql = `
         SELECT ${skuBrandKey} AS brand_key, SUM(s.amount_hkd) AS revenue
         FROM sku_sales s
