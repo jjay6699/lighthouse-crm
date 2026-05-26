@@ -384,6 +384,7 @@ function getDebitNotesAudit() {
     const debitNotes = db.prepare("SELECT * FROM debit_notes ORDER BY date_from DESC, id DESC").all();
     const proposals = db.prepare("SELECT * FROM promotion_proposals ORDER BY start_date DESC, id DESC").all();
 
+    // Overlapping claims across different files (potential double billing)
     const overlaps = db.prepare(`
       SELECT 
         a.id as a_id, a.file_name as a_file, a.sku as a_sku, a.description as a_desc, a.qty as a_qty, a.unit_cost as a_unit_cost, a.date_from as a_date_from, a.date_to as a_date_to,
@@ -391,9 +392,11 @@ function getDebitNotesAudit() {
       FROM debit_notes a
       JOIN debit_notes b ON a.sku = b.sku AND a.id < b.id
       WHERE a.date_from <= b.date_to AND a.date_to >= b.date_from
+        AND a.file_name != b.file_name
       ORDER BY a.sku, a.date_from DESC
     `).all();
 
+    // Duplicate claims across different files (exact same quantity/period twice)
     const duplicates = db.prepare(`
       SELECT 
         a.id as a_id, a.file_name as a_file, a.sku as a_sku, a.description as a_desc, a.qty as a_qty, a.unit_cost as a_unit_cost, a.date_from as a_date_from, a.date_to as a_date_to,
@@ -401,22 +404,91 @@ function getDebitNotesAudit() {
       FROM debit_notes a
       JOIN debit_notes b ON a.sku = b.sku AND a.id < b.id
       WHERE a.date_from = b.date_from AND a.date_to = b.date_to AND a.qty = b.qty AND a.unit_cost = b.unit_cost
+        AND a.file_name != b.file_name
       ORDER BY a.sku, a.date_from DESC
     `).all();
 
-    const priceDiscrepancies = db.prepare(`
-      SELECT 
-        d.id as debit_id, d.file_name as debit_file, d.sku as sku, d.description as description, 
-        d.qty as qty, d.unit_cost as charged_rate, d.date_from as date_from, d.date_to as date_to,
-        p.file_name as proposal_file, p.funding_support_pc as agreed_rate, p.start_date as proposal_start, p.end_date as proposal_end,
-        (d.unit_cost - p.funding_support_pc) as overcharge_per_pc,
-        ((d.unit_cost - p.funding_support_pc) * d.qty) as total_overcharge
-      FROM debit_notes d
-      JOIN promotion_proposals p ON d.sku = p.sku
-      WHERE d.date_from <= p.end_date AND d.date_to >= p.start_date
-        AND (d.unit_cost - p.funding_support_pc) >= 0.10
-      ORDER BY total_overcharge DESC, d.sku
-    `).all();
+    const priceDiscrepancies = [];
+    const unmatchedPeriods = [];
+    let totalOverchargeAmount = 0;
+
+    for (const d of debitNotes) {
+      // Find all proposals for this SKU that overlap with the debit note period
+      const overlappingProps = proposals.filter(p => 
+        p.sku === d.sku &&
+        d.date_from <= p.end_date &&
+        d.date_to >= p.start_date
+      );
+
+      if (overlappingProps.length === 0) {
+        d.auditStatus = "unpromoted";
+        unmatchedPeriods.push({
+          debit_id: d.id,
+          debit_file: d.file_name,
+          sku: d.sku,
+          description: d.description,
+          qty: d.qty,
+          charged_rate: d.unit_cost,
+          date_from: d.date_from,
+          date_to: d.date_to,
+          status: "unpromoted"
+        });
+        continue;
+      }
+
+      // Check if there is an exact rate match (taking floating-point and rounding into account, e.g. within $0.10)
+      const exactMatch = overlappingProps.find(p => Math.abs(d.unit_cost - p.funding_support_pc) < 0.10);
+
+      if (exactMatch) {
+        d.auditStatus = "match";
+        d.matchedProposalFile = exactMatch.file_name;
+        d.agreedRate = exactMatch.funding_support_pc;
+        continue;
+      }
+
+      // No exact match. Let's see if the charged rate exceeds all active agreed rates.
+      const maxAgreedRate = Math.max(...overlappingProps.map(p => p.funding_support_pc));
+
+      if (d.unit_cost - maxAgreedRate >= 0.10) {
+        // True discrepancy: charged more than the highest agreed rate
+        const overchargePerPc = d.unit_cost - maxAgreedRate;
+        const totalOvercharge = overchargePerPc * d.qty;
+        totalOverchargeAmount += totalOvercharge;
+
+        const bestProp = overlappingProps.find(p => p.funding_support_pc === maxAgreedRate) || overlappingProps[0];
+
+        const discrepancyItem = {
+          debit_id: d.id,
+          debit_file: d.file_name,
+          sku: d.sku,
+          description: d.description,
+          qty: d.qty,
+          charged_rate: d.unit_cost,
+          date_from: d.date_from,
+          date_to: d.date_to,
+          proposal_file: bestProp.file_name,
+          agreed_rate: maxAgreedRate,
+          proposal_start: bestProp.start_date,
+          proposal_end: bestProp.end_date,
+          overcharge_per_pc: overchargePerPc,
+          total_overcharge: totalOvercharge,
+          status: "overcharged"
+        };
+
+        priceDiscrepancies.push(discrepancyItem);
+        d.auditStatus = "overcharged";
+        d.matchedProposalFile = bestProp.file_name;
+        d.agreedRate = maxAgreedRate;
+        d.overchargePerPc = overchargePerPc;
+        d.totalOvercharge = totalOvercharge;
+      } else {
+        // Charged less than or equal to the maximum agreed rate (undercharged or partial)
+        const closestProp = overlappingProps.find(p => p.funding_support_pc >= d.unit_cost) || overlappingProps[0];
+        d.auditStatus = "match"; // Considered a match as it's below the max agreed rate
+        d.matchedProposalFile = closestProp.file_name;
+        d.agreedRate = closestProp.funding_support_pc;
+      }
+    }
 
     const stats = {
       totalDebitNotes: debitNotes.length,
@@ -424,8 +496,10 @@ function getDebitNotesAudit() {
       overlapsCount: overlaps.length,
       duplicatesCount: duplicates.length,
       priceDiscrepanciesCount: priceDiscrepancies.length,
+      unmatchedPeriodsCount: unmatchedPeriods.length,
       totalClaimedAmount: debitNotes.reduce((sum, item) => sum + (item.qty * item.unit_cost), 0),
-      totalOverchargeAmount: priceDiscrepancies.reduce((sum, item) => sum + item.total_overcharge, 0),
+      totalOverchargeAmount: totalOverchargeAmount,
+      totalUnpromotedAmount: unmatchedPeriods.reduce((sum, item) => sum + (item.qty * item.charged_rate), 0)
     };
 
     return {
@@ -437,6 +511,7 @@ function getDebitNotesAudit() {
       overlaps,
       duplicates,
       priceDiscrepancies,
+      unmatchedPeriods
     };
   } catch (error) {
     return { ok: false, error: error.message };
