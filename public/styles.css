@@ -906,11 +906,16 @@ h1 {
 }
 
 /* Revenue Contribution & Expenses Redesign */
-.contributionList,
-.expenseBars {
+.contributionList {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.expenseBars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 32px;
 }
 
 .contributionRow,
@@ -919,6 +924,16 @@ h1 {
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  padding: 8px 12px;
+  margin: 0 -12px;
+  border-radius: 8px;
+  transition: all 0.2s ease-in-out;
+  background: transparent;
+}
+
+.contributionRow:hover,
+.expenseRow:hover {
+  background: #f8fafc;
 }
 
 .rowMeta {
@@ -2142,7 +2157,8 @@ tr:hover {
     justify-self: start;
   }
 
-  .insightGrid {
+  .insightGrid,
+  .expenseBars {
     grid-template-columns: 1fr;
     gap: 14px;
   }
