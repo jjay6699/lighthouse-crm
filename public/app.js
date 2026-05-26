@@ -1564,7 +1564,14 @@ function App() {
         />
       )}
 
-      {loading && <div className="loading">Updating dashboard...</div>}
+      {loading && (
+        <div className="loadingOverlay">
+          <div className="loadingBox">
+            <i className="loadingSpinner" />
+            <span>Updating dashboard...</span>
+          </div>
+        </div>
+      )}
     </>
   );
 }
