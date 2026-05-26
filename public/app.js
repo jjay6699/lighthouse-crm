@@ -118,8 +118,8 @@ function InsightGrid({ insights }) {
       label: "Revenue",
       value: hkd(insights.revenueTotal),
       lines: [
-        ["Recent vs LY", <Growth value={insights.skuGrowth?.growth_ly} />],
-        ["Recent vs P3M", <Growth value={insights.skuGrowth?.growth_p3m} />],
+        ["Growth vs P2", <Growth value={insights.skuGrowth?.growth_p2} />],
+        ["Growth vs P3", <Growth value={insights.skuGrowth?.growth_p3} />],
         ["Growth window", growthWindowLabel],
         ["Top company", insights.topRevenueCompany ? `${insights.topRevenueCompany.company} · ${pct(insights.topRevenueCompany.revenue_share)}` : "-"],
         ["Top brand", insights.topRevenueBrand ? `${insights.topRevenueBrand.entity} · ${pct(insights.topRevenueBrand.revenue_share)}` : "-"],
@@ -256,8 +256,8 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
         <span>Revenue</span>
         <span>Margin $</span>
         <span>Share</span>
-        <span>vs LY</span>
-        <span>vs P3M</span>
+        <span>vs P2</span>
+        <span>vs P3</span>
       </div>
       {rows.map((row) => {
         const name = row.brand || row.customer || "Unmapped";
@@ -273,8 +273,8 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
             <em>{hkd(row.revenue)}</em>
             <em>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</em>
             <strong>{pct(row.revenue_share)}</strong>
-            <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
-            <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
+            <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" />
+            <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" />
           </div>
         );
       })}
@@ -293,10 +293,10 @@ function Growth({ value, status, missingLabel = "n/a" }) {
 const skuSortOptions = [
   { value: "revenue", label: "Sales" },
   { value: "gross_profit", label: "Margin $" },
-  { value: "growth_value_ly", label: "Sales growth $ vs LY" },
-  { value: "growth_ly", label: "Sales growth % vs LY" },
-  { value: "growth_value_p3m", label: "Sales growth $ vs P3M" },
-  { value: "growth_p3m", label: "Sales growth % vs P3M" },
+  { value: "growth_value_p2", label: "Sales growth $ vs P2" },
+  { value: "growth_p2", label: "Sales growth % vs P2" },
+  { value: "growth_value_p3", label: "Sales growth $ vs P3" },
+  { value: "growth_p3", label: "Sales growth % vs P3" },
 ];
 
 function sortSkuRows(rows, sortBy) {
@@ -366,10 +366,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
       "Revenue Share",
       "Avg Price (HKD)",
       "Margin Dollars (HKD)",
-      "Growth Value vs LY (HKD)",
-      "Growth % vs LY",
-      "Growth Value vs P3M (HKD)",
-      "Growth % vs P3M"
+      "Growth Value vs P2 (HKD)",
+      "Growth % vs P2",
+      "Growth Value vs P3 (HKD)",
+      "Growth % vs P3"
     ];
 
     const csvRows = [headers.join(",")];
@@ -401,10 +401,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
         formatPct(row.revenue_share),
         formatNum(row.avg_price),
         formatNum(row.gross_profit),
-        formatNum(row.growth_value_ly),
-        formatPct(row.growth_ly),
-        formatNum(row.growth_value_p3m),
-        formatPct(row.growth_p3m)
+        formatNum(row.growth_value_p2),
+        formatPct(row.growth_p2),
+        formatNum(row.growth_value_p3),
+        formatPct(row.growth_p3)
       ];
       csvRows.push(line.join(","));
     });
@@ -493,12 +493,12 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                     {hkdOrDash(row.gross_profit)}
                   </span>
                   <span>
-                    <b>vs LY</b>
-                    <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
+                    <b>vs P2</b>
+                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" />
                   </span>
                   <span>
-                    <b>vs P3M</b>
-                    <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
+                    <b>vs P3</b>
+                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" />
                   </span>
                 </div>
               </button>
@@ -549,10 +549,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                 <th>Share</th>
                 <th>Avg price</th>
                 <th>Margin $</th>
-                <th>Growth $ vs LY</th>
-                <th>Growth % vs LY</th>
-                <th>Growth $ vs P3M</th>
-                <th>Growth % vs P3M</th>
+                <th>Growth $ vs P2</th>
+                <th>Growth % vs P2</th>
+                <th>Growth $ vs P3</th>
+                <th>Growth % vs P3</th>
               </tr>
             </thead>
             <tbody>
@@ -566,10 +566,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                   <td>{pct(row.revenue_share)}</td>
                   <td>{hkd(row.avg_price)}</td>
                   <td>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</td>
-                  <td>{row.growth_value_ly === null || row.growth_value_ly === undefined ? "n/a" : hkd(row.growth_value_ly)}</td>
-                  <td><Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" /></td>
-                  <td>{row.growth_value_p3m === null || row.growth_value_p3m === undefined ? "n/a" : hkd(row.growth_value_p3m)}</td>
-                  <td><Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" /></td>
+                  <td>{row.growth_value_p2 === null || row.growth_value_p2 === undefined ? "n/a" : hkd(row.growth_value_p2)}</td>
+                  <td><Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" /></td>
+                  <td>{row.growth_value_p3 === null || row.growth_value_p3 === undefined ? "n/a" : hkd(row.growth_value_p3)}</td>
+                  <td><Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" /></td>
                 </tr>
               ))}
             </tbody>
@@ -653,7 +653,9 @@ function ScopeStrip({ filters }) {
     { label: "Company", value: filters.company === "all" ? "All companies" : filters.company },
     { label: "Brand", value: filters.brand?.length ? `${filters.brand.length} selected` : "All brands" },
     { label: "Customer", value: filters.customer?.length ? `${filters.customer.length} selected` : "All customers" },
-    { label: "Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
+    { label: "P1 (Main)", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
+    { label: "P2 (Comp A)", value: filters.dateFrom2 && filters.dateTo2 ? `${filters.dateFrom2} to ${filters.dateTo2}` : "Not set" },
+    { label: "P3 (Comp B)", value: filters.dateFrom3 && filters.dateTo3 ? `${filters.dateFrom3} to ${filters.dateTo3}` : "Not set" },
   ];
   return (
     <div className="scopeStrip">
@@ -1028,8 +1030,12 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
         <MultiSelect label="Brand" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
         <MultiSelect label="Customer" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...filters, customer: values })} />
-        <DateField label="From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
-        <DateField label="To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
+        <DateField label="P1 From" value={filters.dateFrom} onChange={(value) => setFilters({ ...filters, dateFrom: value })} />
+        <DateField label="P1 To" value={filters.dateTo} onChange={(value) => setFilters({ ...filters, dateTo: value })} />
+        <DateField label="P2 From (Comp A)" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
+        <DateField label="P2 To (Comp A)" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
+        <DateField label="P3 From (Comp B)" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
+        <DateField label="P3 To (Comp B)" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
       </section>
       <p className="filterHelp">
         Batch keeps uploads separate. Brand and Customer filters filter P&L lines dynamically based on active dimension view, and apply concurrently to SKU sales analysis.
@@ -1197,8 +1203,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
         <span>Account</span>
         <span>HKD</span>
         <span>% revenue</span>
-        <span>vs LY</span>
-        <span>vs P3M</span>
+        <span>vs P2</span>
+        <span>vs P3</span>
       </div>
       {Object.entries(groups).map(([section, sectionRows]) => {
         const open = !!expanded[section];
@@ -1242,8 +1248,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
                     </span>
                     <strong>{hkd(row.amount)}</strong>
                     <em>{rowPct}</em>
-                    <Growth value={row.growth_ly} status={row.growth_status_ly} missingLabel="no LY" />
-                    <Growth value={row.growth_p3m} status={row.growth_status_p3m} missingLabel="no P3M" />
+                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" />
+                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" />
                   </div>
                   {showContributors && contributorsOpen && (
                     <div className="expenseContributors">
@@ -1280,6 +1286,10 @@ function App() {
     section: "all",
     dateFrom: "",
     dateTo: "",
+    dateFrom2: "",
+    dateTo2: "",
+    dateFrom3: "",
+    dateTo3: "",
   });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1327,11 +1337,28 @@ function App() {
     if (!data?.ready || datesInitialized) return;
     const defaultRange = data.meta.availableDateRange || data.meta.skuDateRange || data.meta.dateRange || {};
     if (defaultRange.min || defaultRange.max) {
+      const jsShiftDate = (val, { years = 0, months = 0, days = 0 }) => {
+        if (!val) return "";
+        const d = new Date(`${val}T00:00:00Z`);
+        if (Number.isNaN(d.getTime())) return "";
+        d.setUTCFullYear(d.getUTCFullYear() + years);
+        d.setUTCMonth(d.getUTCMonth() + months);
+        d.setUTCDate(d.getUTCDate() + days);
+        return d.toISOString().slice(0, 10);
+      };
+      
+      const p1From = defaultRange.min || "";
+      const p1To = defaultRange.max || "";
+
       setDatesInitialized(true);
       setFilters((current) => ({
         ...current,
-        dateFrom: current.dateFrom || defaultRange.min || "",
-        dateTo: current.dateTo || defaultRange.max || "",
+        dateFrom: current.dateFrom || p1From,
+        dateTo: current.dateTo || p1To,
+        dateFrom2: current.dateFrom2 || jsShiftDate(p1From, { years: -1 }),
+        dateTo2: current.dateTo2 || jsShiftDate(p1To, { years: -1 }),
+        dateFrom3: current.dateFrom3 || jsShiftDate(p1From, { months: -3 }),
+        dateTo3: current.dateTo3 || jsShiftDate(p1From, { days: -1 }),
       }));
     }
   }, [data, datesInitialized]);

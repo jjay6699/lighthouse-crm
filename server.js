@@ -670,17 +670,25 @@ function safeGrowth(current, previous) {
   return (Number(current || 0) - base) / Math.abs(base);
 }
 
-function comparisonMetric(current, previousMap, key) {
-  if (!previousMap.has(key)) {
-    return { growth: null, value: null, status: "no_prior" };
+function fairGrowthMetric(currentSum, daysCurrent, compareMap, daysCompare, key) {
+  const cSum = Number(currentSum || 0);
+  if (!compareMap.has(key)) {
+    return { growth: null, value: cSum, status: "no_prior" };
   }
-  const previous = Number(previousMap.get(key) || 0);
-  if (Math.abs(previous) < 0.01) {
-    return { growth: null, value: Number(current || 0) - previous, status: "no_prior" };
+  const pSum = Number(compareMap.get(key) || 0);
+  if (daysCurrent <= 0 || daysCompare <= 0) {
+    return { growth: null, value: cSum - pSum, status: "no_prior" };
   }
+  const currentDaily = cSum / daysCurrent;
+  const compareDaily = pSum / daysCompare;
+  
+  if (Math.abs(compareDaily) < 0.01) {
+    return { growth: null, value: cSum - pSum, status: "no_prior" };
+  }
+  
   return {
-    growth: safeGrowth(current, previous),
-    value: Number(current || 0) - previous,
+    growth: safeGrowth(currentDaily, compareDaily),
+    value: cSum - pSum,
     status: "ok",
   };
 }
@@ -992,27 +1000,25 @@ function getDashboard(params) {
     min: minIsoDate(reportDateRange?.min, skuDateRange?.min),
     max: maxIsoDate(reportDateRange?.max, skuDateRange?.max),
   };
-  const pnlCurrentFrom = params.get("dateFrom") || reportDateRange?.min || availableDateRange.min;
-  const pnlUncappedCurrentTo = params.get("dateTo") || reportDateRange?.max || availableDateRange.max;
-  const pnlCurrentTo = clampIsoDate(pnlUncappedCurrentTo, "", minIsoDate(reportDateRange?.max, currentDate) || pnlUncappedCurrentTo);
-  const pnlCompare = comparisonWindow(pnlCurrentFrom, pnlCurrentTo);
-  const pnlComparison = pnlCompare.start && pnlCompare.end
-    ? {
-        current: pnlCompare,
-        ly: {
-          start: shiftDate(pnlCompare.start, { years: -1 }),
-          end: shiftDate(pnlCompare.end, { years: -1 }),
-        },
-        p3m: {
-          start: shiftDate(pnlCompare.start, { months: -3 }),
-          end: shiftDate(pnlCompare.start, { days: -1 }),
-        },
-      }
-    : {
-        current: { start: "", end: "" },
-        ly: { start: "", end: "" },
-        p3m: { start: "", end: "" },
-      };
+  const p1From = params.get("dateFrom") || reportDateRange?.min || availableDateRange.min;
+  const p1UncappedTo = params.get("dateTo") || reportDateRange?.max || availableDateRange.max;
+  const p1To = clampIsoDate(p1UncappedTo, "", minIsoDate(reportDateRange?.max, currentDate) || p1UncappedTo);
+
+  const p2From = params.get("dateFrom2") || (p1From ? shiftDate(p1From, { years: -1 }) : "");
+  const p2To = params.get("dateTo2") || (p1To ? shiftDate(p1To, { years: -1 }) : "");
+
+  const p3From = params.get("dateFrom3") || (p1From ? shiftDate(p1From, { months: -3 }) : "");
+  const p3To = params.get("dateTo3") || (p1From ? shiftDate(p1From, { days: -1 }) : "");
+
+  const daysP1 = daysBetween(p1From, p1To);
+  const daysP2 = daysBetween(p2From, p2To);
+  const daysP3 = daysBetween(p3From, p3To);
+
+  const pnlComparison = {
+    p1: { start: p1From, end: p1To },
+    p2: { start: p2From, end: p2To },
+    p3: { start: p3From, end: p3To },
+  };
 
   function pnlLineKey(row) {
     return `${row.section || ""}|${row.line_item || ""}`;
@@ -1045,9 +1051,9 @@ function getDashboard(params) {
       .all(windowFilter.values);
   }
 
-  const pnlCurrentMap = new Map(pnlRowsForWindow(pnlComparison.current.start, pnlComparison.current.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
-  const pnlLyMap = new Map(pnlRowsForWindow(pnlComparison.ly.start, pnlComparison.ly.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
-  const pnlP3mMap = new Map(pnlRowsForWindow(pnlComparison.p3m.start, pnlComparison.p3m.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
+  const pnlCurrentMap = new Map(pnlRowsForWindow(pnlComparison.p1.start, pnlComparison.p1.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
+  const pnlP2Map = new Map(pnlRowsForWindow(pnlComparison.p2.start, pnlComparison.p2.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
+  const pnlP3Map = new Map(pnlRowsForWindow(pnlComparison.p3.start, pnlComparison.p3.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
   const expenseContributorRows = db
     .prepare(
       `
@@ -1072,8 +1078,8 @@ function getDashboard(params) {
   pAndL = pAndL.map((row) => {
     const key = pnlLineKey(row);
     const currentAmount = pnlCurrentMap.has(key) ? pnlCurrentMap.get(key) : Number(row.amount || 0);
-    const lyMetric = comparisonMetric(currentAmount, pnlLyMap, key);
-    const p3mMetric = comparisonMetric(currentAmount, pnlP3mMap, key);
+    const p2Metric = fairGrowthMetric(currentAmount, daysP1, pnlP2Map, daysP2, key);
+    const p3Metric = fairGrowthMetric(currentAmount, daysP1, pnlP3Map, daysP3, key);
     const contributors = row.section === "Expenses" && !row.is_total && !String(row.line_item || "").startsWith("Total for")
       ? (expenseContributorMap.get(row.line_item) || []).map((item) => ({
           ...item,
@@ -1082,14 +1088,14 @@ function getDashboard(params) {
       : undefined;
     return {
       ...row,
-      growth_ly: lyMetric.growth,
-      growth_p3m: p3mMetric.growth,
-      growth_status_ly: lyMetric.status,
-      growth_status_p3m: p3mMetric.status,
-      growth_value_ly: lyMetric.value,
-      growth_value_p3m: p3mMetric.value,
-      comparison_amount_ly: pnlLyMap.has(key) ? pnlLyMap.get(key) : null,
-      comparison_amount_p3m: pnlP3mMap.has(key) ? pnlP3mMap.get(key) : null,
+      growth_p2: p2Metric.growth,
+      growth_p3: p3Metric.growth,
+      growth_status_p2: p2Metric.status,
+      growth_status_p3: p3Metric.status,
+      growth_value_p2: p2Metric.value,
+      growth_value_p3: p3Metric.value,
+      comparison_amount_p2: pnlP2Map.has(key) ? pnlP2Map.get(key) : null,
+      comparison_amount_p3: pnlP3Map.has(key) ? pnlP3Map.get(key) : null,
       ...(contributors ? { expense_contributors: contributors } : {}),
     };
   });
@@ -1350,24 +1356,16 @@ function getDashboard(params) {
       )
       .all(brandMarginFilter.values);
 
-    const currentFrom = params.get("dateFrom") || meta.skuDateRange?.min || meta.availableDateRange?.min;
-    const uncappedCurrentTo = params.get("dateTo") || meta.skuDateRange?.max || meta.availableDateRange?.max;
-    const currentTo = clampIsoDate(uncappedCurrentTo, "", minIsoDate(meta.skuDateRange?.max, currentDate) || uncappedCurrentTo);
-    skuActiveRange = { from: currentFrom || "", to: currentTo || "" };
-    if (currentFrom && currentTo) {
-      const compare = comparisonWindow(currentFrom, currentTo);
-      const lyWindow = {
-        start: shiftDate(compare.start, { years: -1 }),
-        end: shiftDate(compare.end, { years: -1 }),
-      };
-      const p3mWindow = {
-        start: shiftDate(compare.start, { months: -3 }),
-        end: shiftDate(compare.start, { days: -1 }),
-      };
-      skuComparison = { current: compare, ly: lyWindow, p3m: p3mWindow };
-      const currentFilter = skuWhereFromSearch(periodParams(params, compare.start, compare.end));
-      const lyFilter = skuWhereFromSearch(periodParams(params, lyWindow.start, lyWindow.end));
-      const p3mFilter = skuWhereFromSearch(periodParams(params, p3mWindow.start, p3mWindow.end));
+    skuActiveRange = { from: p1From || "", to: p1To || "" };
+    skuComparison = {
+      current: { start: p1From, end: p1To },
+      ly: { start: p2From, end: p2To },
+      p3m: { start: p3From, end: p3To },
+    };
+    if (p1From && p1To) {
+      const currentFilter = skuWhereFromSearch(periodParams(params, p1From, p1To));
+      const lyFilter = skuWhereFromSearch(periodParams(params, p2From, p2To));
+      const p3mFilter = skuWhereFromSearch(periodParams(params, p3mFrom, p3mTo));
       const comparisonSql = `
         SELECT ${skuBrandKey} AS brand_key, SUM(s.amount_hkd) AS revenue
         FROM sku_sales s
@@ -1558,10 +1556,10 @@ function getDashboard(params) {
       netMargin: revenueTotal ? Number((kpiRows[0] || {}).net_earnings || 0) / revenueTotal : 0,
       skuGrowth: {
         current_revenue: skuCurrentRevenue,
-        ly_revenue: skuLyRevenue,
-        p3m_revenue: skuP3mRevenue,
-        growth_ly: safeGrowth(skuCurrentRevenue, skuLyRevenue),
-        growth_p3m: safeGrowth(skuCurrentRevenue, skuP3mRevenue),
+        p2_revenue: skuLyRevenue,
+        p3_revenue: skuP3mRevenue,
+        growth_p2: fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuLyRevenue]]), daysP2, "total").growth,
+        growth_p3: fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuP3mRevenue]]), daysP3, "total").growth,
         window: skuComparison,
       },
       topRevenueCompany,
@@ -1589,8 +1587,8 @@ function getDashboard(params) {
         const currentRevenue = hasSkuComparison ? Number(skuCurrentMap.get(rowKey) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const lyMetric = comparisonMetric(currentRevenue, skuLyMap, rowKey);
-        const p3mMetric = comparisonMetric(currentRevenue, skuP3mMap, rowKey);
+        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuLyMap, daysP2, rowKey);
+        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuP3mMap, daysP3, rowKey);
         return {
           ...row,
           brand: brandLabel(key, row.brand),
@@ -1598,20 +1596,20 @@ function getDashboard(params) {
           gross_margin: grossMargin,
           gross_profit: mappedGrossProfit,
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
-          growth_ly: lyMetric.growth,
-          growth_p3m: p3mMetric.growth,
-          growth_status_ly: lyMetric.status,
-          growth_status_p3m: p3mMetric.status,
-          growth_value_ly: lyMetric.value,
-          growth_value_p3m: p3mMetric.value,
+          growth_p2: p2Metric.growth,
+          growth_p3: p3Metric.growth,
+          growth_status_p2: p2Metric.status,
+          growth_status_p3: p3Metric.status,
+          growth_value_p2: p2Metric.value,
+          growth_value_p3: p3Metric.value,
         };
       }),
       brands: skuBrands.map((row) => {
         const currentRevenue = hasSkuComparison ? Number(skuBrandCurrentMap.get(row.brand_key) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const lyMetric = comparisonMetric(currentRevenue, skuBrandLyMap, row.brand_key);
-        const p3mMetric = comparisonMetric(currentRevenue, skuBrandP3mMap, row.brand_key);
+        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandLyMap, daysP2, row.brand_key);
+        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandP3mMap, daysP3, row.brand_key);
         return {
           ...row,
           brand: brandLabel(row.brand_key, row.brand),
@@ -1619,28 +1617,28 @@ function getDashboard(params) {
           gross_profit: mappedGrossProfit,
           gross_margin: grossMargin,
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
-          growth_ly: lyMetric.growth,
-          growth_p3m: p3mMetric.growth,
-          growth_status_ly: lyMetric.status,
-          growth_status_p3m: p3mMetric.status,
+          growth_p2: p2Metric.growth,
+          growth_p3: p3Metric.growth,
+          growth_status_p2: p2Metric.status,
+          growth_status_p3: p3Metric.status,
         };
       }),
       customers: skuCustomers.map((row) => {
         const currentRevenue = hasSkuComparison ? Number(skuCustomerCurrentMap.get(row.customer_key) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const lyMetric = comparisonMetric(currentRevenue, skuCustomerLyMap, row.customer_key);
-        const p3mMetric = comparisonMetric(currentRevenue, skuCustomerP3mMap, row.customer_key);
+        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerLyMap, daysP2, row.customer_key);
+        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerP3mMap, daysP3, row.customer_key);
         return {
           ...row,
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
           gross_profit: mappedGrossProfit,
           gross_margin: grossMargin,
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
-          growth_ly: lyMetric.growth,
-          growth_p3m: p3mMetric.growth,
-          growth_status_ly: lyMetric.status,
-          growth_status_p3m: p3mMetric.status,
+          growth_p2: p2Metric.growth,
+          growth_p3: p3Metric.growth,
+          growth_status_p2: p2Metric.status,
+          growth_status_p3: p3Metric.status,
         };
       }),
     },
