@@ -669,6 +669,29 @@ function Select({ label, value, onChange, options }) {
   );
 }
 
+function SegmentedToggle({ label, value, onChange, options }) {
+  return (
+    <div className="segmentedToggleGroup">
+      <span className="toggleLabel">{label}</span>
+      <div className="toggleContainer">
+        {options.map((opt) => {
+          const isActive = opt.value === value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              className={`toggleButton ${isActive ? "active" : ""}`}
+              onClick={() => onChange(opt.value)}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MultiSelect({ label, values, onChange, options }) {
   const [open, setOpen] = useState(false);
   const selected = Array.isArray(values) ? values : values && values !== "all" ? [values] : [];
@@ -1132,7 +1155,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <div className="filterGroup">
           <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
           <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
-          <Select label="View By" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, brand: [], customer: [] })} />
+          <SegmentedToggle label="View By" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, brand: [], customer: [] })} />
           {isClassView ? (
             <MultiSelect label="Select Brands" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
           ) : (
@@ -1594,7 +1617,7 @@ function App() {
             <div className="subNav">
               {[
                 ["summary", "Summary"],
-                ["sku", "Brand / Customer / SKU"],
+                ["sku", "Brand & Customer SKU"],
                 ["lines", "P&L lines"],
                 ["import", "Import"],
               ].map(([id, label]) => (
