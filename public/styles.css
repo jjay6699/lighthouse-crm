@@ -88,6 +88,8 @@ input {
   gap: 6px;
   overflow-y: auto;
   flex: 1;
+  align-content: start;
+  min-height: 0;
 }
 
 .mainNav::-webkit-scrollbar {
