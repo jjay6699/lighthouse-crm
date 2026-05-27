@@ -8,14 +8,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --ink: #f8fafc;
-        --muted: #94a3b8;
-        --line: rgba(255, 255, 255, 0.08);
-        --bg: #030712;
-        --panel: rgba(15, 23, 42, 0.75);
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: rgba(15, 23, 42, 0.08);
+        --bg: #f8fafc;
+        --panel: rgba(255, 255, 255, 0.85);
         --teal: #0d9488;
         --teal-hover: #0f766e;
-        --error: #f43f5e;
+        --error: #e11d48;
       }
 
       * {
@@ -26,7 +26,7 @@
 
       body {
         min-height: 100vh;
-        background: radial-gradient(circle at top left, #111827 0%, #030712 100%);
+        background: radial-gradient(circle at top left, #f8fafc 0%, #cbd5e1 100%);
         color: var(--ink);
         font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
         display: flex;
@@ -36,29 +36,29 @@
         letter-spacing: -0.02em;
       }
 
-      /* Beautiful background glowing elements for high-end aesthetics */
+      /* Beautiful background glowing elements for high-end light aesthetics */
       .glow-1 {
         position: absolute;
-        top: 20%;
-        left: 20%;
-        width: 300px;
-        height: 300px;
-        background: rgba(13, 148, 136, 0.06);
+        top: 15%;
+        left: 15%;
+        width: 350px;
+        height: 350px;
+        background: rgba(13, 148, 136, 0.04);
         border-radius: 50%;
-        filter: blur(100px);
+        filter: blur(120px);
         pointer-events: none;
         z-index: 0;
       }
 
       .glow-2 {
         position: absolute;
-        bottom: 20%;
-        right: 20%;
-        width: 300px;
-        height: 300px;
-        background: rgba(37, 99, 235, 0.05);
+        bottom: 15%;
+        right: 15%;
+        width: 350px;
+        height: 350px;
+        background: rgba(37, 99, 235, 0.03);
         border-radius: 50%;
-        filter: blur(100px);
+        filter: blur(120px);
         pointer-events: none;
         z-index: 0;
       }
@@ -72,7 +72,7 @@
         background: var(--panel);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+        box-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
         padding: 40px 32px;
       }
 
@@ -81,28 +81,10 @@
         margin-bottom: 30px;
       }
 
-      .logo-icon {
-        width: 44px;
-        height: 44px;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 16px;
-        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
-      }
-
-      .logo-icon svg {
-        width: 22px;
-        height: 22px;
-        color: #ffffff;
-      }
-
       h1 {
-        font-size: 22px;
+        font-size: 23px;
         font-weight: 700;
-        color: #ffffff;
+        color: var(--ink);
         letter-spacing: -0.03em;
         margin-bottom: 8px;
       }
@@ -126,12 +108,11 @@
       }
 
       .input-group span {
-        color: #e2e8f0;
+        color: #475569;
         font-size: 12px;
         font-weight: 600;
         letter-spacing: 0.02em;
         text-transform: uppercase;
-        opacity: 0.8;
       }
 
       .input-wrapper {
@@ -152,90 +133,113 @@
       input {
         width: 100%;
         min-height: 44px;
-        background: rgba(15, 23, 42, 0.4);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
         border-radius: 8px;
         padding: 0 12px 0 40px;
         font-size: 14px;
-        color: #ffffff;
+        color: var(--ink);
         font-family: inherit;
         transition: all 0.15s ease-out;
       }
 
       input::placeholder {
-        color: #475569;
+        color: #94a3b8;
       }
 
       input:focus {
         outline: none;
         border-color: var(--teal);
-        background: rgba(15, 23, 42, 0.6);
         box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
       }
 
-      /* Captcha box styling */
-      .captcha-container {
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 10px;
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-
-      .captcha-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .captcha-label {
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-      }
-
-      .refresh-btn {
-        background: transparent;
-        border: 0;
-        color: var(--muted);
-        cursor: pointer;
+      /* Slide to verify control styling */
+      .slide-container {
+        position: relative;
+        height: 46px;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        border-radius: 23px;
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow: hidden;
+        user-select: none;
+        margin: 5px 0;
+      }
+
+      .slide-track {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 0;
+        background: #ecfdf5;
+        transition: background 0.15s ease;
+      }
+
+      .slide-handle {
+        position: absolute;
+        left: 3px;
+        width: 40px;
+        height: 40px;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: grab;
+        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05);
+        z-index: 10;
+        transition: background 0.15s ease, border-color 0.15s ease;
+      }
+
+      .slide-handle:active {
+        cursor: grabbing;
+        background: #f8fafc;
+      }
+
+      .slide-handle svg {
+        width: 16px;
+        height: 16px;
+        color: #64748b;
         transition: color 0.15s ease;
       }
 
-      .refresh-btn:hover {
+      .slide-text {
+        position: relative;
+        font-size: 13px;
+        font-weight: 500;
+        color: #64748b;
+        z-index: 5;
+        pointer-events: none;
+        transition: color 0.15s ease, opacity 0.15s ease;
+      }
+
+      .slide-container.verified {
+        border-color: #a7f3d0;
+      }
+
+      .slide-container.verified .slide-track {
+        background: #ecfdf5;
+        width: 100% !important;
+      }
+
+      .slide-container.verified .slide-handle {
+        left: calc(100% - 43px) !important;
+        background: #10b981;
+        border-color: #10b981;
+        cursor: default;
+      }
+
+      .slide-container.verified .slide-handle svg {
         color: #ffffff;
       }
 
-      .captcha-equation-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .captcha-question {
-        font-size: 16px;
-        font-weight: 700;
-        color: #ffffff;
-        background: rgba(255, 255, 255, 0.04);
-        padding: 8px 16px;
-        border-radius: 6px;
-        border: 1px dashed rgba(255, 255, 255, 0.1);
-        min-width: 120px;
-        text-align: center;
-        letter-spacing: 0.05em;
-        user-select: none;
-      }
-
-      .captcha-input {
-        flex: 1;
-        padding: 0 12px;
+      .slide-container.verified .slide-text {
+        color: #047857;
+        font-weight: 600;
       }
 
       button.submit-btn {
@@ -248,7 +252,7 @@
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
+        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.15);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -258,7 +262,7 @@
       button.submit-btn:hover {
         background: var(--teal-hover);
         transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(13, 148, 136, 0.3);
+        box-shadow: 0 6px 16px rgba(13, 148, 136, 0.25);
       }
 
       button.submit-btn:active {
@@ -266,8 +270,8 @@
       }
 
       button.submit-btn:disabled {
-        cursor: wait;
-        opacity: 0.7;
+        cursor: not-allowed;
+        opacity: 0.5;
         transform: none;
         box-shadow: none;
       }
@@ -284,7 +288,7 @@
       .footer-notice {
         text-align: center;
         font-size: 11px;
-        color: #475569;
+        color: #64748b;
         margin-top: 24px;
         line-height: 1.5;
       }
@@ -296,13 +300,6 @@
 
     <main>
       <div class="header">
-        <div class="logo-icon">
-          <!-- Key / Shield Icon -->
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </div>
         <h1>Sign in to Lightmart CRM</h1>
         <p class="subtitle">Financial reporting is private. Please sign in before opening the dashboard.</p>
       </div>
@@ -332,27 +329,19 @@
           </div>
         </div>
 
-        <!-- Captcha Row -->
-        <div class="captcha-container">
-          <div class="captcha-header">
-            <span class="captcha-label">Security Verification</span>
-            <button type="button" class="refresh-btn" id="refreshCaptcha" title="Refresh Captcha">
-              <!-- Refresh Icon -->
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-                <path d="M16 16h5v5" />
-              </svg>
-            </button>
+        <!-- Slide to verify Row -->
+        <div class="slide-container" id="slideContainer">
+          <div class="slide-track" id="slideTrack"></div>
+          <div class="slide-handle" id="slideHandle">
+            <!-- Double Chevron Right Icon -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m6 17 5-5-5-5M13 17l5-5-5-5" />
+            </svg>
           </div>
-          <div class="captcha-equation-row">
-            <div class="captcha-question" id="captchaQuestion">Loading...</div>
-            <input class="captcha-input" id="captchaInput" placeholder="Answer" type="number" required style="padding-left: 12px;" />
-          </div>
+          <span class="slide-text" id="slideText">Slide to verify</span>
         </div>
 
-        <button type="submit" class="submit-btn">
+        <button type="submit" class="submit-btn" disabled>
           <span>Sign In to Dashboard</span>
           <!-- Chevron Right Icon -->
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -372,33 +361,111 @@
       const form = document.querySelector("#loginForm");
       const message = document.querySelector(".message");
       const button = form.querySelector("button.submit-btn");
-      const captchaQuestion = document.querySelector("#captchaQuestion");
-      const captchaInput = document.querySelector("#captchaInput");
-      const refreshCaptcha = document.querySelector("#refreshCaptcha");
+      const slideContainer = document.querySelector("#slideContainer");
+      const slideHandle = document.querySelector("#slideHandle");
+      const slideTrack = document.querySelector("#slideTrack");
+      const slideText = document.querySelector("#slideText");
 
-      let currentCaptchaToken = "";
+      let isSliding = false;
+      let startX = 0;
+      let maxSlideWidth = 0;
+      let slideToken = "";
+      let slideVerified = false;
 
-      async function loadCaptcha() {
-        captchaQuestion.textContent = "Loading...";
-        captchaInput.value = "";
-        try {
-          const res = await fetch("/api/auth/captcha");
-          const d = await res.json();
-          if (d.question && d.token) {
-            captchaQuestion.textContent = d.question;
-            currentCaptchaToken = d.token;
-          } else {
-            captchaQuestion.textContent = "Error";
+      function initSlide() {
+        maxSlideWidth = slideContainer.clientWidth - slideHandle.clientWidth - 6;
+      }
+
+      // Re-initialize slider width on resize or startup
+      window.addEventListener("resize", initSlide);
+      setTimeout(initSlide, 150);
+
+      // Handle Mouse sliding events
+      slideHandle.addEventListener("mousedown", onSlideStart);
+      document.addEventListener("mousemove", onSlideMove);
+      document.addEventListener("mouseup", onSlideEnd);
+
+      // Handle Touch sliding events (for mobile and tablet)
+      slideHandle.addEventListener("touchstart", onSlideStart);
+      document.addEventListener("touchmove", onSlideMove);
+      document.addEventListener("touchend", onSlideEnd);
+
+      function onSlideStart(e) {
+        if (slideVerified) return;
+        isSliding = true;
+        startX = e.clientX || e.touches[0].clientX;
+        slideHandle.style.transition = "none";
+        slideTrack.style.transition = "none";
+      }
+
+      function onSlideMove(e) {
+        if (!isSliding || slideVerified) return;
+        const currentX = e.clientX || (e.touches && e.touches[0].clientX);
+        if (currentX === undefined) return;
+        
+        let deltaX = currentX - startX;
+
+        if (deltaX < 0) deltaX = 0;
+        if (deltaX > maxSlideWidth) deltaX = maxSlideWidth;
+
+        slideHandle.style.left = `${deltaX + 3}px`;
+        slideTrack.style.width = `${deltaX + 20}px`;
+
+        // Fade out text as you slide
+        slideText.style.opacity = Math.max(0, 1 - (deltaX / (maxSlideWidth * 0.7)));
+      }
+
+      async function onSlideEnd() {
+        if (!isSliding || slideVerified) return;
+        isSliding = false;
+
+        const currentLeft = parseInt(slideHandle.style.left, 10) - 3;
+
+        // Verify if slipped to 90%+ of the slider track
+        if (currentLeft >= maxSlideWidth * 0.9) {
+          slideVerified = true;
+          slideContainer.classList.add("verified");
+          slideText.textContent = "Verified ✔";
+          slideText.style.opacity = "1";
+          
+          slideHandle.style.transition = "all 0.2s ease";
+          slideTrack.style.transition = "all 0.2s ease";
+          slideHandle.style.left = "calc(100% - 43px)";
+          slideTrack.style.width = "100%";
+
+          // Fetch secure stateless verification token from server
+          try {
+            const res = await fetch("/api/auth/verify-slide", { method: "POST" });
+            const d = await res.json();
+            if (d.ok && d.token) {
+              slideToken = d.token;
+              button.disabled = false; // Enable Submit button
+            } else {
+              resetSlide();
+              message.textContent = "Security validation failed. Please try again.";
+            }
+          } catch {
+            resetSlide();
+            message.textContent = "Network error. Please try again.";
           }
-        } catch (err) {
-          captchaQuestion.textContent = "Offline";
+        } else {
+          resetSlide();
         }
       }
 
-      // Load captcha challenge on startup
-      loadCaptcha();
-
-      refreshCaptcha.addEventListener("click", loadCaptcha);
+      function resetSlide() {
+        slideVerified = false;
+        slideToken = "";
+        slideContainer.classList.remove("verified");
+        slideText.textContent = "Slide to verify";
+        slideText.style.opacity = "1";
+        button.disabled = true; // Keep Submit button disabled
+        
+        slideHandle.style.transition = "all 0.25s ease";
+        slideTrack.style.transition = "all 0.25s ease";
+        slideHandle.style.left = "3px";
+        slideTrack.style.width = "0";
+      }
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -413,8 +480,7 @@
             body: JSON.stringify({
               username: formData.get("username"),
               password: formData.get("password"),
-              captchaAnswer: captchaInput.value,
-              captchaToken: currentCaptchaToken,
+              slideToken: slideToken,
             }),
           });
           const result = await response.json().catch(() => ({}));
@@ -426,12 +492,12 @@
 
           message.textContent = result.error || "Sign in failed.";
           button.disabled = false;
-          // Always reload captcha on failure to prevent brute forcing
-          loadCaptcha();
+          // Always reset the slider on submit failures to prevent bot automated attempts
+          resetSlide();
         } catch (err) {
           message.textContent = "Network error. Please try again.";
           button.disabled = false;
-          loadCaptcha();
+          resetSlide();
         }
       });
     </script>

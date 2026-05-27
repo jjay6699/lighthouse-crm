@@ -98,38 +98,22 @@ function verifyPassword(password) {
   return expectedBuffer.length === actualBuffer.length && timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
-function generateCaptcha() {
-  const num1 = Math.floor(Math.random() * 9) + 1;
-  const num2 = Math.floor(Math.random() * 9) + 1;
-  const ops = ["+", "-", "×"];
-  const op = ops[Math.floor(Math.random() * ops.length)];
-  let answer = 0;
-  if (op === "+") answer = num1 + num2;
-  else if (op === "-") answer = num1 - num2;
-  else if (op === "×") answer = num1 * num2;
-
+function generateSlideToken() {
   const timestamp = Date.now();
-  const dataToSign = `${answer}.${timestamp}`;
+  const dataToSign = `slide_verified.${timestamp}`;
   const signature = createHmac("sha256", sessionSecret || "temp_secret").update(dataToSign).digest("base64url");
-  const token = `${timestamp}.${signature}`;
-
-  return {
-    question: `What is ${num1} ${op} ${num2}?`,
-    token
-  };
+  return `${timestamp}.${signature}`;
 }
 
-function verifyCaptcha(token, answerInput) {
-  if (!token || answerInput === undefined || answerInput === null) return false;
+function verifySlideToken(token) {
+  if (!token) return false;
   const [timestampStr, signature] = token.split(".");
   if (!timestampStr || !signature) return false;
 
   const timestamp = parseInt(timestampStr, 10);
   if (Date.now() - timestamp > 5 * 60 * 1000) return false;
 
-  const answer = parseInt(String(answerInput).trim(), 10);
-  if (isNaN(answer)) return false;
-  const dataToSign = `${answer}.${timestamp}`;
+  const dataToSign = `slide_verified.${timestamp}`;
   const expectedSignature = createHmac("sha256", sessionSecret || "temp_secret").update(dataToSign).digest("base64url");
 
   return timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
@@ -1964,9 +1948,9 @@ createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === "/api/auth/captcha" && req.method === "GET") {
+  if (url.pathname === "/api/auth/verify-slide" && req.method === "POST") {
     try {
-      json(res, 200, generateCaptcha());
+      json(res, 200, { ok: true, token: generateSlideToken() });
     } catch (error) {
       json(res, 500, { ok: false, error: error.message });
     }
@@ -1982,10 +1966,10 @@ createServer(async (req, res) => {
     try {
       const body = await readJson(req);
 
-      // Verify signed math captcha
-      const captchaOk = verifyCaptcha(body.captchaToken, body.captchaAnswer);
-      if (!captchaOk) {
-        json(res, 400, { ok: false, error: "Incorrect or expired math captcha. Please try again." });
+      // Verify signed slide token
+      const slideOk = verifySlideToken(body.slideToken);
+      if (!slideOk) {
+        json(res, 400, { ok: false, error: "Security check failed. Please slide to verify." });
         return;
       }
 
