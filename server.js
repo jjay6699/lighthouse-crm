@@ -98,6 +98,43 @@ function verifyPassword(password) {
   return expectedBuffer.length === actualBuffer.length && timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
+function generateCaptcha() {
+  const num1 = Math.floor(Math.random() * 9) + 1;
+  const num2 = Math.floor(Math.random() * 9) + 1;
+  const ops = ["+", "-", "×"];
+  const op = ops[Math.floor(Math.random() * ops.length)];
+  let answer = 0;
+  if (op === "+") answer = num1 + num2;
+  else if (op === "-") answer = num1 - num2;
+  else if (op === "×") answer = num1 * num2;
+
+  const timestamp = Date.now();
+  const dataToSign = `${answer}.${timestamp}`;
+  const signature = createHmac("sha256", sessionSecret || "temp_secret").update(dataToSign).digest("base64url");
+  const token = `${timestamp}.${signature}`;
+
+  return {
+    question: `What is ${num1} ${op} ${num2}?`,
+    token
+  };
+}
+
+function verifyCaptcha(token, answerInput) {
+  if (!token || answerInput === undefined || answerInput === null) return false;
+  const [timestampStr, signature] = token.split(".");
+  if (!timestampStr || !signature) return false;
+
+  const timestamp = parseInt(timestampStr, 10);
+  if (Date.now() - timestamp > 5 * 60 * 1000) return false;
+
+  const answer = parseInt(String(answerInput).trim(), 10);
+  if (isNaN(answer)) return false;
+  const dataToSign = `${answer}.${timestamp}`;
+  const expectedSignature = createHmac("sha256", sessionSecret || "temp_secret").update(dataToSign).digest("base64url");
+
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+}
+
 function isAuthenticated(req) {
   if (!isAuthConfigured()) return false;
   const signedToken = parseCookies(req).lm_session || "";
@@ -1904,6 +1941,7 @@ async function serveStatic(req, res) {
 }
 
 createServer(async (req, res) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === "/api/health") {
@@ -1926,6 +1964,15 @@ createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/auth/captcha" && req.method === "GET") {
+    try {
+      json(res, 200, generateCaptcha());
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
   if (url.pathname === "/api/auth/login" && req.method === "POST") {
     if (!isAuthConfigured()) {
       json(res, 500, { ok: false, error: "Login is not configured. Set CRM_PASSWORD_HASH and SESSION_SECRET." });
@@ -1934,6 +1981,14 @@ createServer(async (req, res) => {
 
     try {
       const body = await readJson(req);
+
+      // Verify signed math captcha
+      const captchaOk = verifyCaptcha(body.captchaToken, body.captchaAnswer);
+      if (!captchaOk) {
+        json(res, 400, { ok: false, error: "Incorrect or expired math captcha. Please try again." });
+        return;
+      }
+
       const usernameOk = String(body.username || "") === authUser;
       const passwordOk = verifyPassword(body.password || "");
       if (!usernameOk || !passwordOk) {
