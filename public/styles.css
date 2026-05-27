@@ -86,6 +86,25 @@ input {
 .mainNav {
   display: grid;
   gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.mainNav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.mainNav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mainNav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.mainNav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .mainNav button,

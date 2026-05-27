@@ -2867,7 +2867,11 @@ function App() {
           <span>Consolidated finance</span>
         </div>
         <nav className="mainNav">
-          <button className={page === "overview" ? "active" : ""} type="button" onClick={() => setPage("overview")}>
+          <button className={page === "overview" ? "active" : ""} type="button" onClick={() => {
+            setPage("overview");
+            setFinanceNavOpen(false);
+            setDebitNavOpen(false);
+          }}>
             <LayoutDashboard size={18} />
             Overview
           </button>
@@ -2877,6 +2881,7 @@ function App() {
             onClick={() => {
               setPage("finance");
               setFinanceNavOpen((open) => !open);
+              setDebitNavOpen(false);
             }}
           >
             <CircleDollarSign size={18} />
@@ -2913,6 +2918,7 @@ function App() {
             onClick={() => {
               setPage("debit");
               setDebitNavOpen((open) => !open);
+              setFinanceNavOpen(false);
             }}
           >
             <Receipt size={18} />
