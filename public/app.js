@@ -2969,6 +2969,25 @@ function App() {
           <LogOut size={16} />
           Sign out
         </button>
+        <a 
+          href="https://jjay.info" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          style={{
+            textAlign: "center",
+            display: "block",
+            fontSize: "11px",
+            color: "rgba(255, 255, 255, 0.4)",
+            textDecoration: "none",
+            marginTop: "12px",
+            transition: "color 0.2s ease",
+            fontWeight: "500"
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255, 255, 255, 0.85)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255, 255, 255, 0.4)"; }}
+        >
+          Powered by JJAY TECH
+        </a>
       </aside>
 
       {page === "overview" ? (
