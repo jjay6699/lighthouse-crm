@@ -2644,13 +2644,6 @@ function DebitNoteDashboard({
               <RefreshCw size={18} />
               <h2>Audit Directory Controls</h2>
             </div>
-            <p style={{ marginBottom: "20px", fontSize: "13px", opacity: 0.8 }}>
-              The system currently parses files placed in:
-              <br />
-              <code style={{ background: "rgba(0,0,0,0.05)", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", display: "inline-block", marginTop: "5px" }}>
-                D:\Lightmart CRM\debit notes
-              </code>
-            </p>
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
               <button className="primaryButton" onClick={triggerImport} disabled={uploadState.busy} style={{ width: "max-content" }}>
                 <RefreshCw size={16} className={uploadState.busy ? "loadingSpinner" : ""} /> Run Full Re-parse on Folder
@@ -2695,14 +2688,6 @@ function DebitNoteDashboard({
               >
                 <Trash2 size={16} /> Wipe Workspace & Clear Data
               </button>
-            </div>
-            
-            <div style={{ marginTop: "30px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
-              <h4>Important Git Notice</h4>
-              <p style={{ fontSize: "12px", opacity: 0.7, marginTop: "5px" }}>
-                The folder `D:\Lightmart CRM\debit notes` contains sensitive client files.
-                It has been successfully added to `.gitignore` to guarantee it will never be uploaded to GitHub.
-              </p>
             </div>
           </div>
         </section>
