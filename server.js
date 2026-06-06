@@ -446,9 +446,28 @@ function initAdsDb() {
       impressions INTEGER DEFAULT 0,
       reach INTEGER DEFAULT 0,
       daily_budget REAL DEFAULT 0.0,
-      creative_text TEXT
+      creative_text TEXT,
+      image_url TEXT,
+      targeting TEXT,
+      placement TEXT
     )
   `);
+
+  try {
+    db.exec(`ALTER TABLE meta_campaigns ADD COLUMN image_url TEXT`);
+  } catch (e) {
+    // ignore
+  }
+  try {
+    db.exec(`ALTER TABLE meta_campaigns ADD COLUMN targeting TEXT`);
+  } catch (e) {
+    // ignore
+  }
+  try {
+    db.exec(`ALTER TABLE meta_campaigns ADD COLUMN placement TEXT`);
+  } catch (e) {
+    // ignore
+  }
 
   const countRow = db.prepare("SELECT COUNT(*) as count FROM meta_ads_settings").get();
   if (countRow.count === 0) {
@@ -2450,6 +2469,9 @@ createServer(async (req, res) => {
                 recommendations: camp.recommendations,
                 daily_budget: camp.daily_budget,
                 creative_text: camp.creative_text,
+                image_url: camp.image_url,
+                targeting: camp.targeting,
+                placement: camp.placement,
                 ai_adjusted: true,
                 metrics: {
                   results: newResults,
@@ -2471,6 +2493,9 @@ createServer(async (req, res) => {
               recommendations: camp.recommendations,
               daily_budget: camp.daily_budget,
               creative_text: camp.creative_text,
+              image_url: camp.image_url,
+              targeting: camp.targeting,
+              placement: camp.placement,
               metrics
             };
           });
@@ -2487,7 +2512,7 @@ createServer(async (req, res) => {
     try {
       initAdsDb();
       const body = await readJson(req);
-      const { name, objective, daily_budget, creative_text } = body;
+      const { name, objective, daily_budget, creative_text, image_url, targeting, placement } = body;
       
       const db = openDbWrite();
       if (!db) {
@@ -2506,9 +2531,9 @@ createServer(async (req, res) => {
       const roas = value > 0 ? Math.round((value / spent) * 100) / 100 : 0.0;
 
       db.prepare(`
-        INSERT INTO meta_campaigns (id, name, objective, status, recommendations, results, value, roas, cost_per_result, spent, impressions, reach, daily_budget, creative_text)
-        VALUES (?, ?, ?, 'ACTIVE', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, name, objective, results, value, roas, costPerRes, spent, impressions, reach, budget, creative_text || "");
+        INSERT INTO meta_campaigns (id, name, objective, status, recommendations, results, value, roas, cost_per_result, spent, impressions, reach, daily_budget, creative_text, image_url, targeting, placement)
+        VALUES (?, ?, ?, 'ACTIVE', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, name, objective, results, value, roas, costPerRes, spent, impressions, reach, budget, creative_text || "", image_url || "", targeting || "", placement || "");
 
       json(res, 200, { ok: true });
     } catch (error) {

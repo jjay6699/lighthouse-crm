@@ -26,6 +26,11 @@ import {
   Trash2,
   Link2,
   Key,
+  ThumbsUp,
+  MessageSquare,
+  Share2,
+  Image,
+  Target,
 } from "lucide-react";
 import {
   Bar,
@@ -3313,6 +3318,26 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
   const [newObjective, setNewObjective] = useState("Traffic");
   const [newDailyBudget, setNewDailyBudget] = useState("100");
   const [newCreativeText, setNewCreativeText] = useState("");
+  const [newTargeting, setNewTargeting] = useState("Hong Kong");
+  const [newPlacement, setNewPlacement] = useState("Facebook Feed");
+  const [newImage, setNewImage] = useState("");
+  const [mockLiked, setMockLiked] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("Image is too large. Please select an image under 2MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
   const [selectedCampForPreview, setSelectedCampForPreview] = useState(null);
   const [applyingRec, setApplyingRec] = useState(false);
 
@@ -3382,7 +3407,10 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
           name: newCampName,
           objective: newObjective,
           daily_budget: newDailyBudget,
-          creative_text: newCreativeText
+          creative_text: newCreativeText,
+          image_url: newImage,
+          targeting: newTargeting,
+          placement: newPlacement
         })
       });
       const d = await res.json();
@@ -3391,6 +3419,9 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
         setNewObjective("Traffic");
         setNewDailyBudget("100");
         setNewCreativeText("");
+        setNewTargeting("Hong Kong");
+        setNewPlacement("Facebook Feed");
+        setNewImage("");
         setShowCreateModal(false);
         await loadData();
       } else {
@@ -4068,43 +4099,92 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
           left: "0",
           width: "100%",
           height: "100%",
-          background: "rgba(0,0,0,0.4)",
+          background: "rgba(15, 23, 42, 0.6)",
+          backdropFilter: "blur(4px)",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
           zIndex: "1100"
         }}>
-          <div className="panel" style={{ width: "100%", maxWidth: "860px", padding: "30px 40px", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)", position: "relative" }}>
+          <div className="panel" style={{ 
+            width: "95%", 
+            maxWidth: "980px", 
+            padding: "32px", 
+            boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)", 
+            position: "relative",
+            maxHeight: "90vh",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+            overflow: "hidden"
+          }}>
             <button 
-              onClick={() => setShowCreateModal(false)}
-              style={{ position: "absolute", top: "20px", right: "20px", background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}
+              onClick={() => {
+                setShowCreateModal(false);
+                setNewImage("");
+                setNewTargeting("Hong Kong");
+                setNewPlacement("Facebook Feed");
+              }}
+              style={{ position: "absolute", top: "24px", right: "24px", background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}
             >
               <X size={20} />
             </button>
-            <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "8px" }}>Create New Ad Campaign</h3>
-            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "20px" }}>Launch a new campaign on Meta Ads Manager.</p>
+            <div>
+              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "4px", color: "var(--ink)" }}>Create New Ad Campaign</h3>
+              <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>Configure and review your Meta Ads Campaign creative and targeting metrics.</p>
+            </div>
             
-            <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
-              <form onSubmit={handleCreateCampaign} style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{ display: "flex", gap: "28px", flex: 1, overflow: "hidden" }}>
+              {/* Form Side */}
+              <form 
+                onSubmit={handleCreateCampaign} 
+                style={{ 
+                  flex: 1.2, 
+                  display: "flex", 
+                  flexDirection: "column", 
+                  gap: "14px", 
+                  overflowY: "auto", 
+                  paddingRight: "8px",
+                  maxHeight: "calc(90vh - 140px)"
+                }}
+              >
+                {/* Campaign Name */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                   <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Campaign Name</label>
                   <input 
                     type="text" 
                     value={newCampName} 
                     onChange={(e) => setNewCampName(e.target.value)}
-                    placeholder="e.g. [Teazen_Kombucha] Summer Traffic Campaign"
+                    placeholder="e.g. [Teazen_Kombucha] Summer Promo Campaign"
                     required
-                    style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none" }}
+                    style={{ 
+                      padding: "10px 14px", 
+                      borderRadius: "6px", 
+                      border: "1px solid var(--border)", 
+                      fontSize: "13px", 
+                      outline: "none",
+                      width: "100%",
+                      transition: "border-color 0.15s ease"
+                    }}
                   />
                 </div>
 
+                {/* Objective and Budget */}
                 <div style={{ display: "flex", gap: "16px" }}>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
                     <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Objective</label>
                     <select 
                       value={newObjective} 
                       onChange={(e) => setNewObjective(e.target.value)}
-                      style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none", background: "#fff" }}
+                      style={{ 
+                        padding: "10px 12px", 
+                        borderRadius: "6px", 
+                        border: "1px solid var(--border)", 
+                        fontSize: "13px", 
+                        outline: "none", 
+                        background: "#fff",
+                        width: "100%"
+                      }}
                     >
                       <option value="Traffic">Traffic (Link Clicks)</option>
                       <option value="Awareness">Awareness (Reach)</option>
@@ -4115,142 +4195,429 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                   
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
                     <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Daily Budget (USD)</label>
-                    <input 
-                      type="number" 
-                      value={newDailyBudget} 
-                      onChange={(e) => setNewDailyBudget(e.target.value)}
-                      placeholder="e.g. 100"
-                      min="1"
-                      style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none" }}
-                    />
+                    <div style={{ position: "relative" }}>
+                      <span style={{ position: "absolute", left: "12px", top: "10px", fontSize: "13px", color: "#64748b" }}>$</span>
+                      <input 
+                        type="number" 
+                        value={newDailyBudget} 
+                        onChange={(e) => setNewDailyBudget(e.target.value)}
+                        placeholder="100"
+                        min="1"
+                        style={{ 
+                          padding: "10px 14px 10px 24px", 
+                          borderRadius: "6px", 
+                          border: "1px solid var(--border)", 
+                          fontSize: "13px", 
+                          outline: "none",
+                          width: "100%"
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
 
+                {/* Targeting and Placement */}
+                <div style={{ display: "flex", gap: "16px" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Targeting Audience Location</label>
+                    <div style={{ position: "relative" }}>
+                      <Target size={14} style={{ position: "absolute", left: "12px", top: "12px", color: "#64748b" }} />
+                      <input 
+                        type="text" 
+                        value={newTargeting} 
+                        onChange={(e) => setNewTargeting(e.target.value)}
+                        placeholder="e.g. Hong Kong, United States"
+                        style={{ 
+                          padding: "10px 14px 10px 34px", 
+                          borderRadius: "6px", 
+                          border: "1px solid var(--border)", 
+                          fontSize: "13px", 
+                          outline: "none",
+                          width: "100%"
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Placement Platform</label>
+                    <select 
+                      value={newPlacement} 
+                      onChange={(e) => setNewPlacement(e.target.value)}
+                      style={{ 
+                        padding: "10px 12px", 
+                        borderRadius: "6px", 
+                        border: "1px solid var(--border)", 
+                        fontSize: "13px", 
+                        outline: "none", 
+                        background: "#fff",
+                        width: "100%"
+                      }}
+                    >
+                      <option value="Facebook Feed">Facebook Feed</option>
+                      <option value="Instagram Feed">Instagram Feed</option>
+                      <option value="Facebook Stories">Facebook Stories</option>
+                      <option value="Messenger Inbox">Messenger Inbox</option>
+                      <option value="Audience Network">Audience Network</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Ad Copy */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                   <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Copy / Creative Text</label>
                   <textarea 
                     value={newCreativeText} 
                     onChange={(e) => setNewCreativeText(e.target.value)}
                     placeholder="Enter primary text copy for the ad creative..."
-                    rows="4"
-                    style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none", resize: "none" }}
+                    rows="3"
+                    style={{ 
+                      padding: "10px 14px", 
+                      borderRadius: "6px", 
+                      border: "1px solid var(--border)", 
+                      fontSize: "13px", 
+                      outline: "none", 
+                      resize: "none",
+                      fontFamily: "inherit",
+                      width: "100%"
+                    }}
                   />
+                </div>
+
+                {/* Ad Creative Image Upload & Presets */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Creative Image</label>
+                  
+                  {/* File Upload Dropzone */}
+                  <div 
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    style={{
+                      border: "2px dashed var(--line)",
+                      borderRadius: "8px",
+                      padding: "14px",
+                      textAlign: "center",
+                      cursor: "pointer",
+                      background: "#f8fafc",
+                      transition: "all 0.15s ease",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      minHeight: "80px"
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "#f0fdfa"; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.background = "#f8fafc"; }}
+                  >
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleImageChange} 
+                      accept="image/*" 
+                      style={{ display: "none" }} 
+                    />
+                    
+                    {newImage ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px", width: "100%", justifyContent: "center" }}>
+                        <img 
+                          src={newImage} 
+                          alt="Ad thumbnail" 
+                          style={{ width: "48px", height: "48px", objectFit: "cover", borderRadius: "4px", border: "1px solid var(--line)" }} 
+                        />
+                        <div style={{ textAlign: "left" }}>
+                          <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--ink)", display: "block" }}>Custom image uploaded</span>
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNewImage("");
+                            }}
+                            style={{ background: "transparent", border: "none", color: "#ef4444", fontSize: "11px", cursor: "pointer", padding: 0, fontWeight: "600" }}
+                          >
+                            Remove image
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadCloud size={20} style={{ color: "#64748b" }} />
+                        <div>
+                          <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569", display: "block" }}>
+                            Click to upload custom ad creative image
+                          </span>
+                          <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                            Supports PNG, JPG, WEBP (Max 2MB)
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Preset Pickers */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "500" }}>Or select a quick product template:</span>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      {[
+                        { label: "Kombucha Drink", url: "https://images.unsplash.com/photo-1598122837302-38717474249a?w=600&auto=format&fit=crop&q=80" },
+                        { label: "Grapefruit Tea", url: "https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=600&auto=format&fit=crop&q=80" },
+                        { label: "Gold Painpatch", url: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=600&auto=format&fit=crop&q=80" },
+                        { label: "Abstract Tech", url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80" }
+                      ].map((preset, index) => {
+                        const isSelected = newImage === preset.url;
+                        return (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => setNewImage(preset.url)}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: "4px",
+                              border: isSelected ? "1px solid var(--primary)" : "1px solid var(--border)",
+                              background: isSelected ? "rgba(13, 148, 136, 0.08)" : "#fff",
+                              color: isSelected ? "var(--primary)" : "#475569",
+                              fontSize: "11px",
+                              fontWeight: isSelected ? "700" : "500",
+                              cursor: "pointer",
+                              transition: "all 0.1s ease"
+                            }}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                      {newImage && (
+                        <button
+                          type="button"
+                          onClick={() => setNewImage("")}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "4px",
+                            border: "1px solid transparent",
+                            background: "transparent",
+                            color: "#ef4444",
+                            fontSize: "11px",
+                            fontWeight: "600",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <button 
                   type="submit" 
                   className="primaryButton"
-                  style={{ height: "40px", background: "var(--primary)", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "600", cursor: "pointer", marginTop: "10px" }}
+                  style={{ height: "42px", background: "var(--primary)", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "600", cursor: "pointer", marginTop: "12px", width: "100%" }}
                 >
                   Launch Ad Campaign
                 </button>
               </form>
 
-              {/* Real-time Ad Preview */}
+              {/* Real-time Ad Preview Side */}
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px", alignSelf: "stretch" }}>
-                <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Preview</span>
+                <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Preview (Mockup)</span>
+                
                 <div style={{
                   flex: 1,
                   background: "#ffffff",
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid #e4e6eb",
                   borderRadius: "12px",
                   padding: "16px",
-                  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "space-between"
+                  justifyContent: "space-between",
+                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
                 }}>
                   <div>
                     {/* Header */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                      <div style={{
-                        width: "36px",
-                        height: "36px",
-                        borderRadius: "50%",
-                        background: "var(--primary)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#fff",
-                        fontWeight: "700",
-                        fontSize: "14px"
-                      }}>
-                        LM
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: "700", fontSize: "13px", color: "#1c1e21" }}>Lightmart Group</div>
-                        <div style={{ fontSize: "11px", color: "#65676b", display: "flex", alignItems: "center", gap: "3px" }}>
-                          Sponsored · 🌐
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div style={{
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "50%",
+                          background: "var(--primary)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#fff",
+                          fontWeight: "700",
+                          fontSize: "13px"
+                        }}>
+                          LM
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: "700", fontSize: "13px", color: "#1c1e21", lineHeight: "1.2" }}>Lightmart Group</div>
+                          <div style={{ fontSize: "11px", color: "#65676b", display: "flex", alignItems: "center", gap: "3px", marginTop: "2px" }}>
+                            {newPlacement.includes("Instagram") ? "Instagram · Sponsored" : "Sponsored · 🌐"}
+                          </div>
                         </div>
                       </div>
+                      <span style={{ color: "#65676b", cursor: "pointer", fontWeight: "bold", fontSize: "16px", transform: "translateY(-4px)" }}>•••</span>
                     </div>
 
-                    {/* Creative Text */}
+                    {/* Creative Copy Text */}
                     <div style={{
-                      fontSize: "12px",
+                      fontSize: "13px",
                       color: "#050505",
                       lineHeight: "1.4",
-                      marginBottom: "10px",
-                      minHeight: "48px",
+                      marginBottom: "12px",
+                      minHeight: "44px",
                       whiteSpace: "pre-wrap"
                     }}>
                       {newCreativeText || "Start typing your ad creative text to see a live preview..."}
                     </div>
 
-                    {/* Media Banner */}
+                    {/* Media Body */}
+                    {newImage ? (
+                      <div style={{ width: "100%", height: "200px", position: "relative", borderRadius: "6px", overflow: "hidden", border: "1px solid var(--border)", background: "#f8fafc" }}>
+                        <img 
+                          src={newImage} 
+                          alt="Ad Creative Media Preview" 
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+                        />
+                      </div>
+                    ) : (
+                      <div style={{
+                        height: "200px",
+                        background: "linear-gradient(135deg, #0d9488 0%, #2563eb 100%)",
+                        borderRadius: "6px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#ffffff",
+                        padding: "16px",
+                        textAlign: "center",
+                        position: "relative",
+                        overflow: "hidden",
+                        border: "1px solid var(--border)"
+                      }}>
+                        <div style={{ position: "absolute", bottom: "-20px", right: "-20px", width: "100px", height: "100px", borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />
+                        <span style={{ fontSize: "28px", marginBottom: "8px" }}>🚀</span>
+                        <strong style={{ fontSize: "15px", textShadow: "0 1px 2px rgba(0,0,0,0.15)" }}>
+                          {newCampName || "New Ad Campaign"}
+                        </strong>
+                        <span style={{ fontSize: "11px", opacity: 0.85, marginTop: "4px" }}>
+                          Budget: ${newDailyBudget || "0.00"} USD/day
+                        </span>
+                        <span style={{ fontSize: "10px", background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: "20px", marginTop: "10px" }}>
+                          {newObjective} · {newPlacement}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Action Link Banner */}
                     <div style={{
-                      height: "140px",
-                      background: "linear-gradient(135deg, #0d9488 0%, #2563eb 100%)",
-                      borderRadius: "6px",
+                      background: "#f0f2f5",
+                      padding: "10px 12px",
                       display: "flex",
-                      flexDirection: "column",
+                      justifyContent: "space-between",
                       alignItems: "center",
-                      justifyContent: "center",
-                      color: "#ffffff",
-                      padding: "12px",
-                      textAlign: "center",
-                      position: "relative",
-                      overflow: "hidden"
+                      border: "1px solid #e4e6eb",
+                      borderTop: "none",
+                      borderBottomLeftRadius: "6px",
+                      borderBottomRightRadius: "6px"
                     }}>
-                      <div style={{ position: "absolute", bottom: "-20px", right: "-20px", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />
-                      <span style={{ fontSize: "24px", marginBottom: "6px" }}>🚀</span>
-                      <strong style={{ fontSize: "14px", textShadow: "0 1px 2px rgba(0,0,0,0.15)" }}>
-                        {newCampName || "New Ad Campaign"}
-                      </strong>
-                      <span style={{ fontSize: "10px", opacity: 0.85, marginTop: "2px" }}>
-                        Budget: ${newDailyBudget || "0.00"} USD/day · {newObjective}
-                      </span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", overflow: "hidden", flex: 1, paddingRight: "8px" }}>
+                        <span style={{ fontSize: "10px", color: "#65676b", textTransform: "uppercase" }}>WWW.LIGHTMART.COM</span>
+                        <strong style={{ fontSize: "12px", color: "#1c1e21", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {newCampName || "Campaign Active"}
+                        </strong>
+                      </div>
+                      <button type="button" style={{
+                        background: "#1877f2",
+                        border: "none",
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                        fontWeight: "700",
+                        color: "#ffffff",
+                        cursor: "default",
+                        flexShrink: 0
+                      }}>
+                        {newObjective === "Sales" ? "Shop Now" : newObjective === "Engagement" ? "Watch Video" : "Learn More"}
+                      </button>
                     </div>
                   </div>
 
-                  {/* Action Link Footer */}
-                  <div style={{
-                    background: "#f0f2f5",
-                    padding: "10px 12px",
-                    borderBottomLeftRadius: "6px",
-                    borderBottomRightRadius: "6px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    border: "1px solid #e2e8f0",
-                    marginTop: "12px"
-                  }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
-                      <span style={{ fontSize: "10px", color: "#65676b", textTransform: "uppercase" }}>WWW.LIGHTMART.COM</span>
-                      <strong style={{ fontSize: "12px", color: "#1c1e21" }}>Campaign Active</strong>
+                  {/* Social Interactions Bar */}
+                  <div style={{ marginTop: "12px" }}>
+                    {/* Mock counts */}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#65676b", paddingBottom: "8px", borderBottom: "1px solid #e4e6eb" }}>
+                      <span>👍❤️ {mockLiked ? "49" : "48"} others</span>
+                      <span>12 Comments · 3 Shares</span>
                     </div>
-                    <button type="button" style={{
-                      background: "#1877f2",
-                      border: "none",
-                      padding: "6px 12px",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      fontWeight: "700",
-                      color: "#ffffff",
-                      cursor: "default"
-                    }}>
-                      {newObjective === "Sales" ? "Shop Now" : newObjective === "Engagement" ? "Watch Video" : "Learn More"}
-                    </button>
+
+                    {/* Action buttons */}
+                    <div style={{ display: "flex", justifyContent: "space-around", marginTop: "6px" }}>
+                      <button 
+                        type="button" 
+                        onClick={() => setMockLiked(!mockLiked)}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          color: mockLiked ? "#1877f2" : "#65676b",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          padding: "6px 8px",
+                          borderRadius: "4px"
+                        }}
+                        onMouseOver={(e) => { if (!mockLiked) e.currentTarget.style.background = "#f2f2f2"; }}
+                        onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <ThumbsUp size={14} fill={mockLiked ? "#1877f2" : "none"} />
+                        Like
+                      </button>
+                      
+                      <button 
+                        type="button"
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          color: "#65676b",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          cursor: "default",
+                          padding: "6px 8px",
+                          borderRadius: "4px"
+                        }}
+                      >
+                        <MessageSquare size={14} />
+                        Comment
+                      </button>
+
+                      <button 
+                        type="button"
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          color: "#65676b",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          cursor: "default",
+                          padding: "6px 8px",
+                          borderRadius: "4px"
+                        }}
+                      >
+                        <Share2 size={14} />
+                        Share
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4259,161 +4626,205 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
         </div>
       )}
 
-      {selectedCampForPreview && (
-        <div style={{
-          position: "fixed",
-          top: "0",
-          left: "0",
-          width: "100%",
-          height: "100%",
-          background: "rgba(0,0,0,0.4)",
-          display: "flex",
-          justifyContent: "flex-end",
-          zIndex: "1100"
-        }} onClick={() => setSelectedCampForPreview(null)}>
-          <div 
-            style={{
-              width: "100%",
-              maxWidth: "460px",
-              height: "100%",
-              background: "#ffffff",
-              boxShadow: "-10px 0 25px -5px rgba(0,0,0,0.1)",
-              padding: "40px 30px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "24px",
-              overflowY: "auto"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#64748b" }}>Campaign details</span>
-                <h3 style={{ margin: "4px 0 0", fontSize: "18px", fontWeight: "700" }}>Creative & Parameters</h3>
-              </div>
-              <button 
-                onClick={() => setSelectedCampForPreview(null)}
-                style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b" }}
-              >
-                <X size={20} />
-              </button>
-            </div>
+      {selectedCampForPreview && (() => {
+        const getCampaignImage = (camp) => {
+          if (camp.image_url) return camp.image_url;
+          const name = camp.name || "";
+          if (name.includes("Grapefruit")) {
+            return "https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=600&auto=format&fit=crop&q=80";
+          }
+          if (name.includes("Kombucha")) {
+            return "https://images.unsplash.com/photo-1598122837302-38717474249a?w=600&auto=format&fit=crop&q=80";
+          }
+          if (name.includes("Painpatch") || name.includes("Goldpatch")) {
+            return "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=600&auto=format&fit=crop&q=80";
+          }
+          return "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80";
+        };
 
-            <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
-              <p style={{ margin: "0 0 6px", color: "#64748b", fontSize: "12px" }}>Campaign Name</p>
-              <strong style={{ fontSize: "15px", color: "#1e293b" }}>{selectedCampForPreview.name}</strong>
-            </div>
+        const campaignTargeting = selectedCampForPreview.targeting || "Hong Kong";
+        const campaignPlacement = selectedCampForPreview.placement || "Facebook Feed";
+        const campaignImage = getCampaignImage(selectedCampForPreview);
 
-            <div style={{ display: "flex", gap: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Objective</p>
-                <span style={{ background: "#f1f5f9", color: "#475569", fontSize: "11px", fontWeight: "600", padding: "4px 10px", borderRadius: "4px" }}>
-                  {selectedCampForPreview.objective}
-                </span>
-              </div>
-              <div style={{ flex: 1 }}>
-                <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Daily Budget</p>
-                <strong style={{ fontSize: "14px", color: "#1e293b" }}>${selectedCampForPreview.daily_budget ? Number(selectedCampForPreview.daily_budget).toFixed(2) : "0.00"} USD</strong>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", borderBottom: "1px solid var(--border)", paddingBottom: "20px" }}>
-              <p style={{ margin: "0", color: "#64748b", fontSize: "12px" }}>Ad Text Copy</p>
-              <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "13px", fontStyle: selectedCampForPreview.creative_text ? "normal" : "italic", color: selectedCampForPreview.creative_text ? "#1e293b" : "#94a3b8" }}>
-                {selectedCampForPreview.creative_text || "No creative copy provided."}
-              </div>
-            </div>
-
-            {selectedCampForPreview.metrics && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <p style={{ margin: "0", color: "#64748b", fontSize: "12px" }}>Performance Summary</p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
-                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Results ({selectedCampForPreview.objective})</span>
-                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtNum(selectedCampForPreview.metrics.results)}</strong>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
-                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Amount Spent</span>
-                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtCurrency(selectedCampForPreview.metrics.spent)}</strong>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
-                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>ROAS</span>
-                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{selectedCampForPreview.metrics.roas > 0 ? selectedCampForPreview.metrics.roas.toFixed(2) : "-"}</strong>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
-                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Cost per Result</span>
-                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtCurrency(selectedCampForPreview.metrics.cost_per_result)}</strong>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {selectedCampForPreview.recommendations > 0 && (
-              <div style={{
-                background: "rgba(13, 148, 136, 0.04)",
-                border: "1px solid rgba(13, 148, 136, 0.2)",
-                borderLeft: "4px solid var(--primary)",
-                borderRadius: "8px",
-                padding: "16px",
+        return (
+          <div style={{
+            position: "fixed",
+            top: "0",
+            left: "0",
+            width: "100%",
+            height: "100%",
+            background: "rgba(15, 23, 42, 0.4)",
+            backdropFilter: "blur(2px)",
+            display: "flex",
+            justifyContent: "flex-end",
+            zIndex: "1100"
+          }} onClick={() => setSelectedCampForPreview(null)}>
+            <div 
+              style={{
+                width: "100%",
+                maxWidth: "460px",
+                height: "100%",
+                background: "#ffffff",
+                boxShadow: "-10px 0 25px -5px rgba(0,0,0,0.1)",
+                padding: "40px 30px",
                 display: "flex",
                 flexDirection: "column",
-                gap: "12px",
-                marginTop: "8px"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "16px" }}>💡</span>
-                  <strong style={{ fontSize: "13px", color: "var(--primary)" }}>AI Optimization Suggestion</strong>
+                gap: "24px",
+                overflowY: "auto"
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#64748b" }}>Campaign details</span>
+                  <h3 style={{ margin: "4px 0 0", fontSize: "18px", fontWeight: "700" }}>Creative & Parameters</h3>
                 </div>
-                <p style={{ fontSize: "12px", color: "#475569", lineHeight: "1.5", margin: 0 }}>
-                  Cost per result is running slightly higher than expected. AI recommends switching to Target CPA bidding and adjusting bids by 15% to save budget.
-                </p>
-                <button
-                  type="button"
-                  disabled={applyingRec}
-                  onClick={() => handleApplyRecommendation(selectedCampForPreview.id)}
-                  style={{
-                    background: "var(--primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    padding: "8px 14px",
-                    borderRadius: "6px",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                    alignSelf: "flex-start",
-                    transition: "background 0.15s ease"
-                  }}
+                <button 
+                  onClick={() => setSelectedCampForPreview(null)}
+                  style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b" }}
                 >
-                  {applyingRec && <RefreshCw size={12} className="loadingSpinner" />}
-                  Apply AI Recommendation
+                  <X size={20} />
                 </button>
               </div>
-            )}
 
-            {selectedCampForPreview.metrics && trendData.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
-                <p style={{ margin: "0 0 6px", color: "#64748b", fontSize: "12px" }}>Daily Performance Trend (7 Days)</p>
-                <div style={{ width: "100%", height: 160 }}>
-                  <ResponsiveContainer>
-                    <ReLineChart data={trendData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" fontSize={9} stroke="#64748b" />
-                      <YAxis fontSize={9} stroke="#64748b" />
-                      <Tooltip formatter={(value, name) => [value, name]} />
-                      <Line type="monotone" dataKey="Results" stroke="#0d9488" strokeWidth={2} activeDot={{ r: 6 }} name="Conversions" />
-                      <Line type="monotone" dataKey="Spent" stroke="#3b82f6" strokeWidth={2} name="Spent ($)" />
-                    </ReLineChart>
-                  </ResponsiveContainer>
+              <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
+                <p style={{ margin: "0 0 6px", color: "#64748b", fontSize: "12px" }}>Campaign Name</p>
+                <strong style={{ fontSize: "15px", color: "#1e293b" }}>{selectedCampForPreview.name}</strong>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
+                <div>
+                  <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Objective</p>
+                  <span style={{ background: "#f1f5f9", color: "#475569", fontSize: "11px", fontWeight: "600", padding: "4px 10px", borderRadius: "4px", display: "inline-block" }}>
+                    {selectedCampForPreview.objective}
+                  </span>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Daily Budget</p>
+                  <strong style={{ fontSize: "14px", color: "#1e293b" }}>${selectedCampForPreview.daily_budget ? Number(selectedCampForPreview.daily_budget).toFixed(2) : "0.00"} USD</strong>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Audience Location</p>
+                  <strong style={{ fontSize: "13px", color: "#1e293b", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <Target size={12} style={{ color: "#64748b" }} />
+                    {campaignTargeting}
+                  </strong>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Placement Platform</p>
+                  <strong style={{ fontSize: "13px", color: "#1e293b" }}>{campaignPlacement}</strong>
                 </div>
               </div>
-            )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", borderBottom: "1px solid var(--border)", paddingBottom: "20px" }}>
+                <p style={{ margin: "0", color: "#64748b", fontSize: "12px" }}>Ad Text Copy</p>
+                <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "13px", fontStyle: selectedCampForPreview.creative_text ? "normal" : "italic", color: selectedCampForPreview.creative_text ? "#1e293b" : "#94a3b8" }}>
+                  {selectedCampForPreview.creative_text || "No creative copy provided."}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", borderBottom: "1px solid var(--border)", paddingBottom: "20px" }}>
+                <p style={{ margin: "0", color: "#64748b", fontSize: "12px" }}>Ad Creative Image</p>
+                <div style={{ width: "100%", height: "180px", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)", background: "#f8fafc" }}>
+                  <img 
+                    src={campaignImage} 
+                    alt="Campaign Media" 
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+                  />
+                </div>
+              </div>
+
+              {selectedCampForPreview.metrics && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <p style={{ margin: "0", color: "#64748b", fontSize: "12px" }}>Performance Summary</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Results ({selectedCampForPreview.objective})</span>
+                      <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtNum(selectedCampForPreview.metrics.results)}</strong>
+                    </div>
+                    <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Amount Spent</span>
+                      <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtCurrency(selectedCampForPreview.metrics.spent)}</strong>
+                    </div>
+                    <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>ROAS</span>
+                      <strong style={{ fontSize: "16px", color: "#1e293b" }}>{selectedCampForPreview.metrics.roas > 0 ? selectedCampForPreview.metrics.roas.toFixed(2) : "-"}</strong>
+                    </div>
+                    <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Cost per Result</span>
+                      <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtCurrency(selectedCampForPreview.metrics.cost_per_result)}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedCampForPreview.recommendations > 0 && (
+                <div style={{
+                  background: "rgba(13, 148, 136, 0.04)",
+                  border: "1px solid rgba(13, 148, 136, 0.2)",
+                  borderLeft: "4px solid var(--primary)",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  marginTop: "8px"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "16px" }}>💡</span>
+                    <strong style={{ fontSize: "13px", color: "var(--primary)" }}>AI Optimization Suggestion</strong>
+                  </div>
+                  <p style={{ fontSize: "12px", color: "#475569", lineHeight: "1.5", margin: 0 }}>
+                    Cost per result is running slightly higher than expected. AI recommends switching to Target CPA bidding and adjusting bids by 15% to save budget.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={applyingRec}
+                    onClick={() => handleApplyRecommendation(selectedCampForPreview.id)}
+                    style={{
+                      background: "var(--primary)",
+                      color: "#ffffff",
+                      border: "none",
+                      padding: "8px 14px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      alignSelf: "flex-start",
+                      transition: "background 0.15s ease"
+                    }}
+                  >
+                    {applyingRec && <RefreshCw size={12} className="loadingSpinner" />}
+                    Apply AI Recommendation
+                  </button>
+                </div>
+              )}
+
+              {selectedCampForPreview.metrics && trendData.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+                  <p style={{ margin: "0 0 6px", color: "#64748b", fontSize: "12px" }}>Daily Performance Trend (7 Days)</p>
+                  <div style={{ width: "100%", height: 160 }}>
+                    <ResponsiveContainer>
+                      <ReLineChart data={trendData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" fontSize={9} stroke="#64748b" />
+                        <YAxis fontSize={9} stroke="#64748b" />
+                        <Tooltip formatter={(value, name) => [value, name]} />
+                        <Line type="monotone" dataKey="Results" stroke="#0d9488" strokeWidth={2} activeDot={{ r: 6 }} name="Conversions" />
+                        <Line type="monotone" dataKey="Spent" stroke="#3b82f6" strokeWidth={2} name="Spent ($)" />
+                      </ReLineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </main>
   );
 }
