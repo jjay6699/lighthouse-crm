@@ -37,6 +37,8 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  Line,
+  LineChart as ReLineChart
 } from "recharts";
 
 const chartColors = ["#1A7F78", "#E49A38", "#3E6FB1", "#A94867", "#5F9347", "#7861B0"];
@@ -3304,6 +3306,57 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [aiToggling, setAiToggling] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newCampName, setNewCampName] = useState("");
+  const [newObjective, setNewObjective] = useState("Traffic");
+  const [newDailyBudget, setNewDailyBudget] = useState("100");
+  const [newCreativeText, setNewCreativeText] = useState("");
+  const [selectedCampForPreview, setSelectedCampForPreview] = useState(null);
+  const [applyingRec, setApplyingRec] = useState(false);
+
+  async function handleApplyRecommendation(id) {
+    setApplyingRec(true);
+    try {
+      const res = await fetch("/api/ads/campaigns/apply-recommendation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        await loadData();
+        setSelectedCampForPreview(prev => {
+          if (!prev || prev.id !== id) return prev;
+          
+          const nextCost = Math.round(prev.metrics.cost_per_result * 0.85 * 100) / 100;
+          const nextResults = Math.round(prev.metrics.results * 1.15);
+          const nextSpent = Math.round(nextResults * nextCost * 100) / 100;
+          const nextValue = prev.metrics.value > 0 ? Math.round(prev.metrics.value * 1.15 * 100) / 100 : 0.0;
+          const nextRoas = nextValue > 0 ? Math.round((nextValue / nextSpent) * 100) / 100 : 0.0;
+          
+          return {
+            ...prev,
+            recommendations: 0,
+            ai_adjusted: true,
+            metrics: {
+              ...prev.metrics,
+              cost_per_result: nextCost,
+              results: nextResults,
+              spent: nextSpent,
+              value: nextValue,
+              roas: nextRoas
+            }
+          };
+        });
+      } else {
+        alert(d.error || "Failed to apply recommendation.");
+      }
+    } catch (err) {
+      alert("Error applying recommendation: " + err.message);
+    } finally {
+      setApplyingRec(false);
+    }
+  }
 
   useEffect(() => {
     if (settings) {
@@ -3312,6 +3365,77 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
       setAdAccountId(settings.ad_account_id || "");
     }
   }, [settings]);
+
+  async function handleCreateCampaign(e) {
+    e.preventDefault();
+    if (!newCampName) {
+      alert("Please enter a campaign name.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/ads/campaigns/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newCampName,
+          objective: newObjective,
+          daily_budget: newDailyBudget,
+          creative_text: newCreativeText
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setNewCampName("");
+        setNewObjective("Traffic");
+        setNewDailyBudget("100");
+        setNewCreativeText("");
+        setShowCreateModal(false);
+        await loadData();
+      } else {
+        alert(d.error || "Failed to create campaign.");
+      }
+    } catch (err) {
+      alert("Error creating campaign: " + err.message);
+    }
+  }
+
+  async function handleToggleCampStatus(id, currentStatus) {
+    const nextStatus = currentStatus === "ACTIVE" ? "PAUSED" : "ACTIVE";
+    try {
+      const res = await fetch("/api/ads/campaigns/toggle-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: nextStatus })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        await loadData();
+      } else {
+        alert(d.error || "Failed to update status.");
+      }
+    } catch (err) {
+      alert("Error toggling status: " + err.message);
+    }
+  }
+
+  async function handleDeleteCampaign(id) {
+    if (!window.confirm("Are you sure you want to delete this campaign?")) return;
+    try {
+      const res = await fetch("/api/ads/campaigns/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        await loadData();
+      } else {
+        alert(d.error || "Failed to delete campaign.");
+      }
+    } catch (err) {
+      alert("Error deleting campaign: " + err.message);
+    }
+  }
 
   async function handleConnect(e) {
     e.preventDefault();
@@ -3423,6 +3547,36 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
       }));
   }, [campaigns, isConnected]);
 
+  const trendData = useMemo(() => {
+    if (!selectedCampForPreview || !selectedCampForPreview.metrics) return [];
+    const totalResults = selectedCampForPreview.metrics.results || 100;
+    const totalSpent = selectedCampForPreview.metrics.spent || 50;
+    
+    const data = [];
+    const baseResults = totalResults / 7;
+    const baseSpent = totalSpent / 7;
+    
+    // Hash campaign ID to generate deterministic fluctuation
+    const idHash = selectedCampForPreview.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    
+    for (let i = 6; i >= 0; i--) {
+      const multiplier = 1 + Math.sin(idHash + i) * 0.25;
+      const dayResults = Math.max(1, Math.round(baseResults * multiplier));
+      const daySpent = Math.max(0.1, Math.round(baseSpent * multiplier * 100) / 100);
+      
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      
+      data.push({
+        name: dateStr,
+        Results: dayResults,
+        Spent: daySpent
+      });
+    }
+    return data;
+  }, [selectedCampForPreview]);
+
   return (
     <main className="workspace">
       <header className="pageHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -3525,188 +3679,236 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
       {subtab === "campaigns" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           
-          {!isConnected ? (
-            <div className="panel" style={{ padding: "40px", textAlign: "center", color: "#64748b", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-              <LineChart size={48} style={{ opacity: 0.3, color: "var(--primary)" }} />
-              <div>
-                <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b", marginBottom: "6px" }}>Meta Ads Disconnected</h3>
-                <p style={{ fontSize: "13px", color: "#64748b", maxWidth: "400px", margin: "0 auto" }}>
-                  No active campaigns are currently loaded. Please connect your Meta Ads Manager account to sync campaign tracking data.
-                </p>
+          {isConnected && chartData.length > 0 && (
+            <div className="panel" style={{ padding: "20px 24px" }}>
+              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "16px", color: "#1e293b" }}>Spent vs Conversion Value</h3>
+              <div style={{ width: "100%", height: 200 }}>
+                <ResponsiveContainer>
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
+                    <YAxis fontSize={11} stroke="#64748b" />
+                    <Tooltip formatter={(value) => `$${value}`} />
+                    <Legend />
+                    <Bar dataKey="Spent" fill="#0d9488" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <button
-                onClick={() => setSubtab("connection")}
-                className="primaryButton"
-                style={{
-                  height: "36px",
-                  padding: "0 16px",
-                  fontSize: "13px",
-                  fontWeight: "600",
-                  marginTop: "8px"
-                }}
-              >
-                Go to Meta Connection
-              </button>
             </div>
-          ) : (
-            <>
-              {chartData.length > 0 && (
-                <div className="panel" style={{ padding: "20px 24px" }}>
-                  <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "16px", color: "#1e293b" }}>Spent vs Conversion Value</h3>
-                  <div style={{ width: "100%", height: 200 }}>
-                    <ResponsiveContainer>
-                      <BarChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
-                        <YAxis fontSize={11} stroke="#64748b" />
-                        <Tooltip formatter={(value) => `$${value}`} />
-                        <Legend />
-                        <Bar dataKey="Spent" fill="#0d9488" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="Value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
+          )}
 
-              <div className="panel" style={{ padding: "0", overflow: "hidden" }}>
-                <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <h3 style={{ fontSize: "16px", fontWeight: "700" }}>Active Ad Campaigns</h3>
-                    <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>Live performance report from Meta Ads Manager APIs.</p>
-                  </div>
-                  <button 
-                    onClick={loadData}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      padding: "6px 12px",
-                      background: "transparent",
-                      border: "1px solid var(--border)",
-                      borderRadius: "6px",
-                      fontSize: "13px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    <RefreshCw size={14} className={loading ? "loadingSpinner" : ""} />
-                    Refresh
-                  </button>
-                </div>
+          <div className="panel" style={{ padding: "0", overflow: "hidden" }}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h3 style={{ fontSize: "16px", fontWeight: "700" }}>Active Ad Campaigns</h3>
+                <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>Live performance report from Meta Ads Manager APIs.</p>
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button 
+                  onClick={() => setShowCreateModal(true)}
+                  className="primaryButton"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "0 14px",
+                    fontSize: "13px",
+                    height: "36px",
+                    background: "var(--primary)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "6px",
+                    fontWeight: "600",
+                    cursor: "pointer"
+                  }}
+                >
+                  + Create Campaign
+                </button>
+                <button 
+                  onClick={loadData}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "6px 12px",
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  <RefreshCw size={14} className={loading ? "loadingSpinner" : ""} />
+                  Refresh
+                </button>
+              </div>
+            </div>
 
-                <div className="tableWrapper" style={{ overflowX: "auto" }}>
-                  <table className="cleanTable">
-                    <thead>
-                      <tr>
-                        <th>Status</th>
-                        <th>Campaign Name</th>
-                        <th>Objective</th>
-                        <th style={{ textAlign: "right" }}>Results</th>
-                        <th style={{ textAlign: "right" }}>Results Value</th>
-                        <th style={{ textAlign: "right" }}>ROAS</th>
-                        <th style={{ textAlign: "right" }}>Cost per Result</th>
-                        <th style={{ textAlign: "right" }}>Spent</th>
-                        <th style={{ textAlign: "right" }}>Impressions</th>
-                        <th style={{ textAlign: "right" }}>Reach</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {campaigns && campaigns.map(camp => {
-                        const hasMetrics = camp.metrics !== null;
-                        const isCampActive = camp.status === "ACTIVE";
-                        return (
-                          <tr key={camp.id} style={{ opacity: isCampActive ? 1 : 0.6 }}>
-                            <td style={{ verticalAlign: "middle" }}>
+            <div className="tableWrapper" style={{ overflowX: "auto" }}>
+              <table className="cleanTable">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Campaign Name</th>
+                    <th>Objective</th>
+                    <th style={{ textAlign: "right" }}>Results</th>
+                    <th style={{ textAlign: "right" }}>Results Value</th>
+                    <th style={{ textAlign: "right" }}>ROAS</th>
+                    <th style={{ textAlign: "right" }}>Cost per Result</th>
+                    <th style={{ textAlign: "right" }}>Spent</th>
+                    <th style={{ textAlign: "right" }}>Impressions</th>
+                    <th style={{ textAlign: "right" }}>Reach</th>
+                    <th style={{ textAlign: "center" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns && campaigns.map(camp => {
+                    const hasMetrics = camp.metrics !== null;
+                    const isCampActive = camp.status === "ACTIVE";
+                    return (
+                      <tr key={camp.id} style={{ opacity: isCampActive ? 1 : 0.6 }}>
+                        <td style={{ verticalAlign: "middle" }}>
+                          <button
+                            onClick={() => handleToggleCampStatus(camp.id, camp.status)}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              transition: "background 0.15s ease"
+                            }}
+                            title="Toggle status"
+                          >
+                            <span style={{
+                              display: "inline-block",
+                              width: "8px",
+                              height: "8px",
+                              borderRadius: "50%",
+                              background: isCampActive ? "#10b981" : "#94a3b8"
+                            }} />
+                            <span style={{ fontSize: "11px", fontWeight: "600", color: isCampActive ? "#047857" : "#64748b" }}>
+                              {camp.status}
+                            </span>
+                          </button>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <button
+                              onClick={() => setSelectedCampForPreview(camp)}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                padding: "0",
+                                fontSize: "13px",
+                                fontWeight: "700",
+                                color: "var(--primary)",
+                                textDecoration: "underline"
+                              }}
+                            >
+                              {camp.name}
+                            </button>
+                            {camp.recommendations > 0 && (
                               <span style={{
-                                display: "inline-block",
-                                width: "8px",
-                                height: "8px",
-                                borderRadius: "50%",
-                                background: isCampActive ? "#10b981" : "#94a3b8"
-                              }} />
-                              <span style={{ fontSize: "11px", marginLeft: "6px", fontWeight: "600", color: isCampActive ? "#047857" : "#64748b" }}>
-                                {camp.status}
-                              </span>
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <strong style={{ fontSize: "13px", color: "#1e293b" }}>{camp.name}</strong>
-                                {camp.recommendations > 0 && (
-                                  <span style={{
-                                    background: "#ecfdf5",
-                                    color: "#047857",
-                                    fontSize: "11px",
-                                    fontWeight: "600",
-                                    padding: "2px 8px",
-                                    borderRadius: "12px",
-                                    border: "1px solid #d1fae5"
-                                  }}>
-                                    {camp.recommendations} recommendation
-                                  </span>
-                                )}
-                                {camp.ai_adjusted && (
-                                  <span style={{
-                                    background: "rgba(13, 148, 136, 0.08)",
-                                    color: "var(--primary)",
-                                    fontSize: "11px",
-                                    fontWeight: "700",
-                                    padding: "2px 8px",
-                                    borderRadius: "12px"
-                                  }}>
-                                    AI Optimized
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <span style={{
-                                background: "#f1f5f9",
-                                color: "#475569",
+                                background: "#ecfdf5",
+                                color: "#047857",
                                 fontSize: "11px",
                                 fontWeight: "600",
                                 padding: "2px 8px",
-                                borderRadius: "4px"
+                                borderRadius: "12px",
+                                border: "1px solid #d1fae5"
                               }}>
-                                {camp.objective}
+                                {camp.recommendations} recommendation
                               </span>
-                            </td>
-                            <td style={{ textAlign: "right", fontWeight: "600" }}>
-                              {hasMetrics ? fmtNum(camp.metrics.results) : "-"}
-                            </td>
-                            <td style={{ textAlign: "right", fontWeight: "600" }}>
-                              {hasMetrics ? (camp.metrics.value > 0 ? fmtCurrency(camp.metrics.value) : "$0.00") : "-"}
-                            </td>
-                            <td style={{ textAlign: "right", fontWeight: "600" }}>
-                              {hasMetrics ? (camp.metrics.roas > 0 ? camp.metrics.roas.toFixed(2) : "-") : "-"}
-                            </td>
-                            <td style={{ textAlign: "right", fontWeight: "600" }}>
-                              {hasMetrics ? fmtCurrency(camp.metrics.cost_per_result) : "-"}
-                            </td>
-                            <td style={{ textAlign: "right", fontWeight: "600" }}>
-                              {hasMetrics ? fmtCurrency(camp.metrics.spent) : "$0.00"}
-                            </td>
-                            <td style={{ textAlign: "right", color: "#64748b" }}>
-                              {hasMetrics ? fmtNum(camp.metrics.impressions) : "-"}
-                            </td>
-                            <td style={{ textAlign: "right", color: "#64748b" }}>
-                              {hasMetrics ? fmtNum(camp.metrics.reach) : "-"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {(!campaigns || campaigns.length === 0) && (
-                        <tr>
-                          <td colSpan={10} style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
-                            No campaigns found.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
+                            )}
+                            {camp.ai_adjusted && (
+                              <span style={{
+                                background: "rgba(13, 148, 136, 0.08)",
+                                color: "var(--primary)",
+                                fontSize: "11px",
+                                fontWeight: "700",
+                                padding: "2px 8px",
+                                borderRadius: "12px"
+                              }}>
+                                AI Optimized
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{
+                            background: "#f1f5f9",
+                            color: "#475569",
+                            fontSize: "11px",
+                            fontWeight: "600",
+                            padding: "2px 8px",
+                            borderRadius: "4px"
+                          }}>
+                            {camp.objective}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? fmtNum(camp.metrics.results) : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? (camp.metrics.value > 0 ? fmtCurrency(camp.metrics.value) : "$0.00") : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? (camp.metrics.roas > 0 ? camp.metrics.roas.toFixed(2) : "-") : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? fmtCurrency(camp.metrics.cost_per_result) : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? fmtCurrency(camp.metrics.spent) : "$0.00"}
+                        </td>
+                        <td style={{ textAlign: "right", color: "#64748b" }}>
+                          {hasMetrics ? fmtNum(camp.metrics.impressions) : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", color: "#64748b" }}>
+                          {hasMetrics ? fmtNum(camp.metrics.reach) : "-"}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button
+                            onClick={() => handleDeleteCampaign(camp.id)}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#ef4444",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: "6px",
+                              borderRadius: "4px"
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "#fee2e2"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                            title="Delete campaign"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!campaigns || campaigns.length === 0) && (
+                    <tr>
+                      <td colSpan={11} style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                        No active ads running at the moment. {!isConnected && "(Please connect your Meta account or click '+ Create Campaign' to get started.)"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       ) : (
         <div style={{ maxWidth: "560px" }}>
@@ -3854,6 +4056,360 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
             >
               Acknowledge
             </button>
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div style={{
+          position: "fixed",
+          top: "0",
+          left: "0",
+          width: "100%",
+          height: "100%",
+          background: "rgba(0,0,0,0.4)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: "1100"
+        }}>
+          <div className="panel" style={{ width: "100%", maxWidth: "860px", padding: "30px 40px", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)", position: "relative" }}>
+            <button 
+              onClick={() => setShowCreateModal(false)}
+              style={{ position: "absolute", top: "20px", right: "20px", background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}
+            >
+              <X size={20} />
+            </button>
+            <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "8px" }}>Create New Ad Campaign</h3>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "20px" }}>Simulate launching a campaign on Meta Ads Manager.</p>
+            
+            <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
+              <form onSubmit={handleCreateCampaign} style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Campaign Name</label>
+                  <input 
+                    type="text" 
+                    value={newCampName} 
+                    onChange={(e) => setNewCampName(e.target.value)}
+                    placeholder="e.g. [Teazen_Kombucha] Summer Traffic Campaign"
+                    required
+                    style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "16px" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Objective</label>
+                    <select 
+                      value={newObjective} 
+                      onChange={(e) => setNewObjective(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none", background: "#fff" }}
+                    >
+                      <option value="Traffic">Traffic (Link Clicks)</option>
+                      <option value="Awareness">Awareness (Reach)</option>
+                      <option value="Engagement">Engagement (Video Views)</option>
+                      <option value="Sales">Sales (Conversions)</option>
+                    </select>
+                  </div>
+                  
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Daily Budget (USD)</label>
+                    <input 
+                      type="number" 
+                      value={newDailyBudget} 
+                      onChange={(e) => setNewDailyBudget(e.target.value)}
+                      placeholder="e.g. 100"
+                      min="1"
+                      style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Copy / Creative Text</label>
+                  <textarea 
+                    value={newCreativeText} 
+                    onChange={(e) => setNewCreativeText(e.target.value)}
+                    placeholder="Enter primary text copy for the ad creative..."
+                    rows="4"
+                    style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px", outline: "none", resize: "none" }}
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="primaryButton"
+                  style={{ height: "40px", background: "var(--primary)", color: "#fff", border: "none", borderRadius: "6px", fontWeight: "600", cursor: "pointer", marginTop: "10px" }}
+                >
+                  Launch Ad Campaign
+                </button>
+              </form>
+
+              {/* Real-time Ad Preview Mockup */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px", alignSelf: "stretch" }}>
+                <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Mockup Preview</span>
+                <div style={{
+                  flex: 1,
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between"
+                }}>
+                  <div>
+                    {/* Header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                      <div style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "50%",
+                        background: "var(--primary)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#fff",
+                        fontWeight: "700",
+                        fontSize: "14px"
+                      }}>
+                        LM
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: "700", fontSize: "13px", color: "#1c1e21" }}>Lightmart Group</div>
+                        <div style={{ fontSize: "11px", color: "#65676b", display: "flex", alignItems: "center", gap: "3px" }}>
+                          Sponsored · 🌐
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Creative Text */}
+                    <div style={{
+                      fontSize: "12px",
+                      color: "#050505",
+                      lineHeight: "1.4",
+                      marginBottom: "10px",
+                      minHeight: "48px",
+                      whiteSpace: "pre-wrap"
+                    }}>
+                      {newCreativeText || "Start typing your ad creative text to see a live mockup..."}
+                    </div>
+
+                    {/* Media Mockup */}
+                    <div style={{
+                      height: "140px",
+                      background: "linear-gradient(135deg, #0d9488 0%, #2563eb 100%)",
+                      borderRadius: "6px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#ffffff",
+                      padding: "12px",
+                      textAlign: "center",
+                      position: "relative",
+                      overflow: "hidden"
+                    }}>
+                      <div style={{ position: "absolute", bottom: "-20px", right: "-20px", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />
+                      <span style={{ fontSize: "24px", marginBottom: "6px" }}>🚀</span>
+                      <strong style={{ fontSize: "14px", textShadow: "0 1px 2px rgba(0,0,0,0.15)" }}>
+                        {newCampName || "New Ad Campaign"}
+                      </strong>
+                      <span style={{ fontSize: "10px", opacity: 0.85, marginTop: "2px" }}>
+                        Budget: ${newDailyBudget || "0.00"} USD/day · {newObjective}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Action Link Footer */}
+                  <div style={{
+                    background: "#f0f2f5",
+                    padding: "10px 12px",
+                    borderBottomLeftRadius: "6px",
+                    borderBottomRightRadius: "6px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    border: "1px solid #e2e8f0",
+                    marginTop: "12px"
+                  }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+                      <span style={{ fontSize: "10px", color: "#65676b", textTransform: "uppercase" }}>WWW.LIGHTMART.COM</span>
+                      <strong style={{ fontSize: "12px", color: "#1c1e21" }}>Simulated Campaign Live</strong>
+                    </div>
+                    <button type="button" style={{
+                      background: "#1877f2",
+                      border: "none",
+                      padding: "6px 12px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      color: "#ffffff",
+                      cursor: "default"
+                    }}>
+                      {newObjective === "Sales" ? "Shop Now" : newObjective === "Engagement" ? "Watch Video" : "Learn More"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCampForPreview && (
+        <div style={{
+          position: "fixed",
+          top: "0",
+          left: "0",
+          width: "100%",
+          height: "100%",
+          background: "rgba(0,0,0,0.4)",
+          display: "flex",
+          justifyContent: "flex-end",
+          zIndex: "1100"
+        }} onClick={() => setSelectedCampForPreview(null)}>
+          <div 
+            style={{
+              width: "100%",
+              maxWidth: "460px",
+              height: "100%",
+              background: "#ffffff",
+              boxShadow: "-10px 0 25px -5px rgba(0,0,0,0.1)",
+              padding: "40px 30px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "24px",
+              overflowY: "auto"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#64748b" }}>Campaign details</span>
+                <h3 style={{ margin: "4px 0 0", fontSize: "18px", fontWeight: "700" }}>Creative & Parameters</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedCampForPreview(null)}
+                style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
+              <p style={{ margin: "0 0 6px", color: "#64748b", fontSize: "12px" }}>Campaign Name</p>
+              <strong style={{ fontSize: "15px", color: "#1e293b" }}>{selectedCampForPreview.name}</strong>
+            </div>
+
+            <div style={{ display: "flex", gap: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Objective</p>
+                <span style={{ background: "#f1f5f9", color: "#475569", fontSize: "11px", fontWeight: "600", padding: "4px 10px", borderRadius: "4px" }}>
+                  {selectedCampForPreview.objective}
+                </span>
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: "12px" }}>Daily Budget</p>
+                <strong style={{ fontSize: "14px", color: "#1e293b" }}>${selectedCampForPreview.daily_budget ? Number(selectedCampForPreview.daily_budget).toFixed(2) : "0.00"} USD</strong>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", borderBottom: "1px solid var(--border)", paddingBottom: "20px" }}>
+              <p style={{ margin: "0", color: "#64748b", fontSize: "12px" }}>Ad Text Copy</p>
+              <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "13px", fontStyle: selectedCampForPreview.creative_text ? "normal" : "italic", color: selectedCampForPreview.creative_text ? "#1e293b" : "#94a3b8" }}>
+                {selectedCampForPreview.creative_text || "No creative copy provided."}
+              </div>
+            </div>
+
+            {selectedCampForPreview.metrics && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <p style={{ margin: "0", color: "#64748b", fontSize: "12px" }}>Performance Summary</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Results ({selectedCampForPreview.objective})</span>
+                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtNum(selectedCampForPreview.metrics.results)}</strong>
+                  </div>
+                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Amount Spent</span>
+                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtCurrency(selectedCampForPreview.metrics.spent)}</strong>
+                  </div>
+                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>ROAS</span>
+                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{selectedCampForPreview.metrics.roas > 0 ? selectedCampForPreview.metrics.roas.toFixed(2) : "-"}</strong>
+                  </div>
+                  <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "11px", color: "#64748b", display: "block" }}>Cost per Result</span>
+                    <strong style={{ fontSize: "16px", color: "#1e293b" }}>{fmtCurrency(selectedCampForPreview.metrics.cost_per_result)}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedCampForPreview.recommendations > 0 && (
+              <div style={{
+                background: "rgba(13, 148, 136, 0.04)",
+                border: "1px solid rgba(13, 148, 136, 0.2)",
+                borderLeft: "4px solid var(--primary)",
+                borderRadius: "8px",
+                padding: "16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                marginTop: "8px"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "16px" }}>💡</span>
+                  <strong style={{ fontSize: "13px", color: "var(--primary)" }}>AI Optimization Suggestion</strong>
+                </div>
+                <p style={{ fontSize: "12px", color: "#475569", lineHeight: "1.5", margin: 0 }}>
+                  Cost per result is running slightly higher than expected. AI recommends switching to Target CPA bidding and adjusting bids by 15% to save budget.
+                </p>
+                <button
+                  type="button"
+                  disabled={applyingRec}
+                  onClick={() => handleApplyRecommendation(selectedCampForPreview.id)}
+                  style={{
+                    background: "var(--primary)",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    alignSelf: "flex-start",
+                    transition: "background 0.15s ease"
+                  }}
+                >
+                  {applyingRec && <RefreshCw size={12} className="loadingSpinner" />}
+                  Apply AI Recommendation
+                </button>
+              </div>
+            )}
+
+            {selectedCampForPreview.metrics && trendData.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+                <p style={{ margin: "0 0 6px", color: "#64748b", fontSize: "12px" }}>Daily Performance Trend (7 Days)</p>
+                <div style={{ width: "100%", height: 160 }}>
+                  <ResponsiveContainer>
+                    <ReLineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" fontSize={9} stroke="#64748b" />
+                      <YAxis fontSize={9} stroke="#64748b" />
+                      <Tooltip formatter={(value, name) => [value, name]} />
+                      <Line type="monotone" dataKey="Results" stroke="#0d9488" strokeWidth={2} activeDot={{ r: 6 }} name="Conversions" />
+                      <Line type="monotone" dataKey="Spent" stroke="#3b82f6" strokeWidth={2} name="Spent ($)" />
+                    </ReLineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
