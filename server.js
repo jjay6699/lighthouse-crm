@@ -345,6 +345,18 @@ function initWarehouseDb() {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS warehouse_stock_movements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sku TEXT,
+      qty_change INTEGER,
+      prev_qty INTEGER,
+      new_qty INTEGER,
+      reason TEXT,
+      timestamp TEXT
+    )
+  `);
+
   const countRow = db.prepare("SELECT COUNT(*) as count FROM warehouse_inventory").get();
   if (countRow.count === 0) {
     let products = [];
@@ -2158,7 +2170,20 @@ createServer(async (req, res) => {
         json(res, 200, { ok: true, stockLevels: [] });
         return;
       }
-      const levels = db.prepare("SELECT * FROM warehouse_inventory ORDER BY sku ASC").all();
+      const levels = db.prepare(`
+        SELECT 
+          w.*, 
+          COALESCE(c.unit_cost_hkd, 0.0) as unit_cost_hkd,
+          COALESCE(p.rsp, 0.0) as rsp
+        FROM warehouse_inventory w
+        LEFT JOIN sku_costs c ON w.sku = c.sku
+        LEFT JOIN (
+          SELECT sku, MAX(rsp) as rsp 
+          FROM promotion_proposals 
+          GROUP BY sku
+        ) p ON w.sku = p.sku
+        ORDER BY w.sku ASC
+      `).all();
       json(res, 200, { ok: true, stockLevels: levels });
     } catch (error) {
       json(res, 500, { ok: false, error: error.message });
@@ -2186,7 +2211,47 @@ createServer(async (req, res) => {
       const nextStock = Math.max(0, item.stock_on_hand + Number(qtyChange));
       db.prepare("UPDATE warehouse_inventory SET stock_on_hand = ? WHERE id = ?").run(nextStock, id);
       
+      db.prepare(`
+        INSERT INTO warehouse_stock_movements (sku, qty_change, prev_qty, new_qty, reason, timestamp)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(item.sku, Number(qtyChange), item.stock_on_hand, nextStock, reason || "Manual Adjustment");
+      
       json(res, 200, { ok: true, nextStock });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/movements" && req.method === "GET") {
+    try {
+      const sku = url.searchParams.get("sku");
+      const db = openDb();
+      if (!db) {
+        json(res, 200, { ok: true, movements: [] });
+        return;
+      }
+      const movements = db.prepare("SELECT * FROM warehouse_stock_movements WHERE sku = ? ORDER BY id DESC").all(sku);
+      json(res, 200, { ok: true, movements });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/update-reorder" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      const { id, reorderPoint } = body;
+      
+      const db = openDbWrite();
+      if (!db) {
+        json(res, 400, { ok: false, error: "Database not available for write." });
+        return;
+      }
+      
+      db.prepare("UPDATE warehouse_inventory SET reorder_point = ? WHERE id = ?").run(Number(reorderPoint), id);
+      json(res, 200, { ok: true });
     } catch (error) {
       json(res, 500, { ok: false, error: error.message });
     }

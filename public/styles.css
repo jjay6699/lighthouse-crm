@@ -1304,17 +1304,21 @@ th:last-child {
 .warehouseTable th:nth-child(7),
 .warehouseTable td:nth-child(7),
 .warehouseTable th:nth-child(8),
-.warehouseTable td:nth-child(8) {
+.warehouseTable td:nth-child(8),
+.warehouseTable th:nth-child(9),
+.warehouseTable td:nth-child(9),
+.warehouseTable th:nth-child(10),
+.warehouseTable td:nth-child(10) {
   text-align: right;
 }
 
-.warehouseTable th:nth-child(9),
-.warehouseTable td:nth-child(9) {
+.warehouseTable th:nth-child(11),
+.warehouseTable td:nth-child(11) {
   text-align: left;
 }
 
-.warehouseTable th:nth-child(10),
-.warehouseTable td:nth-child(10) {
+.warehouseTable th:nth-child(12),
+.warehouseTable td:nth-child(12) {
   text-align: center;
 }
 

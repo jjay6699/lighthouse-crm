@@ -2704,6 +2704,7 @@ function DebitNoteDashboard({
 function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStock }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBrand, setSelectedBrand] = useState("All");
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   
   const [adjustingItem, setAdjustingItem] = useState(null);
   const [qtyChange, setQtyChange] = useState("");
@@ -2711,20 +2712,50 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
   const [adjustBusy, setAdjustBusy] = useState(false);
   const [adjustError, setAdjustError] = useState(null);
 
+  const [editingReorderItem, setEditingReorderItem] = useState(null);
+  const [reorderBusy, setReorderBusy] = useState(false);
+
+  const [ledgerItem, setLedgerItem] = useState(null);
+  const [ledgerMovements, setLedgerMovements] = useState([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  useEffect(() => {
+    if (!ledgerItem) return;
+    let active = true;
+    setLedgerLoading(true);
+    fetch(`/api/warehouse/movements?sku=${ledgerItem.sku}`)
+      .then(res => res.json())
+      .then(d => {
+        if (active && d.ok) {
+          setLedgerMovements(d.movements);
+        }
+      })
+      .catch(err => console.error(err))
+      .finally(() => {
+        if (active) setLedgerLoading(false);
+      });
+    return () => { active = false; };
+  }, [ledgerItem]);
+
   const metrics = useMemo(() => {
-    if (!stock) return { totalSkus: 0, totalUnits: 0, totalAllocated: 0, lowStockCount: 0 };
+    if (!stock) return { totalSkus: 0, totalUnits: 0, totalAllocated: 0, lowStockCount: 0, totalAssetVal: 0, totalRetailVal: 0 };
     let totalSkus = stock.length;
     let totalUnits = 0;
     let totalAllocated = 0;
     let lowStockCount = 0;
+    let totalAssetVal = 0;
+    let totalRetailVal = 0;
+    
     stock.forEach(item => {
       totalUnits += item.stock_on_hand;
       totalAllocated += item.allocated;
+      totalAssetVal += item.stock_on_hand * (item.unit_cost_hkd || 0);
+      totalRetailVal += item.stock_on_hand * (item.rsp || 0);
       if (item.stock_on_hand <= item.reorder_point) {
         lowStockCount++;
       }
     });
-    return { totalSkus, totalUnits, totalAllocated, lowStockCount };
+    return { totalSkus, totalUnits, totalAllocated, lowStockCount, totalAssetVal, totalRetailVal };
   }, [stock]);
 
   const brands = useMemo(() => {
@@ -2740,9 +2771,10 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
         item.sku.includes(searchQuery) || 
         item.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchBrand = selectedBrand === "All" || item.brand === selectedBrand;
-      return matchSearch && matchBrand;
+      const matchLowStock = !showLowStockOnly || (item.stock_on_hand <= item.reorder_point);
+      return matchSearch && matchBrand && matchLowStock;
     });
-  }, [stock, searchQuery, selectedBrand]);
+  }, [stock, searchQuery, selectedBrand, showLowStockOnly]);
 
   const handleAdjustSubmit = async (e) => {
     e.preventDefault();
@@ -2775,13 +2807,37 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
     }
   };
 
+  const handleSaveReorder = async (item, val) => {
+    if (Number(val) < 0) return;
+    setReorderBusy(true);
+    try {
+      const res = await fetch("/api/warehouse/update-reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          reorderPoint: Number(val)
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setEditingReorderItem(null);
+        loadStock();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setReorderBusy(false);
+    }
+  };
+
   return (
     <main className="workspace">
       <header className="pageHeader">
         <div>
           <p className="eyebrow">Warehouse Management</p>
           <h1>Warehouse Stock Levels</h1>
-          <p className="subtitle">Real-time inventory levels, bin locations, and safety stock reorder thresholds.</p>
+          <p className="subtitle">Real-time inventory levels, bin locations, safety stock reorder thresholds, and ledger audits.</p>
         </div>
         <button className="primaryButton" type="button" onClick={loadStock} disabled={loading}>
           <RefreshCw size={16} className={loading ? "loadingSpinner" : ""} />
@@ -2789,17 +2845,11 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
         </button>
       </header>
 
-      <section className="overviewGrid">
+      <section className="overviewGrid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <Kpi title="Total SKUs" value={loading ? "..." : metrics.totalSkus} note="Unique items tracked" icon={Package} />
-        <Kpi title="Total Stock Units" value={loading ? "..." : metrics.totalUnits.toLocaleString()} note="Physical units on hand" icon={Database} />
-        <Kpi title="Allocated Units" value={loading ? "..." : metrics.totalAllocated.toLocaleString()} note="Committed to pending sales" icon={CircleDollarSign} />
-        <Kpi 
-          title="Low Stock Alerts" 
-          value={loading ? "..." : metrics.lowStockCount} 
-          note="Items below safety point" 
-          icon={TrendingUp} 
-          style={{ borderLeft: metrics.lowStockCount > 0 ? "4px solid #f59e0b" : "none" }}
-        />
+        <Kpi title="Low Stock Alerts" value={loading ? "..." : metrics.lowStockCount} note="Items below safety point" icon={TrendingUp} />
+        <Kpi title="Inventory Asset Cost" value={loading ? "..." : hkd(metrics.totalAssetVal)} note="Valued at unit cost price" icon={Database} />
+        <Kpi title="Potential Retail Value" value={loading ? "..." : hkd(metrics.totalRetailVal)} note="Estimated value at RSP" icon={CircleDollarSign} />
       </section>
 
       {error && (
@@ -2816,6 +2866,27 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
           </div>
           
           <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <button
+              onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+              style={{
+                border: "1px solid " + (showLowStockOnly ? "var(--primary)" : "var(--border)"),
+                background: showLowStockOnly ? "rgba(13, 148, 136, 0.08)" : "transparent",
+                color: showLowStockOnly ? "var(--primary)" : "#64748b",
+                padding: "8px 14px",
+                borderRadius: "8px",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.15s ease"
+              }}
+            >
+              <Filter size={14} />
+              {showLowStockOnly ? "Low Stock Only" : "Filter Low Stock"}
+            </button>
+
             <div className="searchWrapper" style={{ position: "relative" }}>
               <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
               <input 
@@ -2876,7 +2947,9 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   <th style={{ textAlign: "right" }}>On Hand</th>
                   <th style={{ textAlign: "right" }}>Allocated</th>
                   <th style={{ textAlign: "right" }}>Available</th>
+                  <th style={{ textAlign: "right" }}>Asset Value</th>
                   <th style={{ textAlign: "right" }}>Reorder Pt</th>
+                  <th style={{ textAlign: "right" }}>Reorder Rec</th>
                   <th>Status</th>
                   <th style={{ textAlign: "center" }}>Actions</th>
                 </tr>
@@ -2884,7 +2957,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
               <tbody>
                 {filteredStock.length === 0 ? (
                   <tr>
-                    <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
+                    <td colSpan="12" style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
                       No inventory items found matching your filters.
                     </td>
                   </tr>
@@ -2907,8 +2980,14 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                       badgeBg = "#fffbeb";
                     }
 
+                    const itemAssetVal = item.stock_on_hand * (item.unit_cost_hkd || 0);
+                    const isRecommended = item.stock_on_hand <= item.reorder_point;
+                    const recQty = isRecommended ? Math.max(10, (item.reorder_point * 2) - item.stock_on_hand) : 0;
+
+                    const rowBg = isOut ? "rgba(239, 68, 68, 0.02)" : isLow ? "rgba(245, 158, 11, 0.015)" : "transparent";
+
                     return (
-                      <tr key={item.id}>
+                      <tr key={item.id} style={{ background: rowBg }}>
                         <td><strong>{item.sku}</strong></td>
                         <td><span style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "#64748b", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{item.brand}</span></td>
                         <td>{item.description}</td>
@@ -2916,7 +2995,42 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                         <td style={{ textAlign: "right" }}><strong>{item.stock_on_hand.toLocaleString()}</strong></td>
                         <td style={{ textAlign: "right", color: item.allocated > 0 ? "#64748b" : "#cbd5e1" }}>{item.allocated.toLocaleString()}</td>
                         <td style={{ textAlign: "right", color: available <= item.reorder_point ? "#f59e0b" : "inherit" }}><strong>{available.toLocaleString()}</strong></td>
-                        <td style={{ textAlign: "right", color: "#94a3b8" }}>{item.reorder_point.toLocaleString()}</td>
+                        <td style={{ textAlign: "right" }} title={`Unit Cost: ${hkd(item.unit_cost_hkd)}`}>{hkd(itemAssetVal)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {editingReorderItem?.id === item.id ? (
+                            <input
+                              type="number"
+                              defaultValue={item.reorder_point}
+                              autoFocus
+                              disabled={reorderBusy}
+                              onBlur={(e) => handleSaveReorder(item, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveReorder(item, e.target.value);
+                                if (e.key === "Escape") setEditingReorderItem(null);
+                              }}
+                              style={{
+                                width: "60px",
+                                padding: "4px",
+                                borderRadius: "4px",
+                                border: "1px solid var(--primary)",
+                                textAlign: "right",
+                                fontSize: "12px",
+                                outline: "none"
+                              }}
+                            />
+                          ) : (
+                            <span 
+                              style={{ cursor: "pointer", color: "var(--primary)", borderBottom: "1px dashed rgba(13, 148, 136, 0.3)", paddingBottom: "1px" }}
+                              onClick={() => setEditingReorderItem(item)}
+                              title="Click to edit threshold"
+                            >
+                              {item.reorder_point.toLocaleString()}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right", color: isRecommended ? "#d97706" : "#94a3b8", fontWeight: isRecommended ? "700" : "inherit" }}>
+                          {isRecommended ? `+${recQty.toLocaleString()}` : "-"}
+                        </td>
                         <td>
                           <span style={{
                             display: "inline-block",
@@ -2931,26 +3045,27 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                           </span>
                         </td>
                         <td style={{ textAlign: "center" }}>
-                          <button
-                            className="ghostButton"
-                            style={{
-                              padding: "4px 8px",
-                              fontSize: "12px",
-                              fontWeight: "600",
-                              color: "var(--primary)",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px"
-                            }}
-                            onClick={() => {
-                              setAdjustingItem(item);
-                              setQtyChange("");
-                              setAdjustReason("Adjustment");
-                              setAdjustError(null);
-                            }}
-                          >
-                            Adjust
-                          </button>
+                          <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
+                            <button
+                              className="ghostButton"
+                              style={{ padding: "4px 8px", fontSize: "12px", fontWeight: "600", color: "var(--primary)" }}
+                              onClick={() => {
+                                setAdjustingItem(item);
+                                setQtyChange("");
+                                setAdjustReason("Adjustment");
+                                setAdjustError(null);
+                              }}
+                            >
+                              Adjust
+                            </button>
+                            <button
+                              className="ghostButton"
+                              style={{ padding: "4px 8px", fontSize: "12px", fontWeight: "500", color: "#64748b" }}
+                              onClick={() => setLedgerItem(item)}
+                            >
+                              History
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -3068,6 +3183,108 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Movement Ledger (Slide-over Drawer) */}
+      {ledgerItem && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(15, 23, 42, 0.3)",
+          backdropFilter: "blur(2px)",
+          display: "flex",
+          justifyContent: "flex-end",
+          zIndex: 1001
+        }} onClick={() => setLedgerItem(null)}>
+          <div 
+            style={{
+              width: "100%",
+              maxWidth: "460px",
+              height: "100%",
+              background: "#ffffff",
+              boxShadow: "-10px 0 25px -5px rgba(0,0,0,0.1)",
+              padding: "40px 30px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "24px",
+              overflowY: "auto"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#64748b" }}>Audit Ledger</span>
+                <h3 style={{ margin: "4px 0 0", fontSize: "18px", fontWeight: "700" }}>Stock Movement History</h3>
+              </div>
+              <button 
+                onClick={() => setLedgerItem(null)}
+                style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "15px", fontSize: "13px" }}>
+              <p style={{ margin: "0 0 4px", color: "#64748b" }}>SKU: <strong>{ledgerItem.sku}</strong></p>
+              <p style={{ margin: 0, fontWeight: "600", color: "#1e293b" }}>{ledgerItem.description}</p>
+            </div>
+
+            {ledgerLoading ? (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#64748b" }}>
+                <RefreshCw size={24} className="loadingSpinner" style={{ marginBottom: "10px" }} />
+                <span>Loading movement history...</span>
+              </div>
+            ) : ledgerMovements.length === 0 ? (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#94a3b8", textAlign: "center" }}>
+                <Package size={32} style={{ marginBottom: "12px", opacity: 0.5 }} />
+                <p>No stock movement logs found for this item.</p>
+                <small style={{ fontSize: "11px" }}>Movements are logged automatically when stock adjustments are made.</small>
+              </div>
+            ) : (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
+                {ledgerMovements.map(m => {
+                  const isPositive = m.qty_change > 0;
+                  const formattedChange = isPositive ? `+${m.qty_change}` : m.qty_change;
+                  const dateStr = new Date(m.timestamp).toLocaleString();
+                  return (
+                    <div key={m.id} style={{
+                      padding: "16px",
+                      borderRadius: "10px",
+                      border: "1px solid var(--border)",
+                      background: "#f8fafc",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <div>
+                        <strong style={{ display: "block", fontSize: "13px", color: "#1e293b", marginBottom: "4px" }}>
+                          {m.reason}
+                        </strong>
+                        <span style={{ fontSize: "11px", color: "#64748b" }}>{dateStr}</span>
+                        <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
+                          Balance: {m.prev_qty} → <strong>{m.new_qty}</strong>
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: "14px",
+                        fontWeight: "700",
+                        color: isPositive ? "#10b981" : "#ef4444",
+                        background: isPositive ? "#ecfdf5" : "#fef2f2",
+                        padding: "4px 10px",
+                        borderRadius: "8px"
+                      }}>
+                        {formattedChange}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
