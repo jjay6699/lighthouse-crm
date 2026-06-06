@@ -2866,7 +2866,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
           </div>
         ) : (
           <div className="tableWrapper" style={{ overflowX: "auto" }}>
-            <table className="cleanTable">
+            <table className="cleanTable warehouseTable">
               <thead>
                 <tr>
                   <th>SKU</th>

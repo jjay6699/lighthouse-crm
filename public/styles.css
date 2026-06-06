@@ -1281,6 +1281,7 @@ th {
   font-size: 10px;
   letter-spacing: 0.05em;
   border-bottom: 2px solid var(--line);
+  text-align: left;
 }
 
 td:nth-child(n + 3),
@@ -1288,6 +1289,33 @@ th:nth-child(n + 3),
 td:last-child,
 th:last-child {
   text-align: right;
+}
+
+/* Warehouse Table Alignment Overrides */
+.warehouseTable th,
+.warehouseTable td {
+  text-align: left;
+}
+
+.warehouseTable th:nth-child(5),
+.warehouseTable td:nth-child(5),
+.warehouseTable th:nth-child(6),
+.warehouseTable td:nth-child(6),
+.warehouseTable th:nth-child(7),
+.warehouseTable td:nth-child(7),
+.warehouseTable th:nth-child(8),
+.warehouseTable td:nth-child(8) {
+  text-align: right;
+}
+
+.warehouseTable th:nth-child(9),
+.warehouseTable td:nth-child(9) {
+  text-align: left;
+}
+
+.warehouseTable th:nth-child(10),
+.warehouseTable td:nth-child(10) {
+  text-align: center;
 }
 
 tr {
