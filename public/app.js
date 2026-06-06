@@ -1025,7 +1025,7 @@ function Overview({ data, goFinance, setPage }) {
             <button className="moduleCard" type="button" onClick={() => setPage("ads")}>
               <LineChart size={18} style={{ color: "var(--primary)" }} />
               <strong>Ads Optimization</strong>
-              <span>Monitor Meta campaign performance, simulate ad account connections, and enable AI auto-optimization toggles.</span>
+              <span>Monitor Meta campaign performance, connect ad accounts, and enable AI auto-optimization toggles.</span>
             </button>
           </div>
         </div>
@@ -3583,7 +3583,7 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
         <div>
           <p className="eyebrow">Ads Optimization</p>
           <h1>Meta Campaign Manager</h1>
-          <p className="subtitle">Simulate real-time Meta Ads tracking and let AI optimize bidding strategies automatically.</p>
+          <p className="subtitle">Track Meta Ads in real time and let AI optimize bidding strategies automatically.</p>
         </div>
         
         <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f1f5f9", padding: "8px 16px", borderRadius: "30px", border: "1px solid var(--border)" }}>
@@ -3637,7 +3637,7 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
         }}>
           <span style={{ fontSize: "20px" }}>⚠️</span>
           <div style={{ fontSize: "14px", color: "#b45309", lineHeight: "1.5" }}>
-            <strong>Meta Ads Account Not Connected:</strong> Performance metrics are currently showing empty placeholder data. 
+            <strong>Meta Ads Account Not Connected:</strong> Performance metrics are currently unavailable. 
             Please <button onClick={() => setSubtab("connection")} style={{ background: "none", border: "none", color: "var(--primary)", textDecoration: "underline", fontWeight: "600", cursor: "pointer", padding: "0" }}>connect your Meta account</button> to fetch live stats and activate AI optimization.
           </div>
         </div>
@@ -4081,7 +4081,7 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
               <X size={20} />
             </button>
             <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "8px" }}>Create New Ad Campaign</h3>
-            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "20px" }}>Simulate launching a campaign on Meta Ads Manager.</p>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "20px" }}>Launch a new campaign on Meta Ads Manager.</p>
             
             <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
               <form onSubmit={handleCreateCampaign} style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -4145,9 +4145,9 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                 </button>
               </form>
 
-              {/* Real-time Ad Preview Mockup */}
+              {/* Real-time Ad Preview */}
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px", alignSelf: "stretch" }}>
-                <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Mockup Preview</span>
+                <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>Ad Preview</span>
                 <div style={{
                   flex: 1,
                   background: "#ffffff",
@@ -4193,10 +4193,10 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                       minHeight: "48px",
                       whiteSpace: "pre-wrap"
                     }}>
-                      {newCreativeText || "Start typing your ad creative text to see a live mockup..."}
+                      {newCreativeText || "Start typing your ad creative text to see a live preview..."}
                     </div>
 
-                    {/* Media Mockup */}
+                    {/* Media Banner */}
                     <div style={{
                       height: "140px",
                       background: "linear-gradient(135deg, #0d9488 0%, #2563eb 100%)",
@@ -4236,7 +4236,7 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                   }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
                       <span style={{ fontSize: "10px", color: "#65676b", textTransform: "uppercase" }}>WWW.LIGHTMART.COM</span>
-                      <strong style={{ fontSize: "12px", color: "#1c1e21" }}>Simulated Campaign Live</strong>
+                      <strong style={{ fontSize: "12px", color: "#1c1e21" }}>Campaign Active</strong>
                     </div>
                     <button type="button" style={{
                       background: "#1877f2",
