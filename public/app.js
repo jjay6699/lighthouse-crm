@@ -1010,10 +1010,15 @@ function Overview({ data, goFinance, setPage }) {
               <strong>Financial Consolidation</strong>
               <span>HKD consolidated P&L analytics with company, brand, customer, date, and section filters.</span>
             </button>
-            <button className="moduleCard" type="button" onClick={() => setPage("debit")}>
+            <button className="moduleCard" type="button" onClick={() => setPage("debit")} style={{ marginBottom: "15px" }}>
               <Receipt size={18} style={{ color: "var(--primary)" }} />
               <strong>Debit Note Auditing</strong>
               <span>Audit and flag WTC trade promotion discrepancies, price overcharges, and overlapping billing.</span>
+            </button>
+            <button className="moduleCard" type="button" onClick={() => setPage("warehouse")}>
+              <Package size={18} style={{ color: "#f59e0b" }} />
+              <strong>Warehouse Management</strong>
+              <span>Manage warehouse inventory stock levels, search SKUs, view bin locations, and track safety stock.</span>
             </button>
           </div>
         </div>
@@ -2696,12 +2701,391 @@ function DebitNoteDashboard({
   );
 }
 
+function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStock }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState("All");
+  
+  const [adjustingItem, setAdjustingItem] = useState(null);
+  const [qtyChange, setQtyChange] = useState("");
+  const [adjustReason, setAdjustReason] = useState("Adjustment");
+  const [adjustBusy, setAdjustBusy] = useState(false);
+  const [adjustError, setAdjustError] = useState(null);
+
+  const metrics = useMemo(() => {
+    if (!stock) return { totalSkus: 0, totalUnits: 0, totalAllocated: 0, lowStockCount: 0 };
+    let totalSkus = stock.length;
+    let totalUnits = 0;
+    let totalAllocated = 0;
+    let lowStockCount = 0;
+    stock.forEach(item => {
+      totalUnits += item.stock_on_hand;
+      totalAllocated += item.allocated;
+      if (item.stock_on_hand <= item.reorder_point) {
+        lowStockCount++;
+      }
+    });
+    return { totalSkus, totalUnits, totalAllocated, lowStockCount };
+  }, [stock]);
+
+  const brands = useMemo(() => {
+    if (!stock) return ["All"];
+    const set = new Set(stock.map(item => item.brand).filter(Boolean));
+    return ["All", ...Array.from(set)];
+  }, [stock]);
+
+  const filteredStock = useMemo(() => {
+    if (!stock) return [];
+    return stock.filter(item => {
+      const matchSearch = !searchQuery || 
+        item.sku.includes(searchQuery) || 
+        item.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchBrand = selectedBrand === "All" || item.brand === selectedBrand;
+      return matchSearch && matchBrand;
+    });
+  }, [stock, searchQuery, selectedBrand]);
+
+  const handleAdjustSubmit = async (e) => {
+    e.preventDefault();
+    if (!adjustingItem || !qtyChange) return;
+    setAdjustBusy(true);
+    setAdjustError(null);
+    try {
+      const res = await fetch("/api/warehouse/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: adjustingItem.id,
+          qtyChange: Number(qtyChange),
+          reason: adjustReason
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setAdjustingItem(null);
+        setQtyChange("");
+        setAdjustReason("Adjustment");
+        loadStock();
+      } else {
+        setAdjustError(d.error || "Failed to save adjustment.");
+      }
+    } catch (err) {
+      setAdjustError(err.message || "Adjustment error.");
+    } finally {
+      setAdjustBusy(false);
+    }
+  };
+
+  return (
+    <main className="workspace">
+      <header className="pageHeader">
+        <div>
+          <p className="eyebrow">Warehouse Management</p>
+          <h1>Warehouse Stock Levels</h1>
+          <p className="subtitle">Real-time inventory levels, bin locations, and safety stock reorder thresholds.</p>
+        </div>
+        <button className="primaryButton" type="button" onClick={loadStock} disabled={loading}>
+          <RefreshCw size={16} className={loading ? "loadingSpinner" : ""} />
+          Refresh inventory
+        </button>
+      </header>
+
+      <section className="overviewGrid">
+        <Kpi title="Total SKUs" value={loading ? "..." : metrics.totalSkus} note="Unique items tracked" icon={Package} />
+        <Kpi title="Total Stock Units" value={loading ? "..." : metrics.totalUnits.toLocaleString()} note="Physical units on hand" icon={Database} />
+        <Kpi title="Allocated Units" value={loading ? "..." : metrics.totalAllocated.toLocaleString()} note="Committed to pending sales" icon={CircleDollarSign} />
+        <Kpi 
+          title="Low Stock Alerts" 
+          value={loading ? "..." : metrics.lowStockCount} 
+          note="Items below safety point" 
+          icon={TrendingUp} 
+          style={{ borderLeft: metrics.lowStockCount > 0 ? "4px solid #f59e0b" : "none" }}
+        />
+      </section>
+
+      {error && (
+        <div className="panel errorPanel" style={{ padding: "20px", color: "var(--error)", background: "#fdeded", border: "1px solid rgba(217,56,56,0.15)", borderRadius: "12px" }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      <div className="panel" style={{ padding: "30px" }}>
+        <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px", marginBottom: "25px" }}>
+          <div>
+            <h2>Current Inventory</h2>
+            <p>Active items in physical warehouse</p>
+          </div>
+          
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <div className="searchWrapper" style={{ position: "relative" }}>
+              <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
+              <input 
+                type="text" 
+                placeholder="Search SKU or description..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  padding: "8px 12px 8px 36px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  fontSize: "13px",
+                  width: "240px",
+                  outline: "none",
+                  transition: "all 0.15s ease"
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
+          {brands.map(brand => (
+            <button
+              key={brand}
+              onClick={() => setSelectedBrand(brand)}
+              style={{
+                border: "0",
+                background: selectedBrand === brand ? "rgba(13, 148, 136, 0.08)" : "transparent",
+                color: selectedBrand === brand ? "var(--primary)" : "#64748b",
+                padding: "6px 14px",
+                borderRadius: "20px",
+                fontSize: "13px",
+                fontWeight: selectedBrand === brand ? "600" : "500",
+                cursor: "pointer",
+                transition: "all 0.15s ease"
+              }}
+            >
+              {brand}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div style={{ padding: "50px", textAlign: "center", color: "#64748b" }}>
+            <RefreshCw size={24} className="loadingSpinner" style={{ marginBottom: "10px" }} />
+            <p>Loading inventory data...</p>
+          </div>
+        ) : (
+          <div className="tableWrapper" style={{ overflowX: "auto" }}>
+            <table className="cleanTable">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Brand</th>
+                  <th>Description</th>
+                  <th>Bin Loc</th>
+                  <th style={{ textAlign: "right" }}>On Hand</th>
+                  <th style={{ textAlign: "right" }}>Allocated</th>
+                  <th style={{ textAlign: "right" }}>Available</th>
+                  <th style={{ textAlign: "right" }}>Reorder Pt</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: "center" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStock.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
+                      No inventory items found matching your filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStock.map(item => {
+                    const available = item.stock_on_hand - item.allocated;
+                    const isLow = item.stock_on_hand <= item.reorder_point;
+                    const isOut = item.stock_on_hand === 0;
+
+                    let statusText = "In Stock";
+                    let badgeColor = "#10b981";
+                    let badgeBg = "#ecfdf5";
+                    if (isOut) {
+                      statusText = "Out of Stock";
+                      badgeColor = "#ef4444";
+                      badgeBg = "#fef2f2";
+                    } else if (isLow) {
+                      statusText = "Low Stock";
+                      badgeColor = "#f59e0b";
+                      badgeBg = "#fffbeb";
+                    }
+
+                    return (
+                      <tr key={item.id}>
+                        <td><strong>{item.sku}</strong></td>
+                        <td><span style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "#64748b", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{item.brand}</span></td>
+                        <td>{item.description}</td>
+                        <td><code style={{ background: "#f8fafc", padding: "2px 6px", borderRadius: "4px", fontSize: "11px", border: "1px solid var(--border)" }}>{item.bin_location}</code></td>
+                        <td style={{ textAlign: "right" }}><strong>{item.stock_on_hand.toLocaleString()}</strong></td>
+                        <td style={{ textAlign: "right", color: item.allocated > 0 ? "#64748b" : "#cbd5e1" }}>{item.allocated.toLocaleString()}</td>
+                        <td style={{ textAlign: "right", color: available <= item.reorder_point ? "#f59e0b" : "inherit" }}><strong>{available.toLocaleString()}</strong></td>
+                        <td style={{ textAlign: "right", color: "#94a3b8" }}>{item.reorder_point.toLocaleString()}</td>
+                        <td>
+                          <span style={{
+                            display: "inline-block",
+                            padding: "2px 8px",
+                            borderRadius: "12px",
+                            fontSize: "11px",
+                            fontWeight: "600",
+                            color: badgeColor,
+                            background: badgeBg
+                          }}>
+                            {statusText}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button
+                            className="ghostButton"
+                            style={{
+                              padding: "4px 8px",
+                              fontSize: "12px",
+                              fontWeight: "600",
+                              color: "var(--primary)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px"
+                            }}
+                            onClick={() => {
+                              setAdjustingItem(item);
+                              setQtyChange("");
+                              setAdjustReason("Adjustment");
+                              setAdjustError(null);
+                            }}
+                          >
+                            Adjust
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {adjustingItem && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(15, 23, 42, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000
+        }}>
+          <div className="panel" style={{
+            width: "100%",
+            maxWidth: "400px",
+            padding: "30px",
+            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)",
+            background: "#ffffff"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h3 style={{ margin: 0 }}>Adjust Inventory</h3>
+              <button 
+                onClick={() => setAdjustingItem(null)}
+                style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: "15px", fontSize: "13px" }}>
+              <p style={{ margin: "0 0 5px", color: "#64748b" }}>SKU: <strong>{adjustingItem.sku}</strong></p>
+              <p style={{ margin: 0, fontWeight: "500" }}>{adjustingItem.description}</p>
+            </div>
+
+            <form onSubmit={handleAdjustSubmit}>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Quantity Change</label>
+                <input
+                  type="number"
+                  placeholder="e.g. +100 or -50"
+                  required
+                  value={qtyChange}
+                  onChange={(e) => setQtyChange(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    fontSize: "14px",
+                    outline: "none"
+                  }}
+                />
+                <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px", display: "block" }}>
+                  Current Stock: <strong>{adjustingItem.stock_on_hand}</strong> (Available: {adjustingItem.stock_on_hand - adjustingItem.allocated})
+                </span>
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Reason</label>
+                <select
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    fontSize: "14px",
+                    background: "white",
+                    outline: "none"
+                  }}
+                >
+                  <option value="Adjustment">Physical Inventory Adjustment</option>
+                  <option value="Receiving">Received New Stock Shipment</option>
+                  <option value="Order Fulfillment">Order Fulfillment correction</option>
+                  <option value="Damaged">Write-off (Damaged/Expired)</option>
+                </select>
+              </div>
+
+              {adjustError && (
+                <div style={{ marginBottom: "15px", color: "var(--error)", fontSize: "12px" }}>
+                  {adjustError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="ghostButton"
+                  onClick={() => setAdjustingItem(null)}
+                  style={{ padding: "8px 16px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="primaryButton"
+                  disabled={adjustBusy}
+                  style={{ padding: "8px 16px" }}
+                >
+                  {adjustBusy ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
 function App() {
   const [page, setPage] = useState("overview");
   const [financeSubtab, setFinanceSubtab] = useState("summary");
   const [financeNavOpen, setFinanceNavOpen] = useState(false);
   const [debitSubtab, setDebitSubtab] = useState("summary");
   const [debitNavOpen, setDebitNavOpen] = useState(false);
+  const [warehouseNavOpen, setWarehouseNavOpen] = useState(false);
+  const [warehouseSubtab, setWarehouseSubtab] = useState("stock");
+  const [warehouseStock, setWarehouseStock] = useState(null);
+  const [warehouseLoading, setWarehouseLoading] = useState(false);
+  const [warehouseError, setWarehouseError] = useState(null);
   
   const [debitAudit, setDebitAudit] = useState(null);
   const [debitLoading, setDebitLoading] = useState(false);
@@ -2794,10 +3178,33 @@ function App() {
       setDebitLoading(false);
     }
   }
-
   useEffect(() => {
     if (page === "debit" && !debitAudit && !debitLoading) {
       loadDebitAudit();
+    }
+  }, [page]);
+
+  async function loadWarehouseStock() {
+    setWarehouseLoading(true);
+    try {
+      const res = await fetch("/api/warehouse/stock-levels");
+      const d = await res.json();
+      if (d.ok) {
+        setWarehouseStock(d.stockLevels);
+        setWarehouseError(null);
+      } else {
+        setWarehouseError(d.error || "Failed to load warehouse stock levels.");
+      }
+    } catch (err) {
+      setWarehouseError(err.message || "Failed to load warehouse data.");
+    } finally {
+      setWarehouseLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (page === "warehouse" && !warehouseStock && !warehouseLoading) {
+      loadWarehouseStock();
     }
   }, [page]);
 
@@ -2871,6 +3278,7 @@ function App() {
             setPage("overview");
             setFinanceNavOpen(false);
             setDebitNavOpen(false);
+            setWarehouseNavOpen(false);
           }}>
             <LayoutDashboard size={18} />
             Overview
@@ -2882,6 +3290,7 @@ function App() {
               setPage("finance");
               setFinanceNavOpen((open) => !open);
               setDebitNavOpen(false);
+              setWarehouseNavOpen(false);
             }}
           >
             <CircleDollarSign size={18} />
@@ -2919,6 +3328,7 @@ function App() {
               setPage("debit");
               setDebitNavOpen((open) => !open);
               setFinanceNavOpen(false);
+              setWarehouseNavOpen(false);
             }}
           >
             <Receipt size={18} />
@@ -2949,6 +3359,41 @@ function App() {
                     setDebitSubtab(id);
                     setSelectedDebitBrand(null);
                     setSelectedDebitFile(null);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            className={`groupButton ${page === "warehouse" ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setPage("warehouse");
+              setWarehouseNavOpen((open) => !open);
+              setFinanceNavOpen(false);
+              setDebitNavOpen(false);
+            }}
+          >
+            <Package size={18} />
+            Warehouse
+            <span className="chevron">
+              {warehouseNavOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
+          </button>
+          {warehouseNavOpen && (
+            <div className="subNav">
+              {[
+                ["stock", "Stock levels"],
+              ].map(([id, label]) => (
+                <button
+                  className={page === "warehouse" && warehouseSubtab === id ? "active" : ""}
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setPage("warehouse");
+                    setWarehouseSubtab(id);
                   }}
                 >
                   {label}
@@ -3010,6 +3455,15 @@ function App() {
           setSelectedBrand={setSelectedDebitBrand}
           selectedFile={selectedDebitFile}
           setSelectedFile={setSelectedDebitFile}
+        />
+      ) : page === "warehouse" ? (
+        <WarehouseDashboard
+          subtab={warehouseSubtab}
+          setSubtab={setWarehouseSubtab}
+          stock={warehouseStock}
+          loading={warehouseLoading}
+          error={warehouseError}
+          loadStock={loadWarehouseStock}
         />
       ) : (
         <FinancialDashboard

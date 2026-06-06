@@ -321,6 +321,89 @@ function openDb() {
   return new DatabaseSync(dbPath, { readOnly: true });
 }
 
+function openDbWrite() {
+  if (!existsSync(dbPath)) {
+    return null;
+  }
+  return new DatabaseSync(dbPath);
+}
+
+function initWarehouseDb() {
+  const db = openDbWrite();
+  if (!db) return;
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS warehouse_inventory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sku TEXT UNIQUE,
+      brand TEXT,
+      description TEXT,
+      stock_on_hand INTEGER DEFAULT 0,
+      allocated INTEGER DEFAULT 0,
+      bin_location TEXT,
+      reorder_point INTEGER DEFAULT 0
+    )
+  `);
+
+  const countRow = db.prepare("SELECT COUNT(*) as count FROM warehouse_inventory").get();
+  if (countRow.count === 0) {
+    let products = [];
+    try {
+      products = db.prepare("SELECT sku, brand, description FROM promotion_proposals GROUP BY sku").all();
+    } catch (e) {
+      // Fallback
+    }
+
+    if (products.length === 0) {
+      try {
+        products = db.prepare("SELECT sku, description FROM debit_notes GROUP BY sku").all();
+        products = products.map(p => {
+          let brand = "General";
+          if (p.description.toLowerCase().includes("komorebi")) brand = "KOMOREBI";
+          else if (p.description.toLowerCase().includes("rejuran")) brand = "REJURAN";
+          else if (p.description.toLowerCase().includes("teazen")) brand = "TEAZEN";
+          else if (p.description.toLowerCase().includes("qollabs")) brand = "QOLLABS";
+          return { sku: p.sku, brand, description: p.description };
+        });
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    if (products.length === 0) {
+      products = [
+        { sku: "821219", brand: "KOMOREBI", description: "KOMOREBI 去濕消水丸 60粒裝" },
+        { sku: "821220", brand: "KOMOREBI", description: "KOMOREBI 櫻花抗糖美肌丸 60粒裝" },
+        { sku: "880962", brand: "REJURAN", description: "REJURAN 水光精華 30ml" },
+        { sku: "880963", brand: "REJURAN", description: "REJURAN 青春緊緻眼霜 20ml" },
+        { sku: "100293", brand: "TEAZEN", description: "TEAZEN 康普茶 檸檬味 10包裝" },
+        { sku: "100294", brand: "TEAZEN", description: "TEAZEN 康普茶 莓果味 10包裝" },
+      ];
+    }
+
+    const insert = db.prepare(`
+      INSERT INTO warehouse_inventory (sku, brand, description, stock_on_hand, allocated, bin_location, reorder_point)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const bins = ["A", "B", "C", "D"];
+    products.forEach((p, index) => {
+      const stock = Math.floor(Math.random() * 750) + 50;
+      const allocated = Math.min(stock - 10, Math.floor(Math.random() * 45) + 5);
+      const reorder = Math.floor(Math.random() * 80) + 20;
+      const binLetter = bins[index % bins.length];
+      const binNum = String((index % 20) + 1).padStart(2, '0');
+      const bin = `${binLetter}-${binNum}`;
+      
+      try {
+        insert.run(p.sku, p.brand || "General", p.description, stock, allocated, bin, reorder);
+      } catch (e) {
+        // Skip duplicate unique keys
+      }
+    });
+  }
+}
+
 function runDebitNoteImporter() {
   const python = process.env.PYTHON || (bundledPython && existsSync(bundledPython) ? bundledPython : "python3");
   return new Promise((resolve) => {
@@ -2061,6 +2144,49 @@ createServer(async (req, res) => {
   if (url.pathname === "/api/clear-debit-notes" && req.method === "POST") {
     try {
       json(res, 200, await clearDebitNotes());
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/stock-levels" && req.method === "GET") {
+    try {
+      initWarehouseDb();
+      const db = openDb();
+      if (!db) {
+        json(res, 200, { ok: true, stockLevels: [] });
+        return;
+      }
+      const levels = db.prepare("SELECT * FROM warehouse_inventory ORDER BY sku ASC").all();
+      json(res, 200, { ok: true, stockLevels: levels });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/adjust" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      const { id, qtyChange, reason } = body;
+      
+      const db = openDbWrite();
+      if (!db) {
+        json(res, 400, { ok: false, error: "Database not available for write." });
+        return;
+      }
+      
+      const item = db.prepare("SELECT * FROM warehouse_inventory WHERE id = ?").get(id);
+      if (!item) {
+        json(res, 404, { ok: false, error: "Item not found." });
+        return;
+      }
+
+      const nextStock = Math.max(0, item.stock_on_hand + Number(qtyChange));
+      db.prepare("UPDATE warehouse_inventory SET stock_on_hand = ? WHERE id = ?").run(nextStock, id);
+      
+      json(res, 200, { ok: true, nextStock });
     } catch (error) {
       json(res, 500, { ok: false, error: error.message });
     }
