@@ -1015,10 +1015,15 @@ function Overview({ data, goFinance, setPage }) {
               <strong>Debit Note Auditing</strong>
               <span>Audit and flag WTC trade promotion discrepancies, price overcharges, and overlapping billing.</span>
             </button>
-            <button className="moduleCard" type="button" onClick={() => setPage("warehouse")}>
+            <button className="moduleCard" type="button" onClick={() => setPage("warehouse")} style={{ marginBottom: "15px" }}>
               <Package size={18} style={{ color: "#f59e0b" }} />
               <strong>Warehouse Management</strong>
               <span>Manage warehouse inventory stock levels, search SKUs, view bin locations, and track safety stock.</span>
+            </button>
+            <button className="moduleCard" type="button" onClick={() => setPage("ads")}>
+              <LineChart size={18} style={{ color: "var(--primary)" }} />
+              <strong>Ads Optimization</strong>
+              <span>Monitor Meta campaign performance, simulate ad account connections, and enable AI auto-optimization toggles.</span>
             </button>
           </div>
         </div>
@@ -3292,6 +3297,543 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
   );
 }
 
+function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, loadData }) {
+  const [appId, setAppId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [adAccountId, setAdAccountId] = useState("");
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [aiToggling, setAiToggling] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+
+  useEffect(() => {
+    if (settings) {
+      setAppId(settings.app_id || "");
+      setAccessToken(settings.access_token || "");
+      setAdAccountId(settings.ad_account_id || "");
+    }
+  }, [settings]);
+
+  async function handleConnect(e) {
+    e.preventDefault();
+    if (!appId || !accessToken || !adAccountId) {
+      alert("Please fill out all credentials to connect.");
+      return;
+    }
+    setFormSubmitting(true);
+    try {
+      const res = await fetch("/api/ads/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connected: 1,
+          app_id: appId,
+          access_token: accessToken,
+          ad_account_id: adAccountId
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        await loadData();
+      } else {
+        alert(d.error || "Failed to connect Meta account.");
+      }
+    } catch (err) {
+      alert("Error connecting Meta account: " + err.message);
+    } finally {
+      setFormSubmitting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!window.confirm("Are you sure you want to disconnect your Meta Ads account?")) return;
+    setFormSubmitting(true);
+    try {
+      const res = await fetch("/api/ads/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connected: 0,
+          app_id: "",
+          access_token: "",
+          ad_account_id: ""
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setAppId("");
+        setAccessToken("");
+        setAdAccountId("");
+        await loadData();
+      } else {
+        alert(d.error || "Failed to disconnect account.");
+      }
+    } catch (err) {
+      alert("Error disconnecting account: " + err.message);
+    } finally {
+      setFormSubmitting(false);
+    }
+  }
+
+  async function handleToggleAi() {
+    const nextVal = settings?.ai_optimization ? 0 : 1;
+    setAiToggling(true);
+    try {
+      const res = await fetch("/api/ads/toggle-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ai_optimization: nextVal })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        await loadData();
+        if (nextVal === 1 && (!settings || !settings.connected)) {
+          setShowWarningModal(true);
+        }
+      } else {
+        alert(d.error || "Failed to toggle AI optimization.");
+      }
+    } catch (err) {
+      alert("Error toggling AI: " + err.message);
+    } finally {
+      setAiToggling(false);
+    }
+  }
+
+  const isConnected = settings && settings.connected === 1;
+  const isAiActive = settings && settings.ai_optimization === 1;
+
+  const fmtNum = (val) => {
+    if (val === null || val === undefined) return "-";
+    return new Intl.NumberFormat("en-US").format(val);
+  };
+
+  const fmtCurrency = (val) => {
+    if (val === null || val === undefined) return "-";
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+  };
+
+  const chartData = useMemo(() => {
+    if (!campaigns || !isConnected) return [];
+    return campaigns
+      .filter(c => c.metrics)
+      .map(c => ({
+        name: c.name.split("]")[0].replace("[", ""),
+        Spent: c.metrics.spent,
+        Value: c.metrics.value
+      }));
+  }, [campaigns, isConnected]);
+
+  return (
+    <main className="workspace">
+      <header className="pageHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <p className="eyebrow">Ads Optimization</p>
+          <h1>Meta Campaign Manager</h1>
+          <p className="subtitle">Simulate real-time Meta Ads tracking and let AI optimize bidding strategies automatically.</p>
+        </div>
+        
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f1f5f9", padding: "8px 16px", borderRadius: "30px", border: "1px solid var(--border)" }}>
+          <span style={{ fontSize: "13px", fontWeight: "600", color: isAiActive ? "var(--primary)" : "#64748b" }}>
+            AI Auto-Optimization
+          </span>
+          <button 
+            onClick={handleToggleAi}
+            disabled={aiToggling}
+            style={{
+              width: "48px",
+              height: "26px",
+              borderRadius: "13px",
+              background: isAiActive ? "var(--primary)" : "#cbd5e1",
+              border: "none",
+              position: "relative",
+              cursor: "pointer",
+              transition: "background-color 0.25s ease",
+              display: "flex",
+              alignItems: "center",
+              padding: "2px"
+            }}
+          >
+            <div 
+              style={{
+                width: "22px",
+                height: "22px",
+                borderRadius: "50%",
+                background: "#ffffff",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                transform: isAiActive ? "translateX(22px)" : "translateX(0)",
+                transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
+              }}
+            />
+          </button>
+        </div>
+      </header>
+
+      {!isConnected && (
+        <div style={{ 
+          background: "#fffbeb", 
+          border: "1px solid #fef3c7", 
+          borderLeft: "4px solid #f59e0b",
+          borderRadius: "8px", 
+          padding: "16px 20px", 
+          marginBottom: "24px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+        }}>
+          <span style={{ fontSize: "20px" }}>⚠️</span>
+          <div style={{ fontSize: "14px", color: "#b45309", lineHeight: "1.5" }}>
+            <strong>Meta Ads Account Not Connected:</strong> Performance metrics are currently showing empty placeholder data. 
+            Please <button onClick={() => setSubtab("connection")} style={{ background: "none", border: "none", color: "var(--primary)", textDecoration: "underline", fontWeight: "600", cursor: "pointer", padding: "0" }}>connect your Meta account</button> to fetch live stats and activate AI optimization.
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: "24px", borderBottom: "1px solid var(--border)", marginBottom: "24px" }}>
+        <button
+          onClick={() => setSubtab("campaigns")}
+          style={{
+            background: "none",
+            border: "none",
+            borderBottom: subtab === "campaigns" ? "2px solid var(--primary)" : "2px solid transparent",
+            color: subtab === "campaigns" ? "var(--primary)" : "#64748b",
+            padding: "8px 4px 12px",
+            fontSize: "14px",
+            fontWeight: "600",
+            cursor: "pointer"
+          }}
+        >
+          Campaign Performance
+        </button>
+        <button
+          onClick={() => setSubtab("connection")}
+          style={{
+            background: "none",
+            border: "none",
+            borderBottom: subtab === "connection" ? "2px solid var(--primary)" : "2px solid transparent",
+            color: subtab === "connection" ? "var(--primary)" : "#64748b",
+            padding: "8px 4px 12px",
+            fontSize: "14px",
+            fontWeight: "600",
+            cursor: "pointer"
+          }}
+        >
+          Meta Connection
+        </button>
+      </div>
+
+      {subtab === "campaigns" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          
+          {isConnected && chartData.length > 0 && (
+            <div className="panel" style={{ padding: "20px 24px" }}>
+              <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "16px", color: "#1e293b" }}>Spent vs Conversion Value</h3>
+              <div style={{ width: "100%", height: 200 }}>
+                <ResponsiveContainer>
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
+                    <YAxis fontSize={11} stroke="#64748b" />
+                    <Tooltip formatter={(value) => `$${value}`} />
+                    <Legend />
+                    <Bar dataKey="Spent" fill="#0d9488" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          <div className="panel" style={{ padding: "0", overflow: "hidden" }}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h3 style={{ fontSize: "16px", fontWeight: "700" }}>Active Ad Campaigns</h3>
+                <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>Live performance report from Meta Ads Manager APIs.</p>
+              </div>
+              <button 
+                onClick={loadData}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "6px 12px",
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  cursor: "pointer"
+                }}
+              >
+                <RefreshCw size={14} className={loading ? "loadingSpinner" : ""} />
+                Refresh
+              </button>
+            </div>
+
+            <div className="tableWrapper" style={{ overflowX: "auto" }}>
+              <table className="cleanTable">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Campaign Name</th>
+                    <th>Objective</th>
+                    <th style={{ textAlign: "right" }}>Results</th>
+                    <th style={{ textAlign: "right" }}>Results Value</th>
+                    <th style={{ textAlign: "right" }}>ROAS</th>
+                    <th style={{ textAlign: "right" }}>Cost per Result</th>
+                    <th style={{ textAlign: "right" }}>Spent</th>
+                    <th style={{ textAlign: "right" }}>Impressions</th>
+                    <th style={{ textAlign: "right" }}>Reach</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns && campaigns.map(camp => {
+                    const hasMetrics = camp.metrics !== null;
+                    const isCampActive = camp.status === "ACTIVE";
+                    return (
+                      <tr key={camp.id} style={{ opacity: isCampActive ? 1 : 0.6 }}>
+                        <td style={{ verticalAlign: "middle" }}>
+                          <span style={{
+                            display: "inline-block",
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            background: isCampActive ? "#10b981" : "#94a3b8"
+                          }} />
+                          <span style={{ fontSize: "11px", marginLeft: "6px", fontWeight: "600", color: isCampActive ? "#047857" : "#64748b" }}>
+                            {camp.status}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <strong style={{ fontSize: "13px", color: "#1e293b" }}>{camp.name}</strong>
+                            {camp.recommendations > 0 && (
+                              <span style={{
+                                background: "#ecfdf5",
+                                color: "#047857",
+                                fontSize: "11px",
+                                fontWeight: "600",
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                border: "1px solid #d1fae5"
+                              }}>
+                                {camp.recommendations} recommendation
+                              </span>
+                            )}
+                            {camp.ai_adjusted && (
+                              <span style={{
+                                background: "rgba(13, 148, 136, 0.08)",
+                                color: "var(--primary)",
+                                fontSize: "11px",
+                                fontWeight: "700",
+                                padding: "2px 8px",
+                                borderRadius: "12px"
+                              }}>
+                                AI Optimized
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{
+                            background: "#f1f5f9",
+                            color: "#475569",
+                            fontSize: "11px",
+                            fontWeight: "600",
+                            padding: "2px 8px",
+                            borderRadius: "4px"
+                          }}>
+                            {camp.objective}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? fmtNum(camp.metrics.results) : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? (camp.metrics.value > 0 ? fmtCurrency(camp.metrics.value) : "$0.00") : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? (camp.metrics.roas > 0 ? camp.metrics.roas.toFixed(2) : "-") : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? fmtCurrency(camp.metrics.cost_per_result) : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "600" }}>
+                          {hasMetrics ? fmtCurrency(camp.metrics.spent) : "$0.00"}
+                        </td>
+                        <td style={{ textAlign: "right", color: "#64748b" }}>
+                          {hasMetrics ? fmtNum(camp.metrics.impressions) : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", color: "#64748b" }}>
+                          {hasMetrics ? fmtNum(camp.metrics.reach) : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!campaigns || campaigns.length === 0) && (
+                    <tr>
+                      <td colSpan={10} style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                        No campaigns found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ maxWidth: "560px" }}>
+          <div className="panel" style={{ padding: "30px 40px" }}>
+            <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "8px" }}>Meta Ads Integration</h3>
+            <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "24px" }}>
+              Configure your Meta Business Manager Developer API credentials to sync ad account campaigns.
+            </p>
+
+            {isConnected ? (
+              <div style={{ background: "#f0fdf4", border: "1px solid #dcfce7", borderRadius: "10px", padding: "20px", display: "flex", flexDirection: "column", gap: "15px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div style={{ background: "#22c55e", width: "12px", height: "12px", borderRadius: "50%" }} />
+                  <span style={{ fontSize: "14px", fontWeight: "700", color: "#15803d" }}>Successfully Connected</span>
+                </div>
+                
+                <div style={{ fontSize: "13px", color: "#166534", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div><b>Meta App ID:</b> {settings.app_id}</div>
+                  <div><b>Ad Account ID:</b> {settings.ad_account_id}</div>
+                </div>
+
+                <button 
+                  onClick={handleDisconnect}
+                  disabled={formSubmitting}
+                  style={{
+                    alignSelf: "flex-start",
+                    background: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    color: "#991b1b",
+                    padding: "8px 16px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    marginTop: "10px"
+                  }}
+                >
+                  Disconnect Account
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleConnect} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b" }}>Meta App ID</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. 847291857392019"
+                    value={appId}
+                    onChange={(e) => setAppId(e.target.value)}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      fontSize: "14px",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b" }}>Access Token</label>
+                  <input 
+                    type="password" 
+                    placeholder="Enter Meta Access Token (EAAB...)"
+                    value={accessToken}
+                    onChange={(e) => setAccessToken(e.target.value)}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      fontSize: "14px",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b" }}>Ad Account ID</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. act_1234567890"
+                    value={adAccountId}
+                    onChange={(e) => setAdAccountId(e.target.value)}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--border)",
+                      fontSize: "14px",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={formSubmitting}
+                  className="primaryButton"
+                  style={{ 
+                    alignSelf: "flex-start", 
+                    height: "42px", 
+                    padding: "0 24px",
+                    background: "var(--primary)",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "6px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px"
+                  }}
+                >
+                  {formSubmitting && <RefreshCw size={14} className="loadingSpinner" />}
+                  Connect Account
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showWarningModal && (
+        <div style={{
+          position: "fixed",
+          top: "0",
+          left: "0",
+          width: "100%",
+          height: "100%",
+          background: "rgba(0,0,0,0.4)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: "1100"
+        }}>
+          <div className="panel" style={{ maxWidth: "460px", padding: "30px 40px", textAlign: "center", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)" }}>
+            <span style={{ fontSize: "36px", display: "block", marginBottom: "16px" }}>⚙️</span>
+            <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "12px" }}>AI Optimization Active</h3>
+            <p style={{ fontSize: "13px", color: "#64748b", lineHeight: "1.6", marginBottom: "24px" }}>
+              AI Auto-Optimization settings have been updated. However, a live connection is required for active optimization adjustments on your Meta campaigns.
+            </p>
+            <button 
+              className="primaryButton"
+              style={{ padding: "0 20px", height: "36px", margin: "0 auto" }}
+              onClick={() => setShowWarningModal(false)}
+            >
+              Acknowledge
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
 function App() {
   const [page, setPage] = useState("overview");
   const [financeSubtab, setFinanceSubtab] = useState("summary");
@@ -3303,6 +3845,13 @@ function App() {
   const [warehouseStock, setWarehouseStock] = useState(null);
   const [warehouseLoading, setWarehouseLoading] = useState(false);
   const [warehouseError, setWarehouseError] = useState(null);
+  
+  const [adsNavOpen, setAdsNavOpen] = useState(false);
+  const [adsSubtab, setAdsSubtab] = useState("campaigns");
+  const [adsSettings, setAdsSettings] = useState(null);
+  const [adsCampaigns, setAdsCampaigns] = useState(null);
+  const [adsLoading, setAdsLoading] = useState(false);
+  const [adsError, setAdsError] = useState(null);
   
   const [debitAudit, setDebitAudit] = useState(null);
   const [debitLoading, setDebitLoading] = useState(false);
@@ -3425,6 +3974,36 @@ function App() {
     }
   }, [page]);
 
+  async function loadAdsData() {
+    setAdsLoading(true);
+    try {
+      const res = await fetch("/api/ads/performance");
+      const d = await res.json();
+      if (d.ok) {
+        setAdsCampaigns(d.campaigns);
+        setAdsError(null);
+      } else {
+        setAdsError(d.error || "Failed to load ads performance.");
+      }
+      
+      const settingsRes = await fetch("/api/ads/settings");
+      const settingsD = await settingsRes.json();
+      if (settingsD.ok) {
+        setAdsSettings(settingsD.settings);
+      }
+    } catch (err) {
+      setAdsError(err.message || "Failed to load ads data.");
+    } finally {
+      setAdsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (page === "ads" && !adsLoading) {
+      loadAdsData();
+    }
+  }, [page]);
+
   async function uploadFiles(files, details) {
     setLoading(true);
     setUploadState({ busy: true, message: "Uploading reports..." });
@@ -3496,6 +4075,7 @@ function App() {
             setFinanceNavOpen(false);
             setDebitNavOpen(false);
             setWarehouseNavOpen(false);
+            setAdsNavOpen(false);
           }}>
             <LayoutDashboard size={18} />
             Overview
@@ -3508,6 +4088,7 @@ function App() {
               setFinanceNavOpen((open) => !open);
               setDebitNavOpen(false);
               setWarehouseNavOpen(false);
+              setAdsNavOpen(false);
             }}
           >
             <CircleDollarSign size={18} />
@@ -3546,6 +4127,7 @@ function App() {
               setDebitNavOpen((open) => !open);
               setFinanceNavOpen(false);
               setWarehouseNavOpen(false);
+              setAdsNavOpen(false);
             }}
           >
             <Receipt size={18} />
@@ -3591,6 +4173,7 @@ function App() {
               setWarehouseNavOpen((open) => !open);
               setFinanceNavOpen(false);
               setDebitNavOpen(false);
+              setAdsNavOpen(false);
             }}
           >
             <Package size={18} />
@@ -3611,6 +4194,43 @@ function App() {
                   onClick={() => {
                     setPage("warehouse");
                     setWarehouseSubtab(id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            className={`groupButton ${page === "ads" ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setPage("ads");
+              setAdsNavOpen((open) => !open);
+              setFinanceNavOpen(false);
+              setDebitNavOpen(false);
+              setWarehouseNavOpen(false);
+            }}
+          >
+            <LineChart size={18} />
+            Ads Optimization
+            <span className="chevron">
+              {adsNavOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
+          </button>
+          {adsNavOpen && (
+            <div className="subNav">
+              {[
+                ["campaigns", "Campaigns"],
+                ["connection", "Meta Connection"],
+              ].map(([id, label]) => (
+                <button
+                  className={page === "ads" && adsSubtab === id ? "active" : ""}
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setPage("ads");
+                    setAdsSubtab(id);
                   }}
                 >
                   {label}
@@ -3681,6 +4301,16 @@ function App() {
           loading={warehouseLoading}
           error={warehouseError}
           loadStock={loadWarehouseStock}
+        />
+      ) : page === "ads" ? (
+        <AdsDashboard
+          subtab={adsSubtab}
+          setSubtab={setAdsSubtab}
+          settings={adsSettings}
+          campaigns={adsCampaigns}
+          loading={adsLoading}
+          error={adsError}
+          loadData={loadAdsData}
         />
       ) : (
         <FinancialDashboard
