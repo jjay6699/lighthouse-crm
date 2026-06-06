@@ -24,6 +24,8 @@ import {
   Tags,
   CheckCircle2,
   Trash2,
+  Link2,
+  Key,
 } from "lucide-react";
 import {
   Bar,
@@ -3712,14 +3714,7 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    padding: "0 14px",
-                    fontSize: "13px",
                     height: "36px",
-                    background: "var(--primary)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "6px",
-                    fontWeight: "600",
                     cursor: "pointer"
                   }}
                 >
@@ -3953,53 +3948,65 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
               <form onSubmit={handleConnect} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <label style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b" }}>Meta App ID</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 847291857392019"
-                    value={appId}
-                    onChange={(e) => setAppId(e.target.value)}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border)",
-                      fontSize: "14px",
-                      outline: "none"
-                    }}
-                  />
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <Link2 size={16} style={{ position: "absolute", left: "12px", color: "#94a3b8" }} />
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 847291857392019"
+                      value={appId}
+                      onChange={(e) => setAppId(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px 10px 38px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        fontSize: "14px",
+                        outline: "none"
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <label style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b" }}>Access Token</label>
-                  <input 
-                    type="password" 
-                    placeholder="Enter Meta Access Token (EAAB...)"
-                    value={accessToken}
-                    onChange={(e) => setAccessToken(e.target.value)}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border)",
-                      fontSize: "14px",
-                      outline: "none"
-                    }}
-                  />
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <Key size={16} style={{ position: "absolute", left: "12px", color: "#94a3b8" }} />
+                    <input 
+                      type="password" 
+                      placeholder="Enter Meta Access Token (EAAB...)"
+                      value={accessToken}
+                      onChange={(e) => setAccessToken(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px 10px 38px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        fontSize: "14px",
+                        outline: "none"
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <label style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b" }}>Ad Account ID</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. act_1234567890"
-                    value={adAccountId}
-                    onChange={(e) => setAdAccountId(e.target.value)}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border)",
-                      fontSize: "14px",
-                      outline: "none"
-                    }}
-                  />
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <Database size={16} style={{ position: "absolute", left: "12px", color: "#94a3b8" }} />
+                    <input 
+                      type="text" 
+                      placeholder="e.g. act_1234567890"
+                      value={adAccountId}
+                      onChange={(e) => setAdAccountId(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px 10px 38px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border)",
+                        fontSize: "14px",
+                        outline: "none"
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <button 
@@ -4009,19 +4016,13 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                   style={{ 
                     alignSelf: "flex-start", 
                     height: "42px", 
-                    padding: "0 24px",
-                    background: "var(--primary)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "6px",
-                    fontWeight: "600",
-                    cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
-                    gap: "8px"
+                    gap: "8px",
+                    cursor: "pointer"
                   }}
                 >
-                  {formSubmitting && <RefreshCw size={14} className="loadingSpinner" />}
+                  {formSubmitting ? <RefreshCw size={14} className="loadingSpinner" /> : <Link2 size={14} />}
                   Connect Account
                 </button>
               </form>
