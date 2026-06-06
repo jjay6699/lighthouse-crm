@@ -2493,13 +2493,12 @@ createServer(async (req, res) => {
         }
       ];
 
+      if (!connected) {
+        json(res, 200, { ok: true, campaigns: [], connected, ai_optimization });
+        return;
+      }
+
       const campaigns = baseCampaigns.map(camp => {
-        if (!connected) {
-          return {
-            ...camp,
-            metrics: null
-          };
-        }
 
         if (ai_optimization && camp.status === "ACTIVE") {
           const optType = camp.objective;
