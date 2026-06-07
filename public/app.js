@@ -2918,6 +2918,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
       const matchLowStock = !showLowStockOnly || (adjustedSoh <= reorder);
       
       return matchSearch && matchBrand && matchLowStock;
+    });
   }, [stock, searchQuery, selectedBrand, showLowStockOnly, replenishData, lagDays, applyDrift]);
 
   const alerts = useMemo(() => {
