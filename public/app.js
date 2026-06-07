@@ -5069,21 +5069,28 @@ function ChatWidget({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubt
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("lightmart_crm_openai_key") || "");
+  const [isConfigured, setIsConfigured] = useState(true);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("lightmart_crm_openai_model") || "gpt-4o");
-  const [tempKey, setTempKey] = useState("");
 
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    async function checkStatus() {
+      try {
+        const res = await fetch("/api/chat/status").then(r => r.json());
+        setIsConfigured(!!res.configured);
+      } catch (err) {
+        setIsConfigured(false);
+      }
+    }
+    checkStatus();
+  }, []);
 
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isTyping]);
-
-  useEffect(() => {
-    setTempKey(apiKey);
-  }, [apiKey]);
 
   useEffect(() => {
     if (messages.length === 0) {
@@ -5110,23 +5117,15 @@ function ChatWidget({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubt
     });
   }, [page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, data, debitAudit, warehouseStock, adsCampaigns]);
 
-  const saveSettings = (key, model) => {
-    localStorage.setItem("lightmart_crm_openai_key", key);
+  const saveSettings = (model) => {
     localStorage.setItem("lightmart_crm_openai_model", model);
-    setApiKey(key);
     setSelectedModel(model);
     setShowSettings(false);
   };
 
-  const removeKey = () => {
-    localStorage.removeItem("lightmart_crm_openai_key");
-    setApiKey("");
-    setTempKey("");
-  };
-
   const handleSend = async (e) => {
     if (e) e.preventDefault();
-    if (!inputValue.trim() || isTyping) return;
+    if (!inputValue.trim() || isTyping || !isConfigured) return;
 
     const userText = inputValue.trim();
     setInputValue("");
@@ -5158,34 +5157,30 @@ Instructions:
         { role: "user", content: userText }
       ];
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           model: selectedModel,
-          messages: apiMessages,
-          temperature: 0.5
+          messages: apiMessages
         })
       });
 
+      const resData = await response.json();
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error?.message || `HTTP ${response.status}`);
+        throw new Error(resData.error || `HTTP ${response.status}`);
       }
 
-      const resData = await response.json();
-      const botResponse = resData.choices?.[0]?.message?.content || "No response received.";
-      
+      const botResponse = resData.data?.choices?.[0]?.message?.content || "No response received.";
       setMessages((prev) => [...prev, { role: "assistant", content: botResponse }]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `⚠️ **API Error**: ${err.message}\n\nPlease verify your OpenAI API Key in the settings panel and ensure you have active credits.`
+          content: `⚠️ **API Error**: ${err.message}\n\nPlease check that your OpenAI configuration on Railway is correct.`
         }
       ]);
     } finally {
@@ -5195,22 +5190,18 @@ Instructions:
 
   return (
     <div className="crm-chat-widget">
-      {!isOpen && (
-        <button className="crm-chat-toggle" onClick={() => setIsOpen(true)} title="Ask CRM AI">
-          <Bot size={24} />
-          {!apiKey && <span className="pulse-dot" />}
-        </button>
-      )}
+      <button className="crm-chat-toggle" onClick={() => setIsOpen(!isOpen)} title="Ask CRM AI">
+        {isOpen ? <X size={24} /> : <Bot size={24} />}
+        {!isConfigured && <span className="pulse-dot" />}
+      </button>
 
       <div className={`crm-chat-panel ${isOpen ? "open" : ""}`}>
         <div className="crm-chat-header">
           <div className="header-info">
-            <h3>
-              <Bot size={16} /> CRM AI Assistant
-            </h3>
+            <h3>CRM AI Assistant</h3>
             <span className="status-indicator">
-              <span className={`status-dot ${apiKey ? "active" : ""}`} />
-              {apiKey ? "OpenAI Connected" : "API Key Required"}
+              <span className={`status-dot ${isConfigured ? "active" : ""}`} />
+              {isConfigured ? "OpenAI Connected" : "Configuration Pending"}
             </span>
           </div>
           <div className="crm-chat-header-actions">
@@ -5236,27 +5227,15 @@ Instructions:
           </pre>
         )}
 
-        {!apiKey ? (
+        {!isConfigured ? (
           <div className="crm-chat-setup">
             <div className="setup-icon">
-              <Key size={24} />
+              <Settings size={24} />
             </div>
-            <h4>Connect OpenAI API</h4>
+            <h4>OpenAI Key Pending</h4>
             <p>
-              To enable screen analysis and query features, enter your OpenAI API key.
-              Your key is saved locally in your browser storage.
+              To enable screen analysis and query features, please configure the <code>OPENAI_API_KEY</code> environment variable in Railway.
             </p>
-            <div className="key-input-container">
-              <input
-                type="password"
-                placeholder="sk-proj-..."
-                value={tempKey}
-                onChange={(e) => setTempKey(e.target.value)}
-              />
-              <button onClick={() => saveSettings(tempKey, selectedModel)}>
-                Save Key & Connect
-              </button>
-            </div>
           </div>
         ) : (
           <>
@@ -5314,22 +5293,8 @@ Instructions:
                   <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                 </select>
               </div>
-              <div className="settings-field">
-                <label>OpenAI API Key</label>
-                <input
-                  type="password"
-                  value={tempKey}
-                  placeholder="Enter sk-..."
-                  onChange={(e) => setTempKey(e.target.value)}
-                />
-              </div>
               <div className="button-row">
-                {apiKey && (
-                  <button className="danger" onClick={removeKey}>
-                    Disconnect Key
-                  </button>
-                )}
-                <button className="primary" onClick={() => saveSettings(tempKey, selectedModel)}>
+                <button className="primary" onClick={() => saveSettings(selectedModel)}>
                   Save Changes
                 </button>
               </div>

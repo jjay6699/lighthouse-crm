@@ -2108,6 +2108,47 @@ createServer(async (req, res) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  if (url.pathname === "/api/chat/status" && req.method === "GET") {
+    json(res, 200, { ok: true, configured: !!process.env.OPENAI_API_KEY });
+    return;
+  }
+
+  if (url.pathname === "/api/chat" && req.method === "POST") {
+    if (!process.env.OPENAI_API_KEY) {
+      json(res, 400, { ok: false, error: "OpenAI API Key is not configured. Please set the OPENAI_API_KEY variable in your environment (e.g. Railway variables)." });
+      return;
+    }
+
+    try {
+      const body = await readJson(req);
+      const { messages, model } = body;
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: model || "gpt-4o",
+          messages: messages,
+          temperature: 0.5
+        })
+      });
+
+      const resData = await response.json();
+      if (!response.ok) {
+        json(res, response.status, { ok: false, error: resData.error?.message || "OpenAI API Error" });
+        return;
+      }
+
+      json(res, 200, { ok: true, data: resData });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
   if (url.pathname === "/api/health") {
     json(res, 200, { ok: true, database: existsSync(dbPath), auth: isAuthConfigured() });
     return;
