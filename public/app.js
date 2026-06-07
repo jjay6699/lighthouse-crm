@@ -2918,8 +2918,42 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
       const matchLowStock = !showLowStockOnly || (adjustedSoh <= reorder);
       
       return matchSearch && matchBrand && matchLowStock;
-    });
   }, [stock, searchQuery, selectedBrand, showLowStockOnly, replenishData, lagDays, applyDrift]);
+
+  const alerts = useMemo(() => {
+    let under = 0;
+    let over = 0;
+    (replenishData || []).forEach(item => {
+      if (!item) return;
+      const cover = item.cover_months || 0;
+      if (cover < 1.0) under++;
+      else if (cover > 3.0 && cover < 900) over++;
+    });
+    return { under, over };
+  }, [replenishData]);
+
+  const poSummary = useMemo(() => {
+    let totalQty = 0;
+    let totalCost = 0.0;
+    let selectedCount = 0;
+    
+    (replenishData || []).forEach(item => {
+      if (!item) return;
+      const sku = item.sku || "";
+      if (selectedReplenishItems[sku]) {
+        const monthlyVel = item.monthly_velocity || 0;
+        const soh = item.stock_on_hand || 0;
+        const unitCost = item.unit_cost_hkd || 0;
+        const recQty = Math.max(0, Math.ceil(monthlyVel * targetCover - soh));
+        if (recQty > 0) {
+          selectedCount++;
+          totalQty += recQty;
+          totalCost += recQty * unitCost;
+        }
+      }
+    });
+    return { totalQty, totalCost, selectedCount };
+  }, [replenishData, selectedReplenishItems, targetCover]);
 
   const handleAdjustSubmit = async (e) => {
     e.preventDefault();
@@ -3733,41 +3767,6 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
 
   // Subtab 4: Lead-Time Replenishment & Safety Thresholds
   const renderReplenishmentTab = () => {
-    const alerts = useMemo(() => {
-      let under = 0;
-      let over = 0;
-      (replenishData || []).forEach(item => {
-        if (!item) return;
-        const cover = item.cover_months || 0;
-        if (cover < 1.0) under++;
-        else if (cover > 3.0 && cover < 900) over++;
-      });
-      return { under, over };
-    }, [replenishData]);
-
-    const poSummary = useMemo(() => {
-      let totalQty = 0;
-      let totalCost = 0.0;
-      let selectedCount = 0;
-      
-      (replenishData || []).forEach(item => {
-        if (!item) return;
-        const sku = item.sku || "";
-        if (selectedReplenishItems[sku]) {
-          const monthlyVel = item.monthly_velocity || 0;
-          const soh = item.stock_on_hand || 0;
-          const unitCost = item.unit_cost_hkd || 0;
-          const recQty = Math.max(0, Math.ceil(monthlyVel * targetCover - soh));
-          if (recQty > 0) {
-            selectedCount++;
-            totalQty += recQty;
-            totalCost += recQty * unitCost;
-          }
-        }
-      });
-      return { totalQty, totalCost, selectedCount };
-    }, [replenishData, selectedReplenishItems, targetCover]);
-
     return (
       <>
         {(alerts.under > 0 || alerts.over > 0) && (
