@@ -3387,7 +3387,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
     let negativeExposure = 0.0;
     let positiveExposure = 0.0;
     
-    stock.forEach(item => {
+    (stock || []).forEach(item => {
       const auditVal = auditCounts[item.id];
       if (auditVal !== undefined && auditVal !== "") {
         const variance = Number(auditVal) - item.stock_on_hand;
@@ -3453,7 +3453,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 </tr>
               </thead>
               <tbody>
-                {stock.map(item => {
+                {(stock || []).map(item => {
                   const auditVal = auditCounts[item.id];
                   const hasAudit = auditVal !== undefined && auditVal !== "";
                   const auditedNum = hasAudit ? Number(auditVal) : item.stock_on_hand;
@@ -3532,7 +3532,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", background: "white", outline: "none", fontSize: "13px" }}
               >
                 <option value="">-- Choose Product --</option>
-                {stock.map(s => (
+                {(stock || []).map(s => (
                   <option key={s.id} value={s.sku}>{s.sku} - {s.brand} - {s.description.slice(0, 30)}...</option>
                 ))}
               </select>
