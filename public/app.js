@@ -4932,23 +4932,63 @@ function extractScreenContext({ page, financeSubtab, debitSubtab, warehouseSubta
         }));
     }
   } else if (page === "ads") {
+    const brandMargins = (data?.byEntity || [])
+      .filter(row => row.entity && row.entity.toLowerCase() !== "not specified")
+      .map(row => ({
+        brand: row.entity,
+        revenue: row.revenue || 0,
+        grossProfit: row.gross_profit || 0,
+        margin: row.revenue ? (row.gross_profit / row.revenue) : 0
+      }));
+
+    let stockSummary = {};
+    let stockAlerts = [];
+    if (warehouseStock) {
+      const levels = Array.isArray(warehouseStock) ? warehouseStock : warehouseStock.stockLevels || [];
+      const overstocked = levels.filter(l => l.stock_on_hand > l.reorder_point * 3 && l.reorder_point > 0);
+      const understocked = levels.filter(l => l.stock_on_hand <= l.reorder_point);
+      
+      stockSummary = {
+        totalSKUs: levels.length,
+        overstockedCount: overstocked.length,
+        understockedCount: understocked.length
+      };
+
+      stockAlerts = levels.map(l => {
+        let state = "Healthy";
+        if (l.stock_on_hand > l.reorder_point * 3 && l.reorder_point > 0) state = "Overstocked";
+        else if (l.stock_on_hand <= l.reorder_point) state = "Understocked";
+        return {
+          sku: l.sku,
+          name: l.product_name,
+          stock: l.stock_on_hand,
+          reorderPoint: l.reorder_point,
+          state
+        };
+      });
+    }
+
     context.details = {
       title: `Ads Optimization - Subtab: ${adsSubtab}`,
       connected: adsCampaigns?.connected || false,
-      aiOptimizationActive: adsCampaigns?.ai_optimization || false
-    };
-    if (adsCampaigns?.campaigns) {
-      context.details.campaignsSample = adsCampaigns.campaigns
-        .slice(0, 5)
+      aiOptimizationActive: adsCampaigns?.ai_optimization || false,
+      campaigns: (adsCampaigns || [])
+        .slice(0, 10)
         .map(c => ({
+          id: c.id,
           name: c.name,
           objective: c.objective,
           status: c.status,
           spent: c.metrics?.spent || 0,
+          costPerResult: c.metrics?.cost_per_result || 0,
           roas: c.metrics?.roas || 0,
-          results: c.metrics?.results || 0
-        }));
-    }
+          results: c.metrics?.results || 0,
+          dailyBudget: c.daily_budget || 0
+        })),
+      brandMargins,
+      warehouseStockSummary: stockSummary,
+      warehouseStockAlerts: stockAlerts.slice(0, 15)
+    };
   }
 
   return context;
@@ -5149,7 +5189,23 @@ Instructions:
 2. Always format your responses in clean, professional Markdown. You can use bolding, bullet lists, inline code, and markdown tables.
 3. Be concise, accurate, and insightful.
 4. Reference actual numbers, items, or stats shown in the context data to answer precisely.
-5. If the user asks general questions unrelated to the screen, answer them normally, but prioritize helper analysis of CRM data.`;
+5. If the user asks general questions unrelated to the screen, answer them normally, but prioritize helper analysis of CRM data.
+
+${activeContext.page === "ads" ? `Ads Optimization Module Specs & Automation Rules:
+- **Inventory-Driven Budget Balancing**:
+  - Overstocked SKUs (>3 months cover: stock_on_hand > 3 * reorder_point) need targeted marketing campaigns. Recommend increasing the daily budget or launching new ad copy for campaigns targeting these brands/SKUs to clear inventory.
+  - Understocked SKUs (stock_on_hand <= reorder_point) are near lead-time limits. Recommend decreasing the daily budget or pausing campaigns targeting these SKUs to avoid stockouts.
+- **Profit-Optimized Bid Scaling**:
+  - Inspect the brand margins. Recommend shifting daily budgets from campaigns with low margins (e.g. <10% margin) to campaigns with high margins (e.g. >25% margin) to optimize capital efficiency.
+- **Multi-Condition Automated Spending Guardrails**:
+  - Check if any active campaign has a cost-per-result (CPA) that is high (e.g. Traffic > $1.00, Awareness > $0.10, or ROAS < 1.5). Recommend pausing the campaign or shifting budget back to stable control campaigns.
+- **Temporal Time-Block & Reporting Lag Protection**:
+  - Restrict automated rule executions during peak consumer conversion hours (18:00 to 22:00) or high ad network API synchronization windows. Remind users of this.
+
+When formatting your answer for the Ads screen:
+- Match campaigns to brands/SKUs.
+- Use markdown tables to show matching recommendations (e.g., Brand/SKU, Stock State, Profit Margin, Active Campaign, and Recommended Action).
+- Reference actual campaign names, daily budgets, SKU names, and gross margins.` : ""}`;
 
       const apiMessages = [
         { role: "system", content: systemPrompt },
@@ -5477,8 +5533,13 @@ function App() {
   }
 
   useEffect(() => {
-    if (page === "ads" && !adsLoading) {
-      loadAdsData();
+    if (page === "ads") {
+      if (!adsLoading) {
+        loadAdsData();
+      }
+      if (!warehouseStock && !warehouseLoading) {
+        loadWarehouseStock();
+      }
     }
   }, [page]);
 
