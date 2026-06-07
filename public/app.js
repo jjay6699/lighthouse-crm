@@ -3734,6 +3734,212 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
             </div>
           )}
 
+          {/* New AI CAC Optimization Loop panel */}
+          {isConnected && (() => {
+            const inventoryRecs = [];
+            if (warehouseStock) {
+              const levels = Array.isArray(warehouseStock) ? warehouseStock : warehouseStock.stockLevels || [];
+              
+              levels.forEach(l => {
+                const matchedCamp = campaigns?.find(c => 
+                  c.status === "ACTIVE" && 
+                  (c.name.toLowerCase().includes(l.sku.toLowerCase()) || 
+                   c.name.toLowerCase().includes(l.product_name.toLowerCase()) ||
+                   (l.product_name.split(" ").some(word => word.length > 3 && c.name.toLowerCase().includes(word.toLowerCase()))))
+                );
+
+                if (matchedCamp) {
+                  if (l.stock_on_hand > l.reorder_point * 3 && l.reorder_point > 0) {
+                    inventoryRecs.push({
+                      sku: l.sku,
+                      name: l.product_name,
+                      stock: l.stock_on_hand,
+                      reorder: l.reorder_point,
+                      type: "overstock",
+                      campaignName: matchedCamp.name,
+                      campaignId: matchedCamp.id,
+                      rec: `Inventory overstock detected (${l.stock_on_hand} units). Recommend scaling budget by +25% to accelerate inventory clearance.`
+                    });
+                  } else if (l.stock_on_hand <= l.reorder_point) {
+                    inventoryRecs.push({
+                      sku: l.sku,
+                      name: l.product_name,
+                      stock: l.stock_on_hand,
+                      reorder: l.reorder_point,
+                      type: "understock",
+                      campaignName: matchedCamp.name,
+                      campaignId: matchedCamp.id,
+                      rec: `Near lead-time limits (${l.stock_on_hand} units). Recommend dialing back spend by -15% to conserve stock and prevent stockouts.`
+                    });
+                  }
+                }
+              });
+            }
+
+            const profitRecs = [];
+            const brandMargins = (data?.byEntity || [])
+              .filter(row => row.entity && row.entity.toLowerCase() !== "not specified")
+              .map(row => ({
+                brand: row.entity,
+                revenue: row.revenue || 0,
+                grossProfit: row.gross_profit || 0,
+                margin: row.revenue ? (row.gross_profit / row.revenue) : 0
+              }));
+
+            brandMargins.forEach(b => {
+              const matchedCamp = campaigns?.find(c => 
+                c.status === "ACTIVE" && 
+                c.name.toLowerCase().includes(b.brand.toLowerCase())
+              );
+
+              if (matchedCamp) {
+                if (b.margin > 0.25) {
+                  profitRecs.push({
+                    brand: b.brand,
+                    margin: b.margin,
+                    campaignName: matchedCamp.name,
+                    campaignId: matchedCamp.id,
+                    type: "high-margin",
+                    rec: `High margin channel detected (${(b.margin * 100).toFixed(1)}%). Recommend scaling up bidding weight (+15% budget) to maximize yield.`
+                  });
+                } else if (b.margin < 0.10 && b.margin > 0) {
+                  profitRecs.push({
+                    brand: b.brand,
+                    margin: b.margin,
+                    campaignName: matchedCamp.name,
+                    campaignId: matchedCamp.id,
+                    type: "low-margin",
+                    rec: `Low margin channel detected (${(b.margin * 100).toFixed(1)}%). Recommend budget consolidation (-20% budget) to protect capital efficiency.`
+                  });
+                }
+              }
+            });
+
+            const guardrailRecs = [];
+            campaigns?.forEach(c => {
+              if (c.status === "ACTIVE" && c.metrics) {
+                const cpa = c.metrics.cost_per_result;
+                const roas = c.metrics.roas;
+                if ((c.objective === "Traffic" && cpa > 1.0) || (roas > 0 && roas < 1.5)) {
+                  guardrailRecs.push({
+                    id: c.id,
+                    name: c.name,
+                    cpa,
+                    roas,
+                    rec: `CPA target breached or low ROAS (${roas > 0 ? `ROAS: ${roas.toFixed(2)}` : `CPA: $${cpa.toFixed(2)}`}). Automatic guardrail recommends transferring budget back to stable control campaigns.`
+                  });
+                }
+              }
+            });
+
+            const hasRecs = inventoryRecs.length > 0 || profitRecs.length > 0 || guardrailRecs.length > 0;
+
+            return (
+              <div className="panel" style={{ padding: "24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "12px" }}>
+                  <div>
+                    <h3 style={{ fontSize: "16px", fontWeight: "700", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "18px" }}>⚡</span> AI Customer-Acquisition (CAC) Optimization Loop
+                    </h3>
+                    <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>
+                      Automated budget balancing and bid scaling rules synced with warehouse inventory and brand profit margins.
+                    </p>
+                  </div>
+                  <span style={{ background: "rgba(13, 148, 136, 0.08)", color: "var(--primary)", fontSize: "11px", fontWeight: "700", padding: "4px 10px", borderRadius: "12px", border: "1px solid rgba(13, 148, 136, 0.15)" }}>
+                    AI Active & Synced
+                  </span>
+                </div>
+
+                {!hasRecs ? (
+                  <p style={{ fontSize: "13px", color: "#64748b", margin: "10px 0 0", fontStyle: "italic", textAlign: "center" }}>
+                    No automated CAC adjustments recommended at this time. All campaign channels are performing within healthy bounds.
+                  </p>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", borderBottom: "1px solid var(--border)", paddingBottom: "8px" }}>
+                        <span style={{ fontSize: "14px" }}>📦</span>
+                        <strong style={{ fontSize: "13px", color: "#1e293b" }}>Inventory-Driven Budget Balancing</strong>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "250px", overflowY: "auto" }}>
+                        {inventoryRecs.map((r, idx) => (
+                          <div key={idx} style={{ background: "#ffffff", padding: "10px 12px", borderRadius: "6px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: "12px", fontWeight: "700" }}>{r.name} ({r.sku})</span>
+                              <span style={{ 
+                                fontSize: "10px", 
+                                fontWeight: "700", 
+                                padding: "2px 6px", 
+                                borderRadius: "4px",
+                                background: r.type === "overstock" ? "#ecfdf5" : "#fff1f2",
+                                color: r.type === "overstock" ? "#047857" : "#e11d48"
+                              }}>
+                                {r.type === "overstock" ? "Overstock" : "Low Stock"}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: "11px", color: "#64748b" }}>Campaign: <b>{r.campaignName}</b></span>
+                            <p style={{ fontSize: "11px", color: "#475569", margin: "4px 0 0", lineHeight: "1.4" }}>{r.rec}</p>
+                          </div>
+                        ))}
+                        {inventoryRecs.length === 0 && (
+                          <p style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic", margin: 0 }}>No inventory budget balancing recommendations.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", borderBottom: "1px solid var(--border)", paddingBottom: "8px" }}>
+                        <span style={{ fontSize: "14px" }}>💰</span>
+                        <strong style={{ fontSize: "13px", color: "#1e293b" }}>Profit-Optimized Bid Scaling</strong>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "250px", overflowY: "auto" }}>
+                        {profitRecs.map((r, idx) => (
+                          <div key={idx} style={{ background: "#ffffff", padding: "10px 12px", borderRadius: "6px", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: "12px", fontWeight: "700" }}>{r.brand}</span>
+                              <span style={{ 
+                                fontSize: "10px", 
+                                fontWeight: "700", 
+                                padding: "2px 6px", 
+                                borderRadius: "4px",
+                                background: r.type === "high-margin" ? "#eff6ff" : "#fffbeb",
+                                color: r.type === "high-margin" ? "#1d4ed8" : "#d97706"
+                              }}>
+                                {r.type === "high-margin" ? "High Margin" : "Low Margin"}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: "11px", color: "#64748b" }}>Campaign: <b>{r.campaignName}</b></span>
+                            <p style={{ fontSize: "11px", color: "#475569", margin: "4px 0 0", lineHeight: "1.4" }}>{r.rec}</p>
+                          </div>
+                        ))}
+                        {profitRecs.length === 0 && (
+                          <p style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic", margin: 0 }}>No profit bid scaling recommendations.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {guardrailRecs.length > 0 && (
+                  <div style={{ marginTop: "16px", background: "rgba(225, 29, 72, 0.04)", border: "1px solid rgba(225, 29, 72, 0.15)", borderRadius: "8px", padding: "12px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "14px" }}>🚨</span>
+                      <strong style={{ fontSize: "12px", color: "#be123c" }}>Spending Guardrail Violations ({guardrailRecs.length})</strong>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {guardrailRecs.map((r, idx) => (
+                        <div key={idx} style={{ fontSize: "11px", color: "#be123c", display: "flex", justifyContent: "space-between" }}>
+                          <span>Campaign <b>{r.name}</b> breached targets.</span>
+                          <span>{r.rec}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="panel" style={{ padding: "0", overflow: "hidden" }}>
             <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
@@ -5244,12 +5450,11 @@ When formatting your answer for the Ads screen:
     }
   };
 
-  if (!isConfigured) return null;
-
   return (
     <div className="crm-chat-widget">
       <button className="crm-chat-toggle" onClick={() => setIsOpen(!isOpen)} title="Ask CRM AI">
         {isOpen ? <X size={24} /> : <Bot size={24} />}
+        {!isConfigured && <span className="pulse-dot" />}
       </button>
 
       <div className={`crm-chat-panel ${isOpen ? "open" : ""}`}>
@@ -5257,8 +5462,8 @@ When formatting your answer for the Ads screen:
           <div className="header-info">
             <h3>CRM AI Assistant</h3>
             <span className="status-indicator">
-              <span className="status-dot active" />
-              OpenAI Connected
+              <span className={`status-dot ${isConfigured ? "active" : ""}`} />
+              {isConfigured ? "OpenAI Connected" : "Configuration Pending"}
             </span>
           </div>
           <div className="crm-chat-header-actions">
@@ -5284,42 +5489,56 @@ When formatting your answer for the Ads screen:
           </pre>
         )}
 
-        <div className="crm-chat-body">
-          {messages.map((msg, i) => (
-            <div key={i} className={`crm-chat-msg-row ${msg.role}`}>
-              <div className="crm-chat-bubble">
-                {renderMarkdownToReact(msg.content)}
-              </div>
+        {!isConfigured ? (
+          <div className="crm-chat-setup">
+            <div className="setup-icon">
+              <Settings size={24} />
             </div>
-          ))}
-          {isTyping && (
-            <div className="crm-chat-msg-row bot">
-              <div className="crm-chat-bubble">
-                <div className="crm-chat-typing">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <form className="crm-chat-footer" onSubmit={handleSend}>
-          <div className="crm-chat-input-row">
-            <input
-              type="text"
-              placeholder="Ask a question about this screen..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              disabled={isTyping}
-            />
-            <button type="submit" className="crm-chat-send-btn" disabled={!inputValue.trim() || isTyping}>
-              <Send size={16} />
-            </button>
+            <h4>OpenAI Key Pending</h4>
+            <p>
+              To enable screen analysis and query features, please configure the <code>OPENAI_API_KEY</code> environment variable in Railway.
+            </p>
           </div>
-        </form>
+        ) : (
+          <>
+            <div className="crm-chat-body">
+              {messages.map((msg, i) => (
+                <div key={i} className={`crm-chat-msg-row ${msg.role}`}>
+                  <div className="crm-chat-bubble">
+                    {renderMarkdownToReact(msg.content)}
+                  </div>
+                </div>
+              ))}
+              {isTyping && (
+                <div className="crm-chat-msg-row bot">
+                  <div className="crm-chat-bubble">
+                    <div className="crm-chat-typing">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form className="crm-chat-footer" onSubmit={handleSend}>
+              <div className="crm-chat-input-row">
+                <input
+                  type="text"
+                  placeholder="Ask a question about this screen..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  disabled={isTyping}
+                />
+                <button type="submit" className="crm-chat-send-btn" disabled={!inputValue.trim() || isTyping}>
+                  <Send size={16} />
+                </button>
+              </div>
+            </form>
+          </>
+        )}
 
         {showSettings && (
           <div className="crm-chat-settings-overlay" onClick={() => setShowSettings(false)}>
