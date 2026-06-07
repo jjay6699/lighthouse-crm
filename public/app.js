@@ -2862,19 +2862,27 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
     let totalRetailVal = 0;
     
     stock.forEach(item => {
-      totalUnits += item.stock_on_hand;
-      totalAllocated += item.allocated;
-      totalSited += item.sited_stock || 0;
-      totalAssetVal += item.stock_on_hand * (item.unit_cost_hkd || 0);
-      totalRetailVal += item.stock_on_hand * (item.rsp || 0);
+      if (!item) return;
+      const soh = item.stock_on_hand || 0;
+      const alloc = item.allocated || 0;
+      const sited = item.sited_stock || 0;
+      const cost = item.unit_cost_hkd || 0;
+      const r_val = item.rsp || 0;
+      const reorder = item.reorder_point || 0;
+
+      totalUnits += soh;
+      totalAllocated += alloc;
+      totalSited += sited;
+      totalAssetVal += soh * cost;
+      totalRetailVal += soh * r_val;
       
       // Calculate adjusted stock for low stock check
-      const matchedRepItem = (replenishData || []).find(r => r.sku === item.sku);
-      const runRate = matchedRepItem ? matchedRepItem.consignment_daily_run_rate : 0;
+      const matchedRepItem = (replenishData || []).find(r => r && r.sku === item.sku);
+      const runRate = matchedRepItem ? (matchedRepItem.consignment_daily_run_rate || 0) : 0;
       const drawdown = runRate * lagDays;
-      const adjustedSoh = Math.max(0, Math.round(item.stock_on_hand - item.allocated - (applyDrift ? drawdown : 0)));
+      const adjustedSoh = Math.max(0, Math.round(soh - alloc - (applyDrift ? drawdown : 0)));
       
-      if (adjustedSoh <= item.reorder_point) {
+      if (adjustedSoh <= reorder) {
         lowStockCount++;
       }
     });
@@ -2883,23 +2891,31 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
 
   const brands = useMemo(() => {
     if (!stock) return ["All"];
-    const set = new Set(stock.map(item => item.brand).filter(Boolean));
+    const set = new Set(stock.map(item => item && item.brand).filter(Boolean));
     return ["All", ...Array.from(set)];
   }, [stock]);
 
   const filteredStock = useMemo(() => {
     if (!stock) return [];
     return stock.filter(item => {
+      if (!item) return false;
+      const sku = item.sku || "";
+      const description = item.description || "";
+      const brand = item.brand || "";
+      const soh = item.stock_on_hand || 0;
+      const alloc = item.allocated || 0;
+      const reorder = item.reorder_point || 0;
+
       const matchSearch = !searchQuery || 
-        item.sku.includes(searchQuery) || 
-        item.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchBrand = selectedBrand === "All" || item.brand === selectedBrand;
+        sku.includes(searchQuery) || 
+        description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchBrand = selectedBrand === "All" || brand === selectedBrand;
       
-      const matchedRepItem = (replenishData || []).find(r => r.sku === item.sku);
-      const runRate = matchedRepItem ? matchedRepItem.consignment_daily_run_rate : 0;
+      const matchedRepItem = (replenishData || []).find(r => r && r.sku === sku);
+      const runRate = matchedRepItem ? (matchedRepItem.consignment_daily_run_rate || 0) : 0;
       const drawdown = runRate * lagDays;
-      const adjustedSoh = Math.max(0, Math.round(item.stock_on_hand - item.allocated - (applyDrift ? drawdown : 0)));
-      const matchLowStock = !showLowStockOnly || (adjustedSoh <= item.reorder_point);
+      const adjustedSoh = Math.max(0, Math.round(soh - alloc - (applyDrift ? drawdown : 0)));
+      const matchLowStock = !showLowStockOnly || (adjustedSoh <= reorder);
       
       return matchSearch && matchBrand && matchLowStock;
     });
@@ -3057,8 +3073,8 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
       id: Number(id),
       auditedQty: Number(auditCounts[id])
     })).filter(adj => {
-      const item = stock.find(s => s.id === adj.id);
-      return item && item.stock_on_hand !== adj.auditedQty;
+      const item = (stock || []).find(s => s && s.id === adj.id);
+      return item && (item.stock_on_hand || 0) !== adj.auditedQty;
     });
 
     if (adjustments.length === 0) {
@@ -3388,9 +3404,10 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
     let positiveExposure = 0.0;
     
     (stock || []).forEach(item => {
+      if (!item) return;
       const auditVal = auditCounts[item.id];
       if (auditVal !== undefined && auditVal !== "") {
-        const variance = Number(auditVal) - item.stock_on_hand;
+        const variance = Number(auditVal) - (item.stock_on_hand || 0);
         if (variance !== 0) {
           totalVariances++;
           const cost = variance * (item.unit_cost_hkd || 0.0);
@@ -3454,22 +3471,24 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
               </thead>
               <tbody>
                 {(stock || []).map(item => {
+                  if (!item) return null;
                   const auditVal = auditCounts[item.id];
                   const hasAudit = auditVal !== undefined && auditVal !== "";
-                  const auditedNum = hasAudit ? Number(auditVal) : item.stock_on_hand;
-                  const variance = auditedNum - item.stock_on_hand;
+                  const soh = item.stock_on_hand || 0;
+                  const auditedNum = hasAudit ? Number(auditVal) : soh;
+                  const variance = auditedNum - soh;
                   const exposure = variance * (item.unit_cost_hkd || 0);
                   
                   return (
                     <tr key={item.id} style={{ background: variance !== 0 ? (variance < 0 ? "rgba(239, 68, 68, 0.02)" : "rgba(16, 185, 129, 0.02)") : "transparent" }}>
                       <td><strong>{item.sku}</strong></td>
-                      <td><span style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "#64748b", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{item.brand}</span></td>
-                      <td>{item.description}</td>
-                      <td style={{ textAlign: "right" }}>{item.stock_on_hand.toLocaleString()}</td>
+                      <td><span style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "#64748b", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{item.brand || "General"}</span></td>
+                      <td>{item.description || ""}</td>
+                      <td style={{ textAlign: "right" }}>{soh.toLocaleString()}</td>
                       <td style={{ textAlign: "center" }}>
                         <input
                           type="number"
-                          placeholder={item.stock_on_hand}
+                          placeholder={soh}
                           value={auditVal !== undefined ? auditVal : ""}
                           onChange={(e) => setAuditCounts({ ...auditCounts, [item.id]: e.target.value })}
                           style={{
@@ -3504,13 +3523,18 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
   // Subtab 3: Inbound Expiry Lot Directory
   const renderExpiryTab = () => {
     const filteredDir = (expiryDir || []).filter(row => {
+      if (!row) return false;
       if (!expirySearch) return true;
       const search = expirySearch.toLowerCase();
+      const sku = row.sku || "";
+      const batchNumber = row.batch_number || "";
+      const description = row.description || "";
+      const brand = row.brand || "";
       return (
-        row.sku.toLowerCase().includes(search) ||
-        row.batch_number.toLowerCase().includes(search) ||
-        row.description.toLowerCase().includes(search) ||
-        row.brand.toLowerCase().includes(search)
+        sku.toLowerCase().includes(search) ||
+        batchNumber.toLowerCase().includes(search) ||
+        description.toLowerCase().includes(search) ||
+        brand.toLowerCase().includes(search)
       );
     });
 
@@ -3532,9 +3556,13 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", background: "white", outline: "none", fontSize: "13px" }}
               >
                 <option value="">-- Choose Product --</option>
-                {(stock || []).map(s => (
-                  <option key={s.id} value={s.sku}>{s.sku} - {s.brand} - {s.description.slice(0, 30)}...</option>
-                ))}
+                {(stock || []).map(s => {
+                  if (!s) return null;
+                  const desc = s.description || "";
+                  return (
+                    <option key={s.id} value={s.sku}>{s.sku} - {s.brand || "General"} - {desc.slice(0, 30)}...</option>
+                  );
+                })}
               </select>
             </div>
 
@@ -3650,36 +3678,41 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                     </tr>
                   ) : (
                     filteredDir.map(row => {
-                      const exp = new Date(row.expiry_date);
+                      if (!row) return null;
+                      const exp = new Date(row.expiry_date || "");
                       const today = new Date();
                       const timeDiff = exp.getTime() - today.getTime();
                       const daysLeft = Math.ceil(timeDiff / (1000 * 3600 * 24));
                       
-                      let statusText = `${daysLeft} days left`;
+                      let statusText = isNaN(daysLeft) ? "-" : `${daysLeft} days left`;
                       let statusColor = "#10b981";
                       let statusBg = "#ecfdf5";
                       
-                      if (daysLeft < 0) {
-                        statusText = "Expired";
-                        statusColor = "#ef4444";
-                        statusBg = "#fef2f2";
-                      } else if (daysLeft < 180) {
-                        statusText = "Expires Soon";
-                        statusColor = "#f59e0b";
-                        statusBg = "#fffbeb";
+                      if (!isNaN(daysLeft)) {
+                        if (daysLeft < 0) {
+                          statusText = "Expired";
+                          statusColor = "#ef4444";
+                          statusBg = "#fef2f2";
+                        } else if (daysLeft < 180) {
+                          statusText = "Expires Soon";
+                          statusColor = "#f59e0b";
+                          statusBg = "#fffbeb";
+                        }
                       }
+
+                      const qty = row.quantity || 0;
 
                       return (
                         <tr key={row.id}>
-                          <td><code style={{ background: "rgba(13, 148, 136, 0.08)", color: "var(--primary)", fontWeight: "700", padding: "4px 8px", borderRadius: "6px" }}>{row.batch_number}</code></td>
-                          <td><strong>{row.sku}</strong></td>
+                          <td><code style={{ background: "rgba(13, 148, 136, 0.08)", color: "var(--primary)", fontWeight: "700", padding: "4px 8px", borderRadius: "6px" }}>{row.batch_number || ""}</code></td>
+                          <td><strong>{row.sku || ""}</strong></td>
                           <td>
-                            <div style={{ fontWeight: "600", color: "#334155" }}>{row.brand}</div>
-                            <div style={{ fontSize: "11px", color: "#64748b" }}>{row.description}</div>
+                            <div style={{ fontWeight: "600", color: "#334155" }}>{row.brand || "General"}</div>
+                            <div style={{ fontSize: "11px", color: "#64748b" }}>{row.description || ""}</div>
                           </td>
-                          <td style={{ textAlign: "right" }}><strong>{row.quantity.toLocaleString()}</strong></td>
-                          <td>{row.receive_date}</td>
-                          <td><strong>{row.expiry_date}</strong></td>
+                          <td style={{ textAlign: "right" }}><strong>{qty.toLocaleString()}</strong></td>
+                          <td>{row.receive_date || ""}</td>
+                          <td><strong>{row.expiry_date || ""}</strong></td>
                           <td>
                             <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "600", color: statusColor, background: statusBg }}>
                               {statusText}
@@ -3704,8 +3737,10 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
       let under = 0;
       let over = 0;
       (replenishData || []).forEach(item => {
-        if (item.cover_months < 1.0) under++;
-        else if (item.cover_months > 3.0 && item.cover_months < 900) over++;
+        if (!item) return;
+        const cover = item.cover_months || 0;
+        if (cover < 1.0) under++;
+        else if (cover > 3.0 && cover < 900) over++;
       });
       return { under, over };
     }, [replenishData]);
@@ -3716,12 +3751,17 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
       let selectedCount = 0;
       
       (replenishData || []).forEach(item => {
-        if (selectedReplenishItems[item.sku]) {
-          const recQty = Math.max(0, Math.ceil(item.monthly_velocity * targetCover - item.stock_on_hand));
+        if (!item) return;
+        const sku = item.sku || "";
+        if (selectedReplenishItems[sku]) {
+          const monthlyVel = item.monthly_velocity || 0;
+          const soh = item.stock_on_hand || 0;
+          const unitCost = item.unit_cost_hkd || 0;
+          const recQty = Math.max(0, Math.ceil(monthlyVel * targetCover - soh));
           if (recQty > 0) {
             selectedCount++;
             totalQty += recQty;
-            totalCost += recQty * item.unit_cost_hkd;
+            totalCost += recQty * unitCost;
           }
         }
       });
@@ -3800,13 +3840,16 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                     <th style={{ width: "40px", textAlign: "center" }}>
                       <input
                         type="checkbox"
-                        checked={(replenishData || []).length > 0 && (replenishData || []).every(item => selectedReplenishItems[item.sku])}
+                        checked={(replenishData || []).length > 0 && (replenishData || []).every(item => item && selectedReplenishItems[item.sku])}
                         onChange={(e) => {
                           const val = e.target.checked;
                           const next = {};
                           (replenishData || []).forEach(item => {
-                            if (item.cover_months < 1.0) {
-                              next[item.sku] = val;
+                            if (item && item.sku) {
+                              const cover = item.cover_months || 0;
+                              if (cover < 1.0) {
+                                next[item.sku] = val;
+                              }
                             }
                           });
                           setSelectedReplenishItems(next);
@@ -3826,10 +3869,17 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 </thead>
                 <tbody>
                   {(replenishData || []).map(item => {
-                    const recQty = Math.max(0, Math.ceil(item.monthly_velocity * targetCover - item.stock_on_hand));
-                    const cost = recQty * item.unit_cost_hkd;
-                    const isUnder = item.cover_months < 1.0;
-                    const isOver = item.cover_months > 3.0 && item.cover_months < 900;
+                    if (!item) return null;
+                    const monthlyVel = item.monthly_velocity || 0;
+                    const soh = item.stock_on_hand || 0;
+                    const qty90d = item.qty_90d || 0;
+                    const cover = item.cover_months || 0;
+                    const unitCost = item.unit_cost_hkd || 0;
+                    
+                    const recQty = Math.max(0, Math.ceil(monthlyVel * targetCover - soh));
+                    const cost = recQty * unitCost;
+                    const isUnder = cover < 1.0;
+                    const isOver = cover > 3.0 && cover < 900;
                     
                     let badgeColor = "#10b981";
                     let badgeBg = "#ecfdf5";
@@ -3853,14 +3903,14 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                         </td>
                         <td><strong>{item.sku}</strong></td>
                         <td>
-                          <div style={{ fontWeight: "600", color: "#334155" }}>{item.brand}</div>
-                          <div style={{ fontSize: "11px", color: "#64748b" }}>{item.description}</div>
+                          <div style={{ fontWeight: "600", color: "#334155" }}>{item.brand || "General"}</div>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>{item.description || ""}</div>
                         </td>
-                        <td style={{ textAlign: "right" }}><strong>{item.stock_on_hand.toLocaleString()}</strong></td>
-                        <td style={{ textAlign: "right" }}>{item.qty_90d.toLocaleString()}</td>
-                        <td style={{ textAlign: "right" }}>{item.monthly_velocity.toFixed(1)}/mo</td>
+                        <td style={{ textAlign: "right" }}><strong>{soh.toLocaleString()}</strong></td>
+                        <td style={{ textAlign: "right" }}>{qty90d.toLocaleString()}</td>
+                        <td style={{ textAlign: "right" }}>{monthlyVel.toFixed(1)}/mo</td>
                         <td style={{ textAlign: "right" }}>
-                          <strong>{item.cover_months > 900 ? "∞" : item.cover_months.toFixed(1) + " mo"}</strong>
+                          <strong>{cover > 900 ? "∞" : cover.toFixed(1) + " mo"}</strong>
                         </td>
                         <td style={{ textAlign: "right", fontWeight: "700", color: recQty > 0 ? "var(--primary)" : "#cbd5e1" }}>
                           {recQty > 0 ? `+${recQty.toLocaleString()}` : "-"}
@@ -3870,7 +3920,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                         </td>
                         <td>
                           <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "600", color: badgeColor, background: badgeBg }}>
-                            {item.warning_status}
+                            {item.warning_status || "Normal"}
                           </span>
                         </td>
                       </tr>
@@ -4137,15 +4187,19 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
               </thead>
               <tbody>
                 {(carrierMetrics || []).map(c => {
+                  if (!c) return null;
+                  const tariffAdj = c.tariff_adjustment_percent || 0;
+                  const billingAmt = c.billing_amount || 0;
+                  const costPerKg = c.cost_per_kg || 0;
                   return (
                     <tr key={c.id}>
-                      <td><strong>{c.billing_date}</strong></td>
-                      <td><strong>{c.carrier_name}</strong></td>
-                      <td>{c.route}</td>
-                      <td style={{ textAlign: "right" }}>{hkd(c.cost_per_kg)}/kg</td>
-                      <td style={{ textAlign: "right" }}><strong>{hkd(c.billing_amount)}</strong></td>
-                      <td style={{ fontWeight: "700", color: c.tariff_adjustment_percent > 0 ? "#ef4444" : c.tariff_adjustment_percent < 0 ? "#10b981" : "inherit" }}>
-                        {c.tariff_adjustment_percent > 0 ? `+${(c.tariff_adjustment_percent * 100).toFixed(0)}%` : c.tariff_adjustment_percent < 0 ? `${(c.tariff_adjustment_percent * 100).toFixed(0)}%` : "-"}
+                      <td><strong>{c.billing_date || ""}</strong></td>
+                      <td><strong>{c.carrier_name || ""}</strong></td>
+                      <td>{c.route || ""}</td>
+                      <td style={{ textAlign: "right" }}>{hkd(costPerKg)}/kg</td>
+                      <td style={{ textAlign: "right" }}><strong>{hkd(billingAmt)}</strong></td>
+                      <td style={{ fontWeight: "700", color: tariffAdj > 0 ? "#ef4444" : tariffAdj < 0 ? "#10b981" : "inherit" }}>
+                        {tariffAdj > 0 ? `+${(tariffAdj * 100).toFixed(0)}%` : tariffAdj < 0 ? `${(tariffAdj * 100).toFixed(0)}%` : "-"}
                       </td>
                       <td>
                         <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "600", color: "#10b981", background: "#ecfdf5" }}>
