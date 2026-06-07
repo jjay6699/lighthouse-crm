@@ -5109,7 +5109,7 @@ function ChatWidget({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubt
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [isConfigured, setIsConfigured] = useState(true);
+  const [isConfigured, setIsConfigured] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("lightmart_crm_openai_model") || "gpt-4o");
 
   const messagesEndRef = useRef(null);
@@ -5244,11 +5244,12 @@ When formatting your answer for the Ads screen:
     }
   };
 
+  if (!isConfigured) return null;
+
   return (
     <div className="crm-chat-widget">
       <button className="crm-chat-toggle" onClick={() => setIsOpen(!isOpen)} title="Ask CRM AI">
         {isOpen ? <X size={24} /> : <Bot size={24} />}
-        {!isConfigured && <span className="pulse-dot" />}
       </button>
 
       <div className={`crm-chat-panel ${isOpen ? "open" : ""}`}>
@@ -5256,8 +5257,8 @@ When formatting your answer for the Ads screen:
           <div className="header-info">
             <h3>CRM AI Assistant</h3>
             <span className="status-indicator">
-              <span className={`status-dot ${isConfigured ? "active" : ""}`} />
-              {isConfigured ? "OpenAI Connected" : "Configuration Pending"}
+              <span className="status-dot active" />
+              OpenAI Connected
             </span>
           </div>
           <div className="crm-chat-header-actions">
@@ -5283,56 +5284,42 @@ When formatting your answer for the Ads screen:
           </pre>
         )}
 
-        {!isConfigured ? (
-          <div className="crm-chat-setup">
-            <div className="setup-icon">
-              <Settings size={24} />
-            </div>
-            <h4>OpenAI Key Pending</h4>
-            <p>
-              To enable screen analysis and query features, please configure the <code>OPENAI_API_KEY</code> environment variable in Railway.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="crm-chat-body">
-              {messages.map((msg, i) => (
-                <div key={i} className={`crm-chat-msg-row ${msg.role}`}>
-                  <div className="crm-chat-bubble">
-                    {renderMarkdownToReact(msg.content)}
-                  </div>
-                </div>
-              ))}
-              {isTyping && (
-                <div className="crm-chat-msg-row bot">
-                  <div className="crm-chat-bubble">
-                    <div className="crm-chat-typing">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            <form className="crm-chat-footer" onSubmit={handleSend}>
-              <div className="crm-chat-input-row">
-                <input
-                  type="text"
-                  placeholder="Ask a question about this screen..."
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  disabled={isTyping}
-                />
-                <button type="submit" className="crm-chat-send-btn" disabled={!inputValue.trim() || isTyping}>
-                  <Send size={16} />
-                </button>
+        <div className="crm-chat-body">
+          {messages.map((msg, i) => (
+            <div key={i} className={`crm-chat-msg-row ${msg.role}`}>
+              <div className="crm-chat-bubble">
+                {renderMarkdownToReact(msg.content)}
               </div>
-            </form>
-          </>
-        )}
+            </div>
+          ))}
+          {isTyping && (
+            <div className="crm-chat-msg-row bot">
+              <div className="crm-chat-bubble">
+                <div className="crm-chat-typing">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <form className="crm-chat-footer" onSubmit={handleSend}>
+          <div className="crm-chat-input-row">
+            <input
+              type="text"
+              placeholder="Ask a question about this screen..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              disabled={isTyping}
+            />
+            <button type="submit" className="crm-chat-send-btn" disabled={!inputValue.trim() || isTyping}>
+              <Send size={16} />
+            </button>
+          </div>
+        </form>
 
         {showSettings && (
           <div className="crm-chat-settings-overlay" onClick={() => setShowSettings(false)}>
