@@ -3703,7 +3703,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
     const alerts = useMemo(() => {
       let under = 0;
       let over = 0;
-      replenishData.forEach(item => {
+      (replenishData || []).forEach(item => {
         if (item.cover_months < 1.0) under++;
         else if (item.cover_months > 3.0 && item.cover_months < 900) over++;
       });
@@ -3715,7 +3715,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
       let totalCost = 0.0;
       let selectedCount = 0;
       
-      replenishData.forEach(item => {
+      (replenishData || []).forEach(item => {
         if (selectedReplenishItems[item.sku]) {
           const recQty = Math.max(0, Math.ceil(item.monthly_velocity * targetCover - item.stock_on_hand));
           if (recQty > 0) {
@@ -3800,11 +3800,11 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                     <th style={{ width: "40px", textAlign: "center" }}>
                       <input
                         type="checkbox"
-                        checked={replenishData.length > 0 && replenishData.every(item => selectedReplenishItems[item.sku])}
+                        checked={(replenishData || []).length > 0 && (replenishData || []).every(item => selectedReplenishItems[item.sku])}
                         onChange={(e) => {
                           const val = e.target.checked;
                           const next = {};
-                          replenishData.forEach(item => {
+                          (replenishData || []).forEach(item => {
                             if (item.cover_months < 1.0) {
                               next[item.sku] = val;
                             }
@@ -3825,7 +3825,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   </tr>
                 </thead>
                 <tbody>
-                  {replenishData.map(item => {
+                  {(replenishData || []).map(item => {
                     const recQty = Math.max(0, Math.ceil(item.monthly_velocity * targetCover - item.stock_on_hand));
                     const cost = recQty * item.unit_cost_hkd;
                     const isUnder = item.cover_months < 1.0;
@@ -3918,7 +3918,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   </tr>
                 </thead>
                 <tbody>
-                  {ediOrders.map(order => {
+                  {(ediOrders || []).map(order => {
                     const isSelected = selectedEdi?.id === order.id;
                     const isProcessed = order.status === "Processed";
                     
