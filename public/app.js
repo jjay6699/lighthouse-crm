@@ -31,6 +31,9 @@ import {
   Share2,
   Image,
   Target,
+  Send,
+  Settings,
+  Bot,
 } from "lucide-react";
 import {
   Bar,
@@ -4829,6 +4832,515 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
   );
 }
 
+// ==========================================================================
+// AI Chat Widget Helpers & Component
+// ==========================================================================
+
+function extractScreenContext({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, data, debitAudit, warehouseStock, adsCampaigns }) {
+  const context = {
+    page,
+    timestamp: new Date().toISOString(),
+    details: {}
+  };
+
+  if (page === "overview") {
+    context.details = {
+      title: "CRM Workspace Overview",
+      companiesCount: data?.companyPerformance?.length || 0,
+      dateCoverage: data?.meta?.skuDateRange ? `${data.meta.skuDateRange.min} to ${data.meta.skuDateRange.max}` : "Unknown",
+      standardCurrency: "HKD",
+      availableModules: ["Financial Consolidation", "Debit Note Auditing", "Warehouse Management", "Ads Optimization"]
+    };
+  } else if (page === "finance") {
+    context.details = {
+      title: `Financial Consolidation - Subtab: ${financeSubtab}`,
+      filters: data?.filters || {}
+    };
+    if (financeSubtab === "summary" && data?.insights) {
+      context.details.kpis = {
+        revenue: data.insights.revenueTotal,
+        expenses: data.insights.expenseTotal,
+        costOfSales: data.insights.costOfSalesTotal,
+        netEarnings: data.insights.netEarnings,
+        netMargin: data.insights.netMargin
+      };
+      if (data.insights.topRevenueBrand) {
+        context.details.topBrand = data.insights.topRevenueBrand;
+      }
+    } else if (financeSubtab === "sku" && data?.sku) {
+      context.details.skuSummary = {
+        totals: data.sku.totals,
+        coverage: data.sku.costCoverage
+      };
+      context.details.topSKUs = (data.sku.rows || [])
+        .slice(0, 5)
+        .map(r => ({
+          sku: r.sku,
+          product: r.product_name,
+          quantity: r.quantity,
+          revenue: r.revenue,
+          grossProfit: r.gross_profit,
+          margin: r.gross_margin
+        }));
+    }
+  } else if (page === "debit") {
+    context.details = {
+      title: `Debit Note Auditing - Subtab: ${debitSubtab}`
+    };
+    if (debitAudit) {
+      context.details.auditSummary = debitAudit.summary || {};
+      if (debitSubtab === "pricing" && debitAudit.pricingDiscrepancies) {
+        context.details.pricingDiscrepanciesSample = (debitAudit.pricingDiscrepancies || [])
+          .slice(0, 5)
+          .map(d => ({
+            brand: d.brand,
+            sku: d.sku,
+            invoice: d.invoice_number,
+            claimPrice: d.claim_unit_price,
+            systemPrice: d.promo_unit_price,
+            discrepancy: d.discrepancy_amount
+          }));
+      } else if (debitSubtab === "overlaps" && debitAudit.overlappingClaims) {
+        context.details.overlappingClaimsSample = (debitAudit.overlappingClaims || [])
+          .slice(0, 5)
+          .map(d => ({
+            brand: d.brand,
+            invoice1: d.invoice_number_1,
+            invoice2: d.invoice_number_2,
+            overlapAmount: d.overlap_amount
+          }));
+      }
+    }
+  } else if (page === "warehouse") {
+    context.details = {
+      title: `Warehouse Management - Subtab: ${warehouseSubtab}`
+    };
+    if (warehouseStock && warehouseStock.stockLevels) {
+      const levels = warehouseStock.stockLevels;
+      context.details.stockSummary = {
+        totalSKUs: levels.length,
+        reorderAlerts: levels.filter(l => l.stock_on_hand <= l.reorder_point).length
+      };
+      context.details.lowStockSample = levels
+        .filter(l => l.stock_on_hand <= l.reorder_point)
+        .slice(0, 5)
+        .map(l => ({
+          sku: l.sku,
+          name: l.product_name,
+          stock: l.stock_on_hand,
+          reorderPoint: l.reorder_point
+        }));
+    }
+  } else if (page === "ads") {
+    context.details = {
+      title: `Ads Optimization - Subtab: ${adsSubtab}`,
+      connected: adsCampaigns?.connected || false,
+      aiOptimizationActive: adsCampaigns?.ai_optimization || false
+    };
+    if (adsCampaigns?.campaigns) {
+      context.details.campaignsSample = adsCampaigns.campaigns
+        .slice(0, 5)
+        .map(c => ({
+          name: c.name,
+          objective: c.objective,
+          status: c.status,
+          spent: c.metrics?.spent || 0,
+          roas: c.metrics?.roas || 0,
+          results: c.metrics?.results || 0
+        }));
+    }
+  }
+
+  return context;
+}
+
+function renderMarkdownToReact(text) {
+  if (!text) return null;
+
+  const parts = text.split(/(```[\s\S]*?```)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("```")) {
+      const match = part.match(/```(\w*)\n?([\s\S]*?)```/);
+      const code = match ? match[2] : part.slice(3, -3);
+      return (
+        <pre key={index} style={{ overflowX: "auto" }}>
+          <code>{code}</code>
+        </pre>
+      );
+    }
+
+    const lines = part.split("\n");
+    const elements = [];
+    let listItems = [];
+    let tableRows = [];
+
+    const flushList = (key) => {
+      if (listItems.length > 0) {
+        elements.push(<ul key={`list-${key}`}>{listItems}</ul>);
+        listItems = [];
+      }
+    };
+
+    const flushTable = (key) => {
+      if (tableRows.length > 0) {
+        elements.push(
+          <table key={`table-${key}`}>
+            <tbody>{tableRows}</tbody>
+          </table>
+        );
+        tableRows = [];
+      }
+    };
+
+    lines.forEach((line, lineIdx) => {
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+        flushList(lineIdx);
+        const cells = trimmed
+          .split("|")
+          .map(c => c.trim())
+          .filter((c, i, arr) => i > 0 && i < arr.length - 1);
+        
+        if (cells.every(c => /^:-*|-*:?|^-+$/.test(c))) {
+          return;
+        }
+
+        const isHeader = tableRows.length === 0;
+        tableRows.push(
+          <tr key={lineIdx}>
+            {cells.map((cell, cellIdx) => {
+              const content = parseInlineMarkdown(cell);
+              return isHeader ? (
+                <th key={cellIdx}>{content}</th>
+              ) : (
+                <td key={cellIdx}>{content}</td>
+              );
+            })}
+          </tr>
+        );
+        return;
+      }
+
+      flushTable(lineIdx);
+
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        listItems.push(<li key={lineIdx}>{parseInlineMarkdown(trimmed.slice(2))}</li>);
+        return;
+      }
+
+      flushList(lineIdx);
+
+      if (trimmed === "") {
+        return;
+      }
+
+      elements.push(<p key={lineIdx}>{parseInlineMarkdown(trimmed)}</p>);
+    });
+
+    flushList(lines.length);
+    flushTable(lines.length);
+
+    return <React.Fragment key={index}>{elements}</React.Fragment>;
+  });
+}
+
+function parseInlineMarkdown(text) {
+  const boldParts = text.split(/(\*\*.*?\*\*)/g);
+  return boldParts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    const codeParts = part.split(/(`.*?`)/g);
+    return codeParts.map((subPart, subIndex) => {
+      if (subPart.startsWith("`") && subPart.endsWith("`")) {
+        return <code key={subIndex} style={{ background: "rgba(0,0,0,0.05)", padding: "1px 4px", borderRadius: "3px", fontFamily: "monospace" }}>{subPart.slice(1, -1)}</code>;
+      }
+      return subPart;
+    });
+  });
+}
+
+function ChatWidget({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, data, debitAudit, warehouseStock, adsCampaigns }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showContext, setShowContext] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("lightmart_crm_openai_key") || "");
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("lightmart_crm_openai_model") || "gpt-4o");
+  const [tempKey, setTempKey] = useState("");
+
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isTyping]);
+
+  useEffect(() => {
+    setTempKey(apiKey);
+  }, [apiKey]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      setMessages([
+        {
+          role: "assistant",
+          content: "Hello! I am your Lightmart CRM AI Assistant. I can analyze whatever is currently on your screen (P&L reports, SKU sales, audit records, inventory levels, or marketing campaigns) and answer questions or provide summaries.\n\nHow can I help you today?"
+        }
+      ]);
+    }
+  }, [messages]);
+
+  const activeContext = useMemo(() => {
+    return extractScreenContext({
+      page,
+      financeSubtab,
+      debitSubtab,
+      warehouseSubtab,
+      adsSubtab,
+      data,
+      debitAudit,
+      warehouseStock,
+      adsCampaigns
+    });
+  }, [page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, data, debitAudit, warehouseStock, adsCampaigns]);
+
+  const saveSettings = (key, model) => {
+    localStorage.setItem("lightmart_crm_openai_key", key);
+    localStorage.setItem("lightmart_crm_openai_model", model);
+    setApiKey(key);
+    setSelectedModel(model);
+    setShowSettings(false);
+  };
+
+  const removeKey = () => {
+    localStorage.removeItem("lightmart_crm_openai_key");
+    setApiKey("");
+    setTempKey("");
+  };
+
+  const handleSend = async (e) => {
+    if (e) e.preventDefault();
+    if (!inputValue.trim() || isTyping) return;
+
+    const userText = inputValue.trim();
+    setInputValue("");
+    setMessages((prev) => [...prev, { role: "user", content: userText }]);
+    setIsTyping(true);
+
+    try {
+      const chatHistory = messages
+        .filter(m => m.role === "user" || m.role === "assistant")
+        .slice(-10)
+        .map(m => ({ role: m.role, content: m.content }));
+
+      const systemPrompt = `You are Lightmart CRM AI, a premium assistant designed by Google DeepMind and integrated into the Lightmart CRM platform.
+You have direct access to the user's active screen context.
+Active Screen Page: ${activeContext.page}
+Screen Context Data (JSON):
+${JSON.stringify(activeContext.details, null, 2)}
+
+Instructions:
+1. Analyze the active screen context to answer the user's questions or summarize information.
+2. Always format your responses in clean, professional Markdown. You can use bolding, bullet lists, inline code, and markdown tables.
+3. Be concise, accurate, and insightful.
+4. Reference actual numbers, items, or stats shown in the context data to answer precisely.
+5. If the user asks general questions unrelated to the screen, answer them normally, but prioritize helper analysis of CRM data.`;
+
+      const apiMessages = [
+        { role: "system", content: systemPrompt },
+        ...chatHistory,
+        { role: "user", content: userText }
+      ];
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: apiMessages,
+          temperature: 0.5
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const resData = await response.json();
+      const botResponse = resData.choices?.[0]?.message?.content || "No response received.";
+      
+      setMessages((prev) => [...prev, { role: "assistant", content: botResponse }]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `⚠️ **API Error**: ${err.message}\n\nPlease verify your OpenAI API Key in the settings panel and ensure you have active credits.`
+        }
+      ]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <div className="crm-chat-widget">
+      {!isOpen && (
+        <button className="crm-chat-toggle" onClick={() => setIsOpen(true)} title="Ask CRM AI">
+          <Bot size={24} />
+          {!apiKey && <span className="pulse-dot" />}
+        </button>
+      )}
+
+      <div className={`crm-chat-panel ${isOpen ? "open" : ""}`}>
+        <div className="crm-chat-header">
+          <div className="header-info">
+            <h3>
+              <Bot size={16} /> CRM AI Assistant
+            </h3>
+            <span className="status-indicator">
+              <span className={`status-dot ${apiKey ? "active" : ""}`} />
+              {apiKey ? "OpenAI Connected" : "API Key Required"}
+            </span>
+          </div>
+          <div className="crm-chat-header-actions">
+            <button onClick={() => setShowSettings(!showSettings)} title="AI Settings">
+              <Settings size={16} />
+            </button>
+            <button onClick={() => setIsOpen(false)} title="Close Chat">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="crm-chat-context-badge" onClick={() => setShowContext(!showContext)}>
+          <span className="badge-left">
+            <span className="detection-pulse" />
+            <span>Captured Context: {activeContext.page.toUpperCase()}</span>
+          </span>
+          <span>{showContext ? "Hide Details ▴" : "Inspect Data ▾"}</span>
+        </div>
+        {showContext && (
+          <pre className="crm-chat-context-preview">
+            {JSON.stringify(activeContext.details, null, 2)}
+          </pre>
+        )}
+
+        {!apiKey ? (
+          <div className="crm-chat-setup">
+            <div className="setup-icon">
+              <Key size={24} />
+            </div>
+            <h4>Connect OpenAI API</h4>
+            <p>
+              To enable screen analysis and query features, enter your OpenAI API key.
+              Your key is saved locally in your browser storage.
+            </p>
+            <div className="key-input-container">
+              <input
+                type="password"
+                placeholder="sk-proj-..."
+                value={tempKey}
+                onChange={(e) => setTempKey(e.target.value)}
+              />
+              <button onClick={() => saveSettings(tempKey, selectedModel)}>
+                Save Key & Connect
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="crm-chat-body">
+              {messages.map((msg, i) => (
+                <div key={i} className={`crm-chat-msg-row ${msg.role}`}>
+                  <div className="crm-chat-bubble">
+                    {renderMarkdownToReact(msg.content)}
+                  </div>
+                </div>
+              ))}
+              {isTyping && (
+                <div className="crm-chat-msg-row bot">
+                  <div className="crm-chat-bubble">
+                    <div className="crm-chat-typing">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form className="crm-chat-footer" onSubmit={handleSend}>
+              <div className="crm-chat-input-row">
+                <input
+                  type="text"
+                  placeholder="Ask a question about this screen..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  disabled={isTyping}
+                />
+                <button type="submit" className="crm-chat-send-btn" disabled={!inputValue.trim() || isTyping}>
+                  <Send size={16} />
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+
+        {showSettings && (
+          <div className="crm-chat-settings-overlay" onClick={() => setShowSettings(false)}>
+            <div className="crm-chat-settings-panel" onClick={(e) => e.stopPropagation()}>
+              <h4>AI Settings</h4>
+              <div className="settings-field">
+                <label>OpenAI Model</label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                >
+                  <option value="gpt-4o">gpt-4o (Recommended)</option>
+                  <option value="gpt-4-turbo">gpt-4-turbo</option>
+                  <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                </select>
+              </div>
+              <div className="settings-field">
+                <label>OpenAI API Key</label>
+                <input
+                  type="password"
+                  value={tempKey}
+                  placeholder="Enter sk-..."
+                  onChange={(e) => setTempKey(e.target.value)}
+                />
+              </div>
+              <div className="button-row">
+                {apiKey && (
+                  <button className="danger" onClick={removeKey}>
+                    Disconnect Key
+                  </button>
+                )}
+                <button className="primary" onClick={() => saveSettings(tempKey, selectedModel)}>
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [page, setPage] = useState("overview");
   const [financeSubtab, setFinanceSubtab] = useState("summary");
@@ -5332,6 +5844,18 @@ function App() {
           </div>
         </div>
       )}
+
+      <ChatWidget
+        page={page}
+        financeSubtab={financeSubtab}
+        debitSubtab={debitSubtab}
+        warehouseSubtab={warehouseSubtab}
+        adsSubtab={adsSubtab}
+        data={data}
+        debitAudit={debitAudit}
+        warehouseStock={warehouseStock}
+        adsCampaigns={adsCampaigns}
+      />
     </>
   );
 }
