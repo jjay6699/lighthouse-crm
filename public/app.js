@@ -5289,7 +5289,13 @@ Instructions:
                   onChange={(e) => setSelectedModel(e.target.value)}
                 >
                   <option value="gpt-4o">gpt-4o (Recommended)</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini</option>
+                  <option value="gpt-4.5">gpt-4.5</option>
+                  <option value="o3-mini">o3-mini</option>
+                  <option value="o1">o1</option>
+                  <option value="o1-mini">o1-mini</option>
                   <option value="gpt-4-turbo">gpt-4-turbo</option>
+                  <option value="gpt-4">gpt-4</option>
                   <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                 </select>
               </div>
