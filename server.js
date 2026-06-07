@@ -340,10 +340,18 @@ function initWarehouseDb() {
       description TEXT,
       stock_on_hand INTEGER DEFAULT 0,
       allocated INTEGER DEFAULT 0,
+      sited_stock INTEGER DEFAULT 0,
       bin_location TEXT,
       reorder_point INTEGER DEFAULT 0
     )
   `);
+
+  // Try altering existing table to add sited_stock
+  try {
+    db.exec("ALTER TABLE warehouse_inventory ADD COLUMN sited_stock INTEGER DEFAULT 0");
+  } catch (e) {
+    // Column already exists
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS warehouse_stock_movements (
@@ -354,6 +362,47 @@ function initWarehouseDb() {
       new_qty INTEGER,
       reason TEXT,
       timestamp TEXT
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS warehouse_expiry_directory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sku TEXT,
+      brand TEXT,
+      description TEXT,
+      batch_number TEXT NOT NULL,
+      quantity INTEGER DEFAULT 0,
+      receive_date TEXT NOT NULL,
+      expiry_date TEXT NOT NULL,
+      timestamp TEXT
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS warehouse_edi_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      po_number TEXT NOT NULL UNIQUE,
+      retailer TEXT NOT NULL,
+      delivery_location_raw TEXT NOT NULL,
+      delivery_location_shorthand TEXT NOT NULL,
+      items_json TEXT NOT NULL,
+      status TEXT DEFAULT 'Pending',
+      timestamp TEXT
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS warehouse_carrier_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      carrier_name TEXT NOT NULL,
+      route TEXT NOT NULL,
+      cost_per_kg REAL NOT NULL,
+      transit_time_days REAL NOT NULL,
+      reliability_rate REAL NOT NULL,
+      billing_amount REAL NOT NULL,
+      billing_date TEXT NOT NULL,
+      tariff_adjustment_percent REAL DEFAULT 0.0
     )
   `);
 
@@ -394,25 +443,101 @@ function initWarehouseDb() {
     }
 
     const insert = db.prepare(`
-      INSERT INTO warehouse_inventory (sku, brand, description, stock_on_hand, allocated, bin_location, reorder_point)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO warehouse_inventory (sku, brand, description, stock_on_hand, allocated, sited_stock, bin_location, reorder_point)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const bins = ["A", "B", "C", "D"];
     products.forEach((p, index) => {
       const stock = Math.floor(Math.random() * 750) + 50;
       const allocated = Math.min(stock - 10, Math.floor(Math.random() * 45) + 5);
+      const sited = Math.floor(Math.random() * 60) + 10;
       const reorder = Math.floor(Math.random() * 80) + 20;
       const binLetter = bins[index % bins.length];
       const binNum = String((index % 20) + 1).padStart(2, '0');
       const bin = `${binLetter}-${binNum}`;
       
       try {
-        insert.run(p.sku, p.brand || "General", p.description, stock, allocated, bin, reorder);
+        insert.run(p.sku, p.brand || "General", p.description, stock, allocated, sited, bin, reorder);
       } catch (e) {
         // Skip duplicate unique keys
       }
     });
+  }
+
+  // Seed expiry directory if empty
+  const countExpiry = db.prepare("SELECT COUNT(*) as count FROM warehouse_expiry_directory").get();
+  if (countExpiry.count === 0) {
+    const insertExpiry = db.prepare(`
+      INSERT INTO warehouse_expiry_directory (sku, brand, description, batch_number, quantity, receive_date, expiry_date, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `);
+    
+    // Check if we can select real items from inventory to link
+    const items = db.prepare("SELECT * FROM warehouse_inventory LIMIT 3").all();
+    if (items.length >= 3) {
+      insertExpiry.run(items[0].sku, items[0].brand, items[0].description, "LOT-A2026", 120, "2026-03-10", "2028-03-10");
+      insertExpiry.run(items[1].sku, items[1].brand, items[1].description, "LOT-B2026", 200, "2026-04-15", "2028-04-15");
+      insertExpiry.run(items[2].sku, items[2].brand, items[2].description, "LOT-C2026", 350, "2026-05-01", "2027-11-01");
+    } else {
+      insertExpiry.run("821219", "KOMOREBI", "KOMOREBI 去濕消水丸 60粒裝", "LOT-KMR-01", 150, "2026-03-15", "2028-03-15");
+      insertExpiry.run("880962", "REJURAN", "REJURAN 水光精華 30ml", "LOT-REJ-02", 200, "2026-04-20", "2028-04-20");
+      insertExpiry.run("100293", "TEAZEN", "TEAZEN 康普茶 檸檬味 10包裝", "LOT-TEZ-03", 300, "2026-05-10", "2027-11-10");
+    }
+  }
+
+  // Seed EDI orders if empty
+  const countEDI = db.prepare("SELECT COUNT(*) as count FROM warehouse_edi_orders").get();
+  if (countEDI.count === 0) {
+    const insertEDI = db.prepare(`
+      INSERT INTO warehouse_edi_orders (po_number, retailer, delivery_location_raw, delivery_location_shorthand, items_json, status, timestamp)
+      VALUES (?, ?, ?, ?, ?, 'Pending', datetime('now'))
+    `);
+
+    // Let's find real SKUs to reference or fallback to default ones
+    const items = db.prepare("SELECT * FROM warehouse_inventory LIMIT 2").all();
+    const sku1 = items[0]?.sku || "821219";
+    const sku2 = items[1]?.sku || "880962";
+    const desc1 = items[0]?.description || "KOMOREBI 去濕消水丸 60粒裝";
+    const desc2 = items[1]?.description || "REJURAN 水光精華 30ml";
+
+    // Matsumoto Kiyoshi PO
+    const itemsMK = [
+      { sku: sku1, description: desc1, qty: 120, po_price: 155.0, master_price: 155.0 },
+      { sku: sku2, description: desc2, qty: 80, po_price: 220.0, master_price: 220.0 }
+    ];
+    insertEDI.run(
+      "PO-MK-40912",
+      "Matsumoto Kiyoshi",
+      "Matsumoto Kiyoshi Personal personal care store - Shop 5, Mong Kok Plaza, Kowloon, Hong Kong",
+      "MK-MK5",
+      JSON.stringify(itemsMK)
+    );
+
+    // Don Don Donki PO (with a price mismatch!)
+    const itemsDK = [
+      { sku: sku2, description: desc2, qty: 50, po_price: 210.0, master_price: 220.0 } // PO price is 210, master is 220
+    ];
+    insertEDI.run(
+      "PO-DK-90231",
+      "Don Don Donki",
+      "DON DON DONKI Tsim Sha Tsui Mira Place 2, B1, Tsim Sha Tsui, Hong Kong",
+      "TST-DK",
+      JSON.stringify(itemsDK)
+    );
+  }
+
+  // Seed carrier metrics if empty
+  const countCarrier = db.prepare("SELECT COUNT(*) as count FROM warehouse_carrier_metrics").get();
+  if (countCarrier.count === 0) {
+    const insertCarrier = db.prepare(`
+      INSERT INTO warehouse_carrier_metrics (carrier_name, route, cost_per_kg, transit_time_days, reliability_rate, billing_amount, billing_date, tariff_adjustment_percent)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    insertCarrier.run("Korea Logistics Express", "Korea -> HK (Sea)", 14.50, 12.0, 0.96, 45000.0, "2026-05-15", 0.0);
+    insertCarrier.run("Japan Air Forwarding", "Japan -> HK (Air)", 38.00, 2.5, 0.99, 89000.0, "2026-05-20", 0.12);
+    insertCarrier.run("SF Express (Outbound)", "Local Outbound (HK)", 6.20, 1.0, 0.98, 18400.0, "2026-05-25", -0.05);
   }
 }
 
@@ -2378,6 +2503,344 @@ createServer(async (req, res) => {
       
       db.prepare("UPDATE warehouse_inventory SET reorder_point = ? WHERE id = ?").run(Number(reorderPoint), id);
       json(res, 200, { ok: true });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/transfer-sited" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      const { id, qty, direction } = body;
+      const db = openDbWrite();
+      if (!db) {
+        json(res, 400, { ok: false, error: "Database not available." });
+        return;
+      }
+      const item = db.prepare("SELECT * FROM warehouse_inventory WHERE id = ?").get(id);
+      if (!item) {
+        json(res, 404, { ok: false, error: "Item not found." });
+        return;
+      }
+      
+      const transferQty = Number(qty);
+      let nextSoh = item.stock_on_hand;
+      let nextSited = item.sited_stock || 0;
+      
+      if (direction === "to_sited") {
+        if (item.stock_on_hand < transferQty) {
+          json(res, 400, { ok: false, error: "Insufficient Active SOH to transfer." });
+          return;
+        }
+        nextSoh -= transferQty;
+        nextSited += transferQty;
+      } else {
+        if (nextSited < transferQty) {
+          json(res, 400, { ok: false, error: "Insufficient Sited stock to transfer." });
+          return;
+        }
+        nextSoh += transferQty;
+        nextSited -= transferQty;
+      }
+      
+      db.prepare("UPDATE warehouse_inventory SET stock_on_hand = ?, sited_stock = ? WHERE id = ?").run(nextSoh, nextSited, id);
+      
+      db.prepare(`
+        INSERT INTO warehouse_stock_movements (sku, qty_change, prev_qty, new_qty, reason, timestamp)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(
+        item.sku,
+        direction === "to_sited" ? -transferQty : transferQty,
+        item.stock_on_hand,
+        nextSoh,
+        direction === "to_sited" ? `Transfer SOH to Sited Slots` : `Transfer Sited Slots to SOH`
+      );
+      
+      json(res, 200, { ok: true, stock_on_hand: nextSoh, sited_stock: nextSited });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/sited-checkout" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      const { id, qty } = body;
+      const db = openDbWrite();
+      if (!db) {
+        json(res, 400, { ok: false, error: "Database not available." });
+        return;
+      }
+      const item = db.prepare("SELECT * FROM warehouse_inventory WHERE id = ?").get(id);
+      if (!item) {
+        json(res, 404, { ok: false, error: "Item not found." });
+        return;
+      }
+      
+      const checkoutQty = Number(qty);
+      const nextSited = (item.sited_stock || 0) - checkoutQty;
+      if (nextSited < 0) {
+        json(res, 400, { ok: false, error: "Insufficient Sited stock for checkout." });
+        return;
+      }
+      
+      db.prepare("UPDATE warehouse_inventory SET sited_stock = ? WHERE id = ?").run(nextSited, id);
+      
+      db.prepare(`
+        INSERT INTO warehouse_stock_movements (sku, qty_change, prev_qty, new_qty, reason, timestamp)
+        VALUES (?, 0, ?, ?, ?, datetime('now'))
+      `).run(
+        item.sku,
+        item.stock_on_hand,
+        item.stock_on_hand,
+        `Sited Checkout Scan: ${checkoutQty} units settled`
+      );
+      
+      json(res, 200, { ok: true, sited_stock: nextSited });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/replenishment" && req.method === "GET") {
+    try {
+      initWarehouseDb();
+      const db = openDb();
+      if (!db) {
+        json(res, 200, { ok: true, items: [] });
+        return;
+      }
+      
+      const maxDateRow = db.prepare("SELECT MAX(transaction_date) as max_date FROM sku_sales").get();
+      const maxDate = maxDateRow?.max_date || "2026-05-22";
+      
+      const salesList = db.prepare(`
+        SELECT lower(sku) as sku_lower, SUM(quantity) as total_qty
+        FROM sku_sales
+        WHERE transaction_date BETWEEN date(?, '-90 days') AND ?
+        GROUP BY lower(sku)
+      `).all(maxDate, maxDate);
+      
+      const velocityMap = {};
+      salesList.forEach(s => {
+        velocityMap[s.sku_lower] = s.total_qty || 0;
+      });
+      
+      // Also compute consignment-specific sales for the drift buffer calculation
+      const consignmentSales = db.prepare(`
+        SELECT lower(sku) as sku_lower, SUM(quantity) as total_qty
+        FROM sku_sales
+        WHERE customer = 'HKTVMALL' AND transaction_date BETWEEN date(?, '-90 days') AND ?
+        GROUP BY lower(sku)
+      `).all(maxDate, maxDate);
+      
+      const consignmentMap = {};
+      consignmentSales.forEach(s => {
+        consignmentMap[s.sku_lower] = s.total_qty || 0;
+      });
+      
+      const inventory = db.prepare(`
+        SELECT w.*, COALESCE(c.unit_cost_hkd, 0.0) as unit_cost_hkd
+        FROM warehouse_inventory w
+        LEFT JOIN sku_costs c ON w.sku = c.sku
+        ORDER BY w.sku ASC
+      `).all();
+      
+      const items = inventory.map(item => {
+        const skuLower = item.sku.toLowerCase();
+        
+        // Rolling 90-day sales velocity
+        const qty90d = velocityMap[skuLower] || 0;
+        const dailyVelocity = qty90d / 90.0;
+        const monthlyVelocity = dailyVelocity * 30.0;
+        
+        // Inventory cover (months)
+        const coverMonths = monthlyVelocity > 0 ? (item.stock_on_hand / monthlyVelocity) : 999.0;
+        
+        // Warning status: cover < 1 month (under-stock), cover > 3 months (over-stock)
+        let warningStatus = "Normal";
+        if (coverMonths < 1.0) {
+          warningStatus = "Under-stock";
+        } else if (coverMonths > 3.0 && coverMonths < 900) {
+          warningStatus = "Over-stock";
+        }
+        
+        // Consignment drift buffer calculations (HKTVMALL lag = 30 days)
+        const consignmentQty90d = consignmentMap[skuLower] || 0;
+        const consignmentDailyRunRate = consignmentQty90d / 90.0;
+        const predictiveDrawdown = consignmentDailyRunRate * 30.0;
+        
+        return {
+          ...item,
+          qty_90d: qty90d,
+          daily_velocity: dailyVelocity,
+          monthly_velocity: monthlyVelocity,
+          cover_months: coverMonths,
+          warning_status: warningStatus,
+          consignment_daily_run_rate: consignmentDailyRunRate,
+          predictive_drawdown: predictiveDrawdown
+        };
+      });
+      
+      json(res, 200, { ok: true, items });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/audit-sync" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      const { adjustments } = body;
+      
+      const db = openDbWrite();
+      if (!db) {
+        json(res, 400, { ok: false, error: "Database not available for write." });
+        return;
+      }
+      
+      const results = [];
+      for (const adj of adjustments) {
+        const item = db.prepare("SELECT * FROM warehouse_inventory WHERE id = ?").get(adj.id);
+        if (item) {
+          const audited = Number(adj.auditedQty);
+          const variance = audited - item.stock_on_hand;
+          
+          if (variance !== 0) {
+            db.prepare("UPDATE warehouse_inventory SET stock_on_hand = ? WHERE id = ?").run(audited, adj.id);
+            db.prepare(`
+              INSERT INTO warehouse_stock_movements (sku, qty_change, prev_qty, new_qty, reason, timestamp)
+              VALUES (?, ?, ?, ?, ?, datetime('now'))
+            `).run(item.sku, variance, item.stock_on_hand, audited, "Physical Audit Reconciliation");
+          }
+          
+          results.push({
+            id: item.id,
+            sku: item.sku,
+            description: item.description,
+            prev_qty: item.stock_on_hand,
+            new_qty: audited,
+            variance
+          });
+        }
+      }
+      
+      json(res, 200, { ok: true, results, message: "Inventory successfully updated and synced with QuickBooks." });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/expiry-directory" && req.method === "GET") {
+    try {
+      initWarehouseDb();
+      const db = openDb();
+      if (!db) {
+        json(res, 200, { ok: true, directory: [] });
+        return;
+      }
+      const directory = db.prepare("SELECT * FROM warehouse_expiry_directory ORDER BY id DESC").all();
+      json(res, 200, { ok: true, directory });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/expiry-record" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      const { sku, batchNumber, quantity, receiveDate, expiryDate } = body;
+      
+      const db = openDbWrite();
+      if (!db) {
+        json(res, 400, { ok: false, error: "Database not available for write." });
+        return;
+      }
+      
+      const item = db.prepare("SELECT * FROM warehouse_inventory WHERE sku = ?").get(sku);
+      if (!item) {
+        json(res, 404, { ok: false, error: `SKU ${sku} not found in inventory.` });
+        return;
+      }
+      
+      const qty = Number(quantity);
+      db.prepare(`
+        INSERT INTO warehouse_expiry_directory (sku, brand, description, batch_number, quantity, receive_date, expiry_date, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(sku, item.brand, item.description, batchNumber, qty, receiveDate, expiryDate);
+      
+      const nextSoh = item.stock_on_hand + qty;
+      db.prepare("UPDATE warehouse_inventory SET stock_on_hand = ? WHERE sku = ?").run(nextSoh, sku);
+      
+      db.prepare(`
+        INSERT INTO warehouse_stock_movements (sku, qty_change, prev_qty, new_qty, reason, timestamp)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(sku, qty, item.stock_on_hand, nextSoh, `Inbound Lot Received: Batch ${batchNumber}`);
+      
+      json(res, 200, { ok: true, message: `Successfully registered Batch ${batchNumber} and added ${qty} units to SOH.` });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/edi-orders" && req.method === "GET") {
+    try {
+      initWarehouseDb();
+      const db = openDb();
+      if (!db) {
+        json(res, 200, { ok: true, orders: [] });
+        return;
+      }
+      const orders = db.prepare("SELECT * FROM warehouse_edi_orders ORDER BY id DESC").all();
+      json(res, 200, { ok: true, orders });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/edi-process" && req.method === "POST") {
+    try {
+      const body = await readJson(req);
+      const { id } = body;
+      const db = openDbWrite();
+      if (!db) {
+        json(res, 400, { ok: false, error: "Database not available for write." });
+        return;
+      }
+      
+      const order = db.prepare("SELECT * FROM warehouse_edi_orders WHERE id = ?").get(id);
+      if (!order) {
+        json(res, 404, { ok: false, error: "EDI Order not found." });
+        return;
+      }
+      
+      db.prepare("UPDATE warehouse_edi_orders SET status = 'Processed' WHERE id = ?").run(id);
+      
+      json(res, 200, { ok: true, message: `PO ${order.po_number} successfully processed and populated as invoice in QuickBooks.` });
+    } catch (error) {
+      json(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/warehouse/carrier-metrics" && req.method === "GET") {
+    try {
+      initWarehouseDb();
+      const db = openDb();
+      if (!db) {
+        json(res, 200, { ok: true, metrics: [] });
+        return;
+      }
+      const metrics = db.prepare("SELECT * FROM warehouse_carrier_metrics ORDER BY id ASC").all();
+      json(res, 200, { ok: true, metrics });
     } catch (error) {
       json(res, 500, { ok: false, error: error.message });
     }

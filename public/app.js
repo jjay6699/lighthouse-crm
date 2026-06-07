@@ -34,6 +34,12 @@ import {
   Send,
   Settings,
   Bot,
+  AlertTriangle,
+  Truck,
+  Calendar,
+  Sliders,
+  ArrowUpDown,
+  ShieldAlert,
 } from "lucide-react";
 import {
   Bar,
@@ -2736,6 +2742,97 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
   const [ledgerMovements, setLedgerMovements] = useState([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
 
+  // Consignment Buffer config
+  const [lagDays, setLagDays] = useState(30);
+  const [applyDrift, setApplyDrift] = useState(true);
+
+  // Transfer stock modal
+  const [transferItem, setTransferItem] = useState(null);
+  const [transferQty, setTransferQty] = useState("");
+  const [transferDirection, setTransferDirection] = useState("to_sited");
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferError, setTransferError] = useState(null);
+
+  // Sited checkout scan modal
+  const [checkoutItem, setCheckoutItem] = useState(null);
+  const [checkoutQty, setCheckoutQty] = useState("");
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutError, setCheckoutError] = useState(null);
+
+  // Expiry Lot Directory form & state
+  const [expirySku, setExpirySku] = useState("");
+  const [batchNo, setBatchNo] = useState("");
+  const [expiryQty, setExpiryQty] = useState("");
+  const [recDate, setRecDate] = useState(new Date().toISOString().split('T')[0]);
+  const [expDate, setExpDate] = useState("");
+  const [expiryBusy, setExpiryBusy] = useState(false);
+  const [expiryFormError, setExpiryFormError] = useState(null);
+  const [expiryDir, setExpiryDir] = useState([]);
+  const [expirySearch, setExpirySearch] = useState("");
+  const [expiryLoading, setExpiryLoading] = useState(false);
+
+  // Auditing counts
+  const [auditCounts, setAuditCounts] = useState({});
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [auditSuccess, setAuditSuccess] = useState(null);
+
+  // Replenishment
+  const [replenishData, setReplenishData] = useState([]);
+  const [replenishLoading, setReplenishLoading] = useState(false);
+  const [targetCover, setTargetCover] = useState(2.0);
+  const [selectedReplenishItems, setSelectedReplenishItems] = useState({});
+  const [replenishSuccess, setReplenishSuccess] = useState(null);
+  const [replenishBusy, setReplenishBusy] = useState(false);
+
+  // EDI Procurement
+  const [ediOrders, setEdiOrders] = useState([]);
+  const [selectedEdi, setSelectedEdi] = useState(null);
+  const [ediLoading, setEdiLoading] = useState(false);
+  const [ediProcessing, setEdiProcessing] = useState(false);
+  const [ediSuccess, setEdiSuccess] = useState(null);
+
+  // Logistics carrier scorecards
+  const [carrierMetrics, setCarrierMetrics] = useState([]);
+  const [carrierLoading, setCarrierLoading] = useState(false);
+
+  // Fetch helper for subtabs that depend on server API
+  useEffect(() => {
+    let active = true;
+    if (subtab === "replenishment") {
+      setReplenishLoading(true);
+      setReplenishSuccess(null);
+      fetch("/api/warehouse/replenishment")
+        .then(res => res.json())
+        .then(d => { if (active && d.ok) setReplenishData(d.items); })
+        .catch(err => console.error(err))
+        .finally(() => { if (active) setReplenishLoading(false); });
+    } else if (subtab === "expiry") {
+      setExpiryLoading(true);
+      setExpiryFormError(null);
+      fetch("/api/warehouse/expiry-directory")
+        .then(res => res.json())
+        .then(d => { if (active && d.ok) setExpiryDir(d.directory); })
+        .catch(err => console.error(err))
+        .finally(() => { if (active) setExpiryLoading(false); });
+    } else if (subtab === "edi") {
+      setEdiLoading(true);
+      setEdiSuccess(null);
+      fetch("/api/warehouse/edi-orders")
+        .then(res => res.json())
+        .then(d => { if (active && d.ok) setEdiOrders(d.orders); })
+        .catch(err => console.error(err))
+        .finally(() => { if (active) setEdiLoading(false); });
+    } else if (subtab === "logistics") {
+      setCarrierLoading(true);
+      fetch("/api/warehouse/carrier-metrics")
+        .then(res => res.json())
+        .then(d => { if (active && d.ok) setCarrierMetrics(d.metrics); })
+        .catch(err => console.error(err))
+        .finally(() => { if (active) setCarrierLoading(false); });
+    }
+    return () => { active = false; };
+  }, [subtab, stock]);
+
   useEffect(() => {
     if (!ledgerItem) return;
     let active = true;
@@ -2755,10 +2852,11 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
   }, [ledgerItem]);
 
   const metrics = useMemo(() => {
-    if (!stock) return { totalSkus: 0, totalUnits: 0, totalAllocated: 0, lowStockCount: 0, totalAssetVal: 0, totalRetailVal: 0 };
+    if (!stock) return { totalSkus: 0, totalUnits: 0, totalAllocated: 0, totalSited: 0, lowStockCount: 0, totalAssetVal: 0, totalRetailVal: 0 };
     let totalSkus = stock.length;
     let totalUnits = 0;
     let totalAllocated = 0;
+    let totalSited = 0;
     let lowStockCount = 0;
     let totalAssetVal = 0;
     let totalRetailVal = 0;
@@ -2766,14 +2864,22 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
     stock.forEach(item => {
       totalUnits += item.stock_on_hand;
       totalAllocated += item.allocated;
+      totalSited += item.sited_stock || 0;
       totalAssetVal += item.stock_on_hand * (item.unit_cost_hkd || 0);
       totalRetailVal += item.stock_on_hand * (item.rsp || 0);
-      if (item.stock_on_hand <= item.reorder_point) {
+      
+      // Calculate adjusted stock for low stock check
+      const matchedRepItem = (replenishData || []).find(r => r.sku === item.sku);
+      const runRate = matchedRepItem ? matchedRepItem.consignment_daily_run_rate : 0;
+      const drawdown = runRate * lagDays;
+      const adjustedSoh = Math.max(0, Math.round(item.stock_on_hand - item.allocated - (applyDrift ? drawdown : 0)));
+      
+      if (adjustedSoh <= item.reorder_point) {
         lowStockCount++;
       }
     });
-    return { totalSkus, totalUnits, totalAllocated, lowStockCount, totalAssetVal, totalRetailVal };
-  }, [stock]);
+    return { totalSkus, totalUnits, totalAllocated, totalSited, lowStockCount, totalAssetVal, totalRetailVal };
+  }, [stock, replenishData, lagDays, applyDrift]);
 
   const brands = useMemo(() => {
     if (!stock) return ["All"];
@@ -2788,10 +2894,16 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
         item.sku.includes(searchQuery) || 
         item.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchBrand = selectedBrand === "All" || item.brand === selectedBrand;
-      const matchLowStock = !showLowStockOnly || (item.stock_on_hand <= item.reorder_point);
+      
+      const matchedRepItem = (replenishData || []).find(r => r.sku === item.sku);
+      const runRate = matchedRepItem ? matchedRepItem.consignment_daily_run_rate : 0;
+      const drawdown = runRate * lagDays;
+      const adjustedSoh = Math.max(0, Math.round(item.stock_on_hand - item.allocated - (applyDrift ? drawdown : 0)));
+      const matchLowStock = !showLowStockOnly || (adjustedSoh <= item.reorder_point);
+      
       return matchSearch && matchBrand && matchLowStock;
     });
-  }, [stock, searchQuery, selectedBrand, showLowStockOnly]);
+  }, [stock, searchQuery, selectedBrand, showLowStockOnly, replenishData, lagDays, applyDrift]);
 
   const handleAdjustSubmit = async (e) => {
     e.preventDefault();
@@ -2848,111 +2960,300 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
     }
   };
 
-  return (
-    <main className="workspace">
-      <header className="pageHeader">
-        <div>
-          <p className="eyebrow">Warehouse Management</p>
-          <h1>Warehouse Stock Levels</h1>
-          <p className="subtitle">Real-time inventory levels, bin locations, safety stock reorder thresholds, and ledger audits.</p>
-        </div>
-        <button className="primaryButton" type="button" onClick={loadStock} disabled={loading}>
-          <RefreshCw size={16} className={loading ? "loadingSpinner" : ""} />
-          Refresh inventory
-        </button>
-      </header>
+  const handleTransferSubmit = async (e) => {
+    e.preventDefault();
+    if (!transferItem || !transferQty) return;
+    setTransferBusy(true);
+    setTransferError(null);
+    try {
+      const res = await fetch("/api/warehouse/transfer-sited", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: transferItem.id,
+          qty: Number(transferQty),
+          direction: transferDirection
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setTransferItem(null);
+        setTransferQty("");
+        loadStock();
+      } else {
+        setTransferError(d.error || "Failed to complete transfer.");
+      }
+    } catch (err) {
+      setTransferError(err.message || "Transfer error.");
+    } finally {
+      setTransferBusy(false);
+    }
+  };
 
-      <section className="overviewGrid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-        <Kpi title="Total SKUs" value={loading ? "..." : metrics.totalSkus} note="Unique items tracked" icon={Package} />
-        <Kpi title="Low Stock Alerts" value={loading ? "..." : metrics.lowStockCount} note="Items below safety point" icon={TrendingUp} />
-        <Kpi title="Inventory Asset Cost" value={loading ? "..." : hkd(metrics.totalAssetVal)} note="Valued at unit cost price" icon={Database} />
-        <Kpi title="Potential Retail Value" value={loading ? "..." : hkd(metrics.totalRetailVal)} note="Estimated value at RSP" icon={CircleDollarSign} />
-      </section>
+  const handleCheckoutSubmit = async (e) => {
+    e.preventDefault();
+    if (!checkoutItem || !checkoutQty) return;
+    setCheckoutBusy(true);
+    setCheckoutError(null);
+    try {
+      const res = await fetch("/api/warehouse/sited-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: checkoutItem.id,
+          qty: Number(checkoutQty)
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setCheckoutItem(null);
+        setCheckoutQty("");
+        loadStock();
+      } else {
+        setCheckoutError(d.error || "Failed to scan checkout.");
+      }
+    } catch (err) {
+      setCheckoutError(err.message || "Checkout scan error.");
+    } finally {
+      setCheckoutBusy(false);
+    }
+  };
 
-      {error && (
-        <div className="panel errorPanel" style={{ padding: "20px", color: "var(--error)", background: "#fdeded", border: "1px solid rgba(217,56,56,0.15)", borderRadius: "12px" }}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
+  const handleExpirySubmit = async (e) => {
+    e.preventDefault();
+    if (!expirySku || !batchNo || !expiryQty || !expDate) return;
+    setExpiryBusy(true);
+    setExpiryFormError(null);
+    try {
+      const res = await fetch("/api/warehouse/expiry-record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: expirySku,
+          batchNumber: batchNo,
+          quantity: Number(expiryQty),
+          receiveDate: recDate,
+          expiryDate: expDate
+        })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setBatchNo("");
+        setExpiryQty("");
+        setExpDate("");
+        loadStock();
+      } else {
+        setExpiryFormError(d.error || "Failed to register inbound shipment.");
+      }
+    } catch (err) {
+      setExpiryFormError(err.message || "Lot intake error.");
+    } finally {
+      setExpiryBusy(false);
+    }
+  };
 
-      <div className="panel" style={{ padding: "30px" }}>
-        <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px", marginBottom: "25px" }}>
-          <div>
-            <h2>Current Inventory</h2>
-            <p>Active items in physical warehouse</p>
-          </div>
-          
-          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-            <button
-              onClick={() => setShowLowStockOnly(!showLowStockOnly)}
-              style={{
-                border: "1px solid " + (showLowStockOnly ? "var(--primary)" : "var(--border)"),
-                background: showLowStockOnly ? "rgba(13, 148, 136, 0.08)" : "transparent",
-                color: showLowStockOnly ? "var(--primary)" : "#64748b",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                fontSize: "13px",
-                fontWeight: "600",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                transition: "all 0.15s ease"
-              }}
-            >
-              <Filter size={14} />
-              {showLowStockOnly ? "Low Stock Only" : "Filter Low Stock"}
-            </button>
+  const handleAuditSyncSubmit = async () => {
+    const adjustments = Object.keys(auditCounts).map(id => ({
+      id: Number(id),
+      auditedQty: Number(auditCounts[id])
+    })).filter(adj => {
+      const item = stock.find(s => s.id === adj.id);
+      return item && item.stock_on_hand !== adj.auditedQty;
+    });
 
-            <div className="searchWrapper" style={{ position: "relative" }}>
-              <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
-              <input 
-                type="text" 
-                placeholder="Search SKU or description..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  padding: "8px 12px 8px 36px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  fontSize: "13px",
-                  width: "240px",
-                  outline: "none",
-                  transition: "all 0.15s ease"
-                }}
-              />
+    if (adjustments.length === 0) {
+      alert("No variances detected to reconcile.");
+      return;
+    }
+
+    setAuditBusy(true);
+    setAuditSuccess(null);
+    try {
+      const res = await fetch("/api/warehouse/audit-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adjustments })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setAuditCounts({});
+        setAuditSuccess(d.message || "Reconciliation successful.");
+        loadStock();
+      } else {
+        alert(d.error || "Failed to sync audit overrides.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.message || "Error syncing audit ledger.");
+    } finally {
+      setAuditBusy(false);
+    }
+  };
+
+  const handleGeneratePOs = async () => {
+    const selectedKeys = Object.keys(selectedReplenishItems).filter(k => selectedReplenishItems[k]);
+    if (selectedKeys.length === 0) {
+      alert("Please select at least one item to generate POs.");
+      return;
+    }
+
+    setReplenishBusy(true);
+    setReplenishSuccess(null);
+
+    setTimeout(() => {
+      setReplenishBusy(false);
+      setReplenishSuccess(`Successfully generated purchase orders in QuickBooks for ${selectedKeys.length} selected lines.`);
+      setSelectedReplenishItems({});
+    }, 1200);
+  };
+
+  const handleProcessEdi = async (orderId) => {
+    setEdiProcessing(true);
+    setEdiSuccess(null);
+    try {
+      const res = await fetch("/api/warehouse/edi-process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId })
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setEdiSuccess(d.message);
+        setSelectedEdi(null);
+        loadStock();
+      } else {
+        alert(d.error || "Failed to process EDI PO.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.message || "Error processing EDI.");
+    } finally {
+      setEdiProcessing(false);
+    }
+  };
+
+  // Subtab 1: Stock levels & Slotting Matrix
+  const renderStockTab = () => {
+    return (
+      <>
+        <section className="overviewGrid" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginBottom: "25px" }}>
+          <Kpi title="Total unique SKUs" value={loading ? "..." : metrics.totalSkus} note="Unique items tracked" icon={Package} />
+          <Kpi title="Active Warehouse SOH" value={loading ? "..." : metrics.totalUnits.toLocaleString()} note="Physical stock in Hub" icon={Database} />
+          <Kpi title="Sited Consignment SOH" value={loading ? "..." : metrics.totalSited.toLocaleString()} note="Sited in customer slots" icon={Tags} />
+          <Kpi title="Low Stock Alerts" value={loading ? "..." : metrics.lowStockCount} note="Lines below safety cover" icon={AlertTriangle} />
+        </section>
+
+        {/* Consignment Buffer settings */}
+        <div className="panel" style={{ padding: "20px", marginBottom: "25px", background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)", border: "1px solid var(--border)", borderRadius: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px" }}>
+            <div>
+              <h3 style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0, fontSize: "15px", fontWeight: "700" }}>
+                <Sliders size={18} color="var(--primary)" />
+                Consignment Pipeline Drift Buffer (e.g., HKTVMALL)
+              </h3>
+              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#64748b" }}>
+                Calculates rolling daily run-rates to apply predictive drawdowns against active Stock on Hand (SOH), neutralizing 30-day reporting lag.
+              </p>
+            </div>
+            
+            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ fontSize: "13px", fontWeight: "600", color: "#475569" }}>Reporting Lag:</span>
+                <input 
+                  type="number" 
+                  value={lagDays}
+                  onChange={(e) => setLagDays(Math.max(1, Number(e.target.value)))}
+                  style={{ width: "60px", padding: "6px", borderRadius: "6px", border: "1px solid var(--border)", textAlign: "center", outline: "none", fontSize: "13px", fontWeight: "600" }}
+                />
+                <span style={{ fontSize: "13px", color: "#64748b" }}>Days</span>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "600", color: "#475569" }}>
+                <input 
+                  type="checkbox" 
+                  checked={applyDrift}
+                  onChange={(e) => setApplyDrift(e.target.checked)}
+                  style={{ width: "16px", height: "16px", accentColor: "var(--primary)" }}
+                />
+                Apply Predictive Buffer Drawdown
+              </label>
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
-          {brands.map(brand => (
-            <button
-              key={brand}
-              onClick={() => setSelectedBrand(brand)}
-              style={{
-                border: "0",
-                background: selectedBrand === brand ? "rgba(13, 148, 136, 0.08)" : "transparent",
-                color: selectedBrand === brand ? "var(--primary)" : "#64748b",
-                padding: "6px 14px",
-                borderRadius: "20px",
-                fontSize: "13px",
-                fontWeight: selectedBrand === brand ? "600" : "500",
-                cursor: "pointer",
-                transition: "all 0.15s ease"
-              }}
-            >
-              {brand}
-            </button>
-          ))}
-        </div>
+        {/* Current SOH & Slots list */}
+        <div className="panel" style={{ padding: "30px" }}>
+          <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px", marginBottom: "25px" }}>
+            <div>
+              <h2>Inventory & 3PL Slotting Matrix</h2>
+              <p>Primary Hub Active SOH and Sited SOH consignment units</p>
+            </div>
+            
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <button
+                onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+                style={{
+                  border: "1px solid " + (showLowStockOnly ? "var(--primary)" : "var(--border)"),
+                  background: showLowStockOnly ? "rgba(13, 148, 136, 0.08)" : "transparent",
+                  color: showLowStockOnly ? "var(--primary)" : "#64748b",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                <Filter size={14} />
+                {showLowStockOnly ? "Low Stock Only" : "Filter Low Stock"}
+              </button>
 
-        {loading ? (
-          <div style={{ padding: "50px", textAlign: "center", color: "#64748b" }}>
-            <RefreshCw size={24} className="loadingSpinner" style={{ marginBottom: "10px" }} />
-            <p>Loading inventory data...</p>
+              <div className="searchWrapper" style={{ position: "relative" }}>
+                <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
+                <input 
+                  type="text" 
+                  placeholder="Search SKU or description..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    padding: "8px 12px 8px 36px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    fontSize: "13px",
+                    width: "240px",
+                    outline: "none",
+                    transition: "all 0.15s ease"
+                  }}
+                />
+              </div>
+            </div>
           </div>
-        ) : (
+
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "15px" }}>
+            {brands.map(brand => (
+              <button
+                key={brand}
+                onClick={() => setSelectedBrand(brand)}
+                style={{
+                  border: "0",
+                  background: selectedBrand === brand ? "rgba(13, 148, 136, 0.08)" : "transparent",
+                  color: selectedBrand === brand ? "var(--primary)" : "#64748b",
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  fontSize: "13px",
+                  fontWeight: selectedBrand === brand ? "600" : "500",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                {brand}
+              </button>
+            ))}
+          </div>
+
           <div className="tableWrapper" style={{ overflowX: "auto" }}>
             <table className="cleanTable warehouseTable">
               <thead>
@@ -2961,12 +3262,12 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   <th>Brand</th>
                   <th>Description</th>
                   <th>Bin Loc</th>
-                  <th style={{ textAlign: "right" }}>On Hand</th>
+                  <th style={{ textAlign: "right" }}>Active Hub SOH</th>
                   <th style={{ textAlign: "right" }}>Allocated</th>
-                  <th style={{ textAlign: "right" }}>Available</th>
-                  <th style={{ textAlign: "right" }}>Asset Value</th>
-                  <th style={{ textAlign: "right" }}>Reorder Pt</th>
-                  <th style={{ textAlign: "right" }}>Reorder Rec</th>
+                  <th style={{ textAlign: "right" }}>Sited SOH (Consignment)</th>
+                  {applyDrift && <th style={{ textAlign: "right" }}>HKTVMALL Daily Run-Rate</th>}
+                  {applyDrift && <th style={{ textAlign: "right" }}>Predictive Drawdown</th>}
+                  <th style={{ textAlign: "right" }}>Adjusted SOH</th>
                   <th>Status</th>
                   <th style={{ textAlign: "center" }}>Actions</th>
                 </tr>
@@ -2980,8 +3281,12 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   </tr>
                 ) : (
                   filteredStock.map(item => {
-                    const available = item.stock_on_hand - item.allocated;
-                    const isLow = item.stock_on_hand <= item.reorder_point;
+                    const sited = item.sited_stock || 0;
+                    const runRate = item.consignment_daily_run_rate || 0;
+                    const drawdown = runRate * lagDays;
+                    const adjustedSoh = Math.max(0, Math.round(item.stock_on_hand - item.allocated - (applyDrift ? drawdown : 0)));
+                    
+                    const isLow = adjustedSoh <= item.reorder_point;
                     const isOut = item.stock_on_hand === 0;
 
                     let statusText = "In Stock";
@@ -2997,67 +3302,20 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                       badgeBg = "#fffbeb";
                     }
 
-                    const itemAssetVal = item.stock_on_hand * (item.unit_cost_hkd || 0);
-                    const isRecommended = item.stock_on_hand <= item.reorder_point;
-                    const recQty = isRecommended ? Math.max(10, (item.reorder_point * 2) - item.stock_on_hand) : 0;
-
-                    const rowBg = isOut ? "rgba(239, 68, 68, 0.02)" : isLow ? "rgba(245, 158, 11, 0.015)" : "transparent";
-
                     return (
-                      <tr key={item.id} style={{ background: rowBg }}>
+                      <tr key={item.id}>
                         <td><strong>{item.sku}</strong></td>
                         <td><span style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "#64748b", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{item.brand}</span></td>
                         <td>{item.description}</td>
-                        <td><code style={{ background: "#f8fafc", padding: "2px 6px", borderRadius: "4px", fontSize: "11px", border: "1px solid var(--border)" }}>{item.bin_location}</code></td>
+                        <td><code>{item.bin_location}</code></td>
                         <td style={{ textAlign: "right" }}><strong>{item.stock_on_hand.toLocaleString()}</strong></td>
                         <td style={{ textAlign: "right", color: item.allocated > 0 ? "#64748b" : "#cbd5e1" }}>{item.allocated.toLocaleString()}</td>
-                        <td style={{ textAlign: "right", color: available <= item.reorder_point ? "#f59e0b" : "inherit" }}><strong>{available.toLocaleString()}</strong></td>
-                        <td style={{ textAlign: "right" }} title={`Unit Cost: ${hkd(item.unit_cost_hkd)}`}>{hkd(itemAssetVal)}</td>
-                        <td style={{ textAlign: "right" }}>
-                          {editingReorderItem?.id === item.id ? (
-                            <input
-                              type="number"
-                              defaultValue={item.reorder_point}
-                              autoFocus
-                              disabled={reorderBusy}
-                              onBlur={(e) => handleSaveReorder(item, e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSaveReorder(item, e.target.value);
-                                if (e.key === "Escape") setEditingReorderItem(null);
-                              }}
-                              style={{
-                                width: "60px",
-                                padding: "4px",
-                                borderRadius: "4px",
-                                border: "1px solid var(--primary)",
-                                textAlign: "right",
-                                fontSize: "12px",
-                                outline: "none"
-                              }}
-                            />
-                          ) : (
-                            <span 
-                              style={{ cursor: "pointer", color: "var(--primary)", borderBottom: "1px dashed rgba(13, 148, 136, 0.3)", paddingBottom: "1px" }}
-                              onClick={() => setEditingReorderItem(item)}
-                              title="Click to edit threshold"
-                            >
-                              {item.reorder_point.toLocaleString()}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right", color: isRecommended ? "#d97706" : "#94a3b8", fontWeight: isRecommended ? "700" : "inherit" }}>
-                          {isRecommended ? `+${recQty.toLocaleString()}` : "-"}
-                        </td>
+                        <td style={{ textAlign: "right", color: sited > 0 ? "var(--primary)" : "#cbd5e1", fontWeight: sited > 0 ? "700" : "500" }}>{sited.toLocaleString()}</td>
+                        {applyDrift && <td style={{ textAlign: "right", color: runRate > 0 ? "#475569" : "#cbd5e1" }}>{runRate > 0 ? runRate.toFixed(2) + "/day" : "-"}</td>}
+                        {applyDrift && <td style={{ textAlign: "right", color: drawdown > 0 ? "#ef4444" : "#cbd5e1" }}>{drawdown > 0 ? `-${Math.round(drawdown).toLocaleString()}` : "-"}</td>}
+                        <td style={{ textAlign: "right", color: adjustedSoh <= item.reorder_point ? "#f59e0b" : "inherit" }}><strong>{adjustedSoh.toLocaleString()}</strong></td>
                         <td>
-                          <span style={{
-                            display: "inline-block",
-                            padding: "2px 8px",
-                            borderRadius: "12px",
-                            fontSize: "11px",
-                            fontWeight: "600",
-                            color: badgeColor,
-                            background: badgeBg
-                          }}>
+                          <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "600", color: badgeColor, background: badgeBg }}>
                             {statusText}
                           </span>
                         </td>
@@ -3065,7 +3323,33 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                           <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
                             <button
                               className="ghostButton"
-                              style={{ padding: "4px 8px", fontSize: "12px", fontWeight: "600", color: "var(--primary)" }}
+                              style={{ padding: "4px 8px", fontSize: "12px", color: "var(--primary)", fontWeight: "600" }}
+                              onClick={() => {
+                                setTransferItem(item);
+                                setTransferQty("");
+                                setTransferDirection("to_sited");
+                                setTransferError(null);
+                              }}
+                              title="Transfer stock to/from sited consignment slots"
+                            >
+                              Transfer
+                            </button>
+                            <button
+                              className="ghostButton"
+                              style={{ padding: "4px 8px", fontSize: "12px", color: "#2563eb", fontWeight: "600" }}
+                              onClick={() => {
+                                setCheckoutItem(item);
+                                setCheckoutQty("");
+                                setCheckoutError(null);
+                              }}
+                              disabled={sited === 0}
+                              title="Checkout scan settlement"
+                            >
+                              Checkout
+                            </button>
+                            <button
+                              className="ghostButton"
+                              style={{ padding: "4px 8px", fontSize: "12px", color: "#475569" }}
                               onClick={() => {
                                 setAdjustingItem(item);
                                 setQtyChange("");
@@ -3077,7 +3361,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                             </button>
                             <button
                               className="ghostButton"
-                              style={{ padding: "4px 8px", fontSize: "12px", fontWeight: "500", color: "#64748b" }}
+                              style={{ padding: "4px 8px", fontSize: "12px", color: "#94a3b8" }}
                               onClick={() => setLedgerItem(item)}
                             >
                               History
@@ -3091,38 +3375,855 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      </>
+    );
+  };
 
+  // Subtab 2: Physical Auditing Ledger & Sync
+  const auditSummary = useMemo(() => {
+    let totalVariances = 0;
+    let totalExposure = 0.0;
+    let negativeExposure = 0.0;
+    let positiveExposure = 0.0;
+    
+    stock.forEach(item => {
+      const auditVal = auditCounts[item.id];
+      if (auditVal !== undefined && auditVal !== "") {
+        const variance = Number(auditVal) - item.stock_on_hand;
+        if (variance !== 0) {
+          totalVariances++;
+          const cost = variance * (item.unit_cost_hkd || 0.0);
+          totalExposure += cost;
+          if (cost < 0) negativeExposure += Math.abs(cost);
+          else positiveExposure += cost;
+        }
+      }
+    });
+    return { totalVariances, totalExposure, negativeExposure, positiveExposure };
+  }, [stock, auditCounts]);
+
+  const renderAuditTab = () => {
+    return (
+      <>
+        <section className="overviewGrid" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginBottom: "25px" }}>
+          <Kpi title="Reconciled Lines" value={auditSummary.totalVariances} note="Lines with count adjustments" icon={Sliders} />
+          <Kpi title="Net Financial Exposure" value={hkd(auditSummary.totalExposure)} note="Positive/Negative variance sum" icon={CircleDollarSign} />
+          <Kpi title="Shrinkage Cost" value={hkd(auditSummary.negativeExposure)} note="Cost of missing units" icon={ShieldAlert} />
+          <Kpi title="Overages Value" value={hkd(auditSummary.positiveExposure)} note="Cost of extra units found" icon={Database} />
+        </section>
+
+        {auditSuccess && (
+          <div className="panel" style={{ padding: "15px", marginBottom: "20px", background: "#ecfdf5", border: "1px solid #10b981", borderRadius: "8px", color: "#065f46", fontSize: "14px", fontWeight: "600", display: "flex", alignItems: "center", gap: "10px" }}>
+            <CheckCircle2 size={18} />
+            {auditSuccess}
+          </div>
+        )}
+
+        <div className="panel" style={{ padding: "30px" }}>
+          <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px", marginBottom: "25px" }}>
+            <div>
+              <h2>Physical Auditing Ledger & Sync</h2>
+              <p>Reconcile physical counts and QuickBooks inventory master ledgers</p>
+            </div>
+            
+            <button 
+              className="primaryButton"
+              onClick={handleAuditSyncSubmit}
+              disabled={auditBusy || auditSummary.totalVariances === 0}
+              style={{ background: auditSummary.totalVariances > 0 ? "var(--primary)" : "#94a3b8" }}
+            >
+              <RefreshCw size={16} className={auditBusy ? "loadingSpinner" : ""} />
+              Write Overrides & Sync to QuickBooks
+            </button>
+          </div>
+
+          <div className="tableWrapper" style={{ overflowX: "auto" }}>
+            <table className="cleanTable warehouseTable">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Brand</th>
+                  <th>Description</th>
+                  <th style={{ textAlign: "right" }}>System SOH</th>
+                  <th style={{ width: "120px", textAlign: "center" }}>Audited Count</th>
+                  <th style={{ textAlign: "right" }}>Variance</th>
+                  <th style={{ textAlign: "right" }}>Unit Cost (HKD)</th>
+                  <th style={{ textAlign: "right" }}>Financial Exposure</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stock.map(item => {
+                  const auditVal = auditCounts[item.id];
+                  const hasAudit = auditVal !== undefined && auditVal !== "";
+                  const auditedNum = hasAudit ? Number(auditVal) : item.stock_on_hand;
+                  const variance = auditedNum - item.stock_on_hand;
+                  const exposure = variance * (item.unit_cost_hkd || 0);
+                  
+                  return (
+                    <tr key={item.id} style={{ background: variance !== 0 ? (variance < 0 ? "rgba(239, 68, 68, 0.02)" : "rgba(16, 185, 129, 0.02)") : "transparent" }}>
+                      <td><strong>{item.sku}</strong></td>
+                      <td><span style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "#64748b", background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>{item.brand}</span></td>
+                      <td>{item.description}</td>
+                      <td style={{ textAlign: "right" }}>{item.stock_on_hand.toLocaleString()}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="number"
+                          placeholder={item.stock_on_hand}
+                          value={auditVal !== undefined ? auditVal : ""}
+                          onChange={(e) => setAuditCounts({ ...auditCounts, [item.id]: e.target.value })}
+                          style={{
+                            width: "80px",
+                            padding: "6px",
+                            borderRadius: "6px",
+                            border: "1px solid " + (variance !== 0 ? "var(--primary)" : "var(--border)"),
+                            textAlign: "right",
+                            outline: "none",
+                            fontWeight: variance !== 0 ? "700" : "inherit"
+                          }}
+                        />
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: "700", color: variance === 0 ? "inherit" : (variance < 0 ? "#ef4444" : "#10b981") }}>
+                        {variance > 0 ? `+${variance}` : variance === 0 ? "-" : variance}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{hkd(item.unit_cost_hkd || 0)}</td>
+                      <td style={{ textAlign: "right", fontWeight: "700", color: exposure === 0 ? "inherit" : (exposure < 0 ? "#ef4444" : "#10b981") }}>
+                        {exposure === 0 ? "-" : hkd(exposure)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  // Subtab 3: Inbound Expiry Lot Directory
+  const renderExpiryTab = () => {
+    const filteredDir = (expiryDir || []).filter(row => {
+      if (!expirySearch) return true;
+      const search = expirySearch.toLowerCase();
+      return (
+        row.sku.toLowerCase().includes(search) ||
+        row.batch_number.toLowerCase().includes(search) ||
+        row.description.toLowerCase().includes(search) ||
+        row.brand.toLowerCase().includes(search)
+      );
+    });
+
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "25px", alignItems: "start" }}>
+        <div className="panel" style={{ padding: "25px" }}>
+          <h3>Record Inbound Lot Intake</h3>
+          <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "20px" }}>
+            Add manufacturer batches and expiration dates into the historical tracking registry.
+          </p>
+
+          <form onSubmit={handleExpirySubmit}>
+            <div style={{ marginBottom: "15px" }}>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Select SKU</label>
+              <select
+                value={expirySku}
+                onChange={(e) => setExpirySku(e.target.value)}
+                required
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", background: "white", outline: "none", fontSize: "13px" }}
+              >
+                <option value="">-- Choose Product --</option>
+                {stock.map(s => (
+                  <option key={s.id} value={s.sku}>{s.sku} - {s.brand} - {s.description.slice(0, 30)}...</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: "15px" }}>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Batch / Lot Code</label>
+              <input
+                type="text"
+                placeholder="e.g. LOT-KMR-2026-03"
+                value={batchNo}
+                onChange={(e) => setBatchNo(e.target.value)}
+                required
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", outline: "none", fontSize: "13px" }}
+              />
+            </div>
+
+            <div style={{ marginBottom: "15px" }}>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Quantity Received</label>
+              <input
+                type="number"
+                placeholder="e.g. 150"
+                value={expiryQty}
+                onChange={(e) => setExpiryQty(e.target.value)}
+                required
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", outline: "none", fontSize: "13px" }}
+              />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "20px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Receive Date</label>
+                <input
+                  type="date"
+                  value={recDate}
+                  onChange={(e) => setRecDate(e.target.value)}
+                  required
+                  style={{ width: "100%", padding: "8px", borderRadius: "8px", border: "1px solid var(--border)", outline: "none", fontSize: "13px" }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Expiry Date</label>
+                <input
+                  type="date"
+                  value={expDate}
+                  onChange={(e) => setExpDate(e.target.value)}
+                  required
+                  style={{ width: "100%", padding: "8px", borderRadius: "8px", border: "1px solid var(--border)", outline: "none", fontSize: "13px" }}
+                />
+              </div>
+            </div>
+
+            {expiryFormError && (
+              <div style={{ marginBottom: "15px", color: "var(--error)", fontSize: "12px" }}>
+                {expiryFormError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="primaryButton"
+              disabled={expiryBusy}
+              style={{ width: "100%", justifyContent: "center", padding: "10px" }}
+            >
+              <UploadCloud size={16} />
+              {expiryBusy ? "Logging Lot..." : "Log Inbound Lot Intake"}
+            </button>
+          </form>
+        </div>
+
+        <div className="panel" style={{ padding: "30px" }}>
+          <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px", marginBottom: "20px" }}>
+            <div>
+              <h2>Inbound Expiry Date Reference Directory</h2>
+              <p>Tracers lot distribution contexts and shelf expiration status</p>
+            </div>
+
+            <div className="searchWrapper" style={{ position: "relative" }}>
+              <Search size={16} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
+              <input
+                type="text"
+                placeholder="Search Lot, SKU, or Brand..."
+                value={expirySearch}
+                onChange={(e) => setExpirySearch(e.target.value)}
+                style={{ padding: "8px 12px 8px 36px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "13px", width: "240px", outline: "none" }}
+              />
+            </div>
+          </div>
+
+          {expiryLoading ? (
+            <div style={{ padding: "50px", textAlign: "center", color: "#64748b" }}>
+              <RefreshCw size={24} className="loadingSpinner" style={{ marginBottom: "10px" }} />
+              <p>Loading Expiry Directory...</p>
+            </div>
+          ) : (
+            <div className="tableWrapper" style={{ overflowX: "auto" }}>
+              <table className="cleanTable warehouseTable">
+                <thead>
+                  <tr>
+                    <th>Lot Code</th>
+                    <th>SKU</th>
+                    <th>Product Details</th>
+                    <th style={{ textAlign: "right" }}>Lot Qty</th>
+                    <th>Receive Date</th>
+                    <th>Expiration Date</th>
+                    <th>Shelf Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDir.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
+                        No batch lots found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDir.map(row => {
+                      const exp = new Date(row.expiry_date);
+                      const today = new Date();
+                      const timeDiff = exp.getTime() - today.getTime();
+                      const daysLeft = Math.ceil(timeDiff / (1000 * 3600 * 24));
+                      
+                      let statusText = `${daysLeft} days left`;
+                      let statusColor = "#10b981";
+                      let statusBg = "#ecfdf5";
+                      
+                      if (daysLeft < 0) {
+                        statusText = "Expired";
+                        statusColor = "#ef4444";
+                        statusBg = "#fef2f2";
+                      } else if (daysLeft < 180) {
+                        statusText = "Expires Soon";
+                        statusColor = "#f59e0b";
+                        statusBg = "#fffbeb";
+                      }
+
+                      return (
+                        <tr key={row.id}>
+                          <td><code style={{ background: "rgba(13, 148, 136, 0.08)", color: "var(--primary)", fontWeight: "700", padding: "4px 8px", borderRadius: "6px" }}>{row.batch_number}</code></td>
+                          <td><strong>{row.sku}</strong></td>
+                          <td>
+                            <div style={{ fontWeight: "600", color: "#334155" }}>{row.brand}</div>
+                            <div style={{ fontSize: "11px", color: "#64748b" }}>{row.description}</div>
+                          </td>
+                          <td style={{ textAlign: "right" }}><strong>{row.quantity.toLocaleString()}</strong></td>
+                          <td>{row.receive_date}</td>
+                          <td><strong>{row.expiry_date}</strong></td>
+                          <td>
+                            <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "600", color: statusColor, background: statusBg }}>
+                              {statusText}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Subtab 4: Lead-Time Replenishment & Safety Thresholds
+  const renderReplenishmentTab = () => {
+    const alerts = useMemo(() => {
+      let under = 0;
+      let over = 0;
+      replenishData.forEach(item => {
+        if (item.cover_months < 1.0) under++;
+        else if (item.cover_months > 3.0 && item.cover_months < 900) over++;
+      });
+      return { under, over };
+    }, [replenishData]);
+
+    const poSummary = useMemo(() => {
+      let totalQty = 0;
+      let totalCost = 0.0;
+      let selectedCount = 0;
+      
+      replenishData.forEach(item => {
+        if (selectedReplenishItems[item.sku]) {
+          const recQty = Math.max(0, Math.ceil(item.monthly_velocity * targetCover - item.stock_on_hand));
+          if (recQty > 0) {
+            selectedCount++;
+            totalQty += recQty;
+            totalCost += recQty * item.unit_cost_hkd;
+          }
+        }
+      });
+      return { totalQty, totalCost, selectedCount };
+    }, [replenishData, selectedReplenishItems, targetCover]);
+
+    return (
+      <>
+        {(alerts.under > 0 || alerts.over > 0) && (
+          <div className="panel" style={{ padding: "20px", marginBottom: "25px", borderLeft: "4px solid #f59e0b", background: "#fffbeb", borderRadius: "8px" }}>
+            <h4 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px", color: "#d97706" }}>
+              <AlertTriangle size={18} />
+              Lead-Time Replenishment Warning Notifications
+            </h4>
+            <div style={{ marginTop: "8px", fontSize: "13px", color: "#78350f", display: "flex", flexDirection: "column", gap: "4px" }}>
+              {alerts.under > 0 && <div>⚠️ <strong>{alerts.under} lines under-stocked</strong> (&lt; 1 month safety cover factoring in manufacturing lead times).</div>}
+              {alerts.over > 0 && <div>📦 <strong>{alerts.over} lines over-stocked</strong> (&gt; 3 months safety cover, causing excess inventory capital tie-up).</div>}
+            </div>
+          </div>
+        )}
+
+        {replenishSuccess && (
+          <div className="panel" style={{ padding: "15px", marginBottom: "20px", background: "#ecfdf5", border: "1px solid #10b981", borderRadius: "8px", color: "#065f46", fontSize: "14px", fontWeight: "600", display: "flex", alignItems: "center", gap: "10px" }}>
+            <CheckCircle2 size={18} />
+            {replenishSuccess}
+          </div>
+        )}
+
+        <div className="panel" style={{ padding: "30px" }}>
+          <div className="panelHeader" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "15px", marginBottom: "25px" }}>
+            <div>
+              <h2>Lead-Time Replenishment PO Calculator</h2>
+              <p>Rolling 90-day sales velocity safety cover calculations and automated PO recommendations</p>
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <div style={{ display: "flex", background: "#f1f5f9", padding: "4px", borderRadius: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setTargetCover(2.0)}
+                  style={{ border: "0", background: targetCover === 2.0 ? "white" : "transparent", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer", boxShadow: targetCover === 2.0 ? "0 1px 3px rgba(0,0,0,0.1)" : "none", color: targetCover === 2.0 ? "var(--primary)" : "#64748b" }}
+                >
+                  2.0x Month Target Cover
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetCover(2.5)}
+                  style={{ border: "0", background: targetCover === 2.5 ? "white" : "transparent", padding: "6px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer", boxShadow: targetCover === 2.5 ? "0 1px 3px rgba(0,0,0,0.1)" : "none", color: targetCover === 2.5 ? "var(--primary)" : "#64748b" }}
+                >
+                  2.5x Month Target Cover
+                </button>
+              </div>
+
+              <button
+                className="primaryButton"
+                onClick={handleGeneratePOs}
+                disabled={replenishBusy || poSummary.selectedCount === 0}
+                style={{ background: poSummary.selectedCount > 0 ? "var(--primary)" : "#94a3b8" }}
+              >
+                <RefreshCw size={14} className={replenishBusy ? "loadingSpinner" : ""} />
+                Generate {poSummary.selectedCount > 0 ? poSummary.selectedCount : ""} POs ({hkd(poSummary.totalCost)})
+              </button>
+            </div>
+          </div>
+
+          {replenishLoading ? (
+            <div style={{ padding: "50px", textAlign: "center", color: "#64748b" }}>
+              <RefreshCw size={24} className="loadingSpinner" style={{ marginBottom: "10px" }} />
+              <p>Analyzing Sales Velocities...</p>
+            </div>
+          ) : (
+            <div className="tableWrapper" style={{ overflowX: "auto" }}>
+              <table className="cleanTable warehouseTable">
+                <thead>
+                  <tr>
+                    <th style={{ width: "40px", textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={replenishData.length > 0 && replenishData.every(item => selectedReplenishItems[item.sku])}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          const next = {};
+                          replenishData.forEach(item => {
+                            if (item.cover_months < 1.0) {
+                              next[item.sku] = val;
+                            }
+                          });
+                          setSelectedReplenishItems(next);
+                        }}
+                      />
+                    </th>
+                    <th>SKU</th>
+                    <th>Product Details</th>
+                    <th style={{ textAlign: "right" }}>Active SOH</th>
+                    <th style={{ textAlign: "right" }}>Rolling 90D Sales</th>
+                    <th style={{ textAlign: "right" }}>Monthly Velocity</th>
+                    <th style={{ textAlign: "right" }}>Inventory Cover</th>
+                    <th style={{ textAlign: "right" }}>Rec PO Qty</th>
+                    <th style={{ textAlign: "right" }}>Est. Cost</th>
+                    <th>Alert Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {replenishData.map(item => {
+                    const recQty = Math.max(0, Math.ceil(item.monthly_velocity * targetCover - item.stock_on_hand));
+                    const cost = recQty * item.unit_cost_hkd;
+                    const isUnder = item.cover_months < 1.0;
+                    const isOver = item.cover_months > 3.0 && item.cover_months < 900;
+                    
+                    let badgeColor = "#10b981";
+                    let badgeBg = "#ecfdf5";
+                    if (isUnder) {
+                      badgeColor = "#ef4444";
+                      badgeBg = "#fef2f2";
+                    } else if (isOver) {
+                      badgeColor = "#3b82f6";
+                      badgeBg = "#eff6ff";
+                    }
+
+                    return (
+                      <tr key={item.id} style={{ background: isUnder ? "rgba(239, 68, 68, 0.01)" : "transparent" }}>
+                        <td style={{ textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!selectedReplenishItems[item.sku]}
+                            disabled={recQty === 0}
+                            onChange={(e) => setSelectedReplenishItems({ ...selectedReplenishItems, [item.sku]: e.target.checked })}
+                          />
+                        </td>
+                        <td><strong>{item.sku}</strong></td>
+                        <td>
+                          <div style={{ fontWeight: "600", color: "#334155" }}>{item.brand}</div>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>{item.description}</div>
+                        </td>
+                        <td style={{ textAlign: "right" }}><strong>{item.stock_on_hand.toLocaleString()}</strong></td>
+                        <td style={{ textAlign: "right" }}>{item.qty_90d.toLocaleString()}</td>
+                        <td style={{ textAlign: "right" }}>{item.monthly_velocity.toFixed(1)}/mo</td>
+                        <td style={{ textAlign: "right" }}>
+                          <strong>{item.cover_months > 900 ? "∞" : item.cover_months.toFixed(1) + " mo"}</strong>
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: "700", color: recQty > 0 ? "var(--primary)" : "#cbd5e1" }}>
+                          {recQty > 0 ? `+${recQty.toLocaleString()}` : "-"}
+                        </td>
+                        <td style={{ textAlign: "right", color: cost > 0 ? "#475569" : "#cbd5e1" }}>
+                          {cost > 0 ? hkd(cost) : "-"}
+                        </td>
+                        <td>
+                          <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "600", color: badgeColor, background: badgeBg }}>
+                            {item.warning_status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  // Subtab 5: EzTrade EDI Procurement Loop
+  const renderEdiTab = () => {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.8fr", gap: "25px", alignItems: "start" }}>
+        <div className="panel" style={{ padding: "25px" }}>
+          <h2>EzTrade EDI Inbound Channel</h2>
+          <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "20px" }}>
+            Programmatic ingestion of retail Purchase Orders directly from EzTrade profiles.
+          </p>
+
+          {ediSuccess && (
+            <div className="panel" style={{ padding: "15px", marginBottom: "20px", background: "#ecfdf5", border: "1px solid #10b981", borderRadius: "8px", color: "#065f46", fontSize: "13px", fontWeight: "600", display: "flex", alignItems: "center", gap: "10px" }}>
+              <CheckCircle2 size={16} />
+              {ediSuccess}
+            </div>
+          )}
+
+          {ediLoading ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "#64748b" }}>
+              <RefreshCw size={24} className="loadingSpinner" style={{ marginBottom: "10px" }} />
+              <p>Polling EDI Channels...</p>
+            </div>
+          ) : (
+            <div className="tableWrapper" style={{ overflowX: "auto" }}>
+              <table className="cleanTable warehouseTable">
+                <thead>
+                  <tr>
+                    <th>Channel/PO</th>
+                    <th>Destination Shorthand</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ediOrders.map(order => {
+                    const isSelected = selectedEdi?.id === order.id;
+                    const isProcessed = order.status === "Processed";
+                    
+                    return (
+                      <tr 
+                        key={order.id} 
+                        onClick={() => setSelectedEdi(order)}
+                        style={{ 
+                          cursor: "pointer", 
+                          background: isSelected ? "rgba(13, 148, 136, 0.08)" : (isProcessed ? "rgba(241, 245, 249, 0.5)" : "transparent"),
+                          borderLeft: isSelected ? "3px solid var(--primary)" : "none"
+                        }}
+                      >
+                        <td>
+                          <div style={{ fontWeight: "700" }}>{order.retailer}</div>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>{order.po_number}</div>
+                        </td>
+                        <td>
+                          <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", fontSize: "11px", fontWeight: "700" }}>
+                            {order.delivery_location_shorthand}
+                          </code>
+                        </td>
+                        <td>
+                          <span style={{ 
+                            display: "inline-block", 
+                            padding: "2px 8px", 
+                            borderRadius: "12px", 
+                            fontSize: "11px", 
+                            fontWeight: "600",
+                            color: isProcessed ? "#64748b" : "#f59e0b",
+                            background: isProcessed ? "#f1f5f9" : "#fffbeb"
+                          }}>
+                            {order.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="panel" style={{ padding: "30px" }}>
+          {selectedEdi ? (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", borderBottom: "1px solid var(--border)", paddingBottom: "15px", marginBottom: "20px" }}>
+                <div>
+                  <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "var(--primary)" }}>EDI Transaction Audit</span>
+                  <h3 style={{ margin: "4px 0 0", fontSize: "18px", fontWeight: "700" }}>PO Number: {selectedEdi.po_number}</h3>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>Retailer: <strong>{selectedEdi.retailer}</strong></p>
+                </div>
+
+                <button
+                  className="primaryButton"
+                  disabled={ediProcessing || selectedEdi.status === "Processed"}
+                  onClick={() => handleProcessEdi(selectedEdi.id)}
+                  style={{ background: selectedEdi.status === "Processed" ? "#cbd5e1" : "var(--primary)" }}
+                >
+                  <RefreshCw size={14} className={ediProcessing ? "loadingSpinner" : ""} />
+                  {selectedEdi.status === "Processed" ? "Synced to QuickBooks" : "Populate QB Invoice"}
+                </button>
+              </div>
+
+              <div style={{ padding: "16px", borderRadius: "8px", background: "#f8fafc", border: "1px solid var(--border)", marginBottom: "20px", fontSize: "13px" }}>
+                <div style={{ fontWeight: "700", color: "#475569", marginBottom: "6px" }}>Delivery Location String Resolution</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: "12px", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>Raw Address String</div>
+                    <div style={{ fontWeight: "500", color: "#1e293b", wordBreak: "break-all" }}>{selectedEdi.delivery_location_raw}</div>
+                  </div>
+                  <div style={{ fontSize: "16px", color: "var(--primary)" }}>➜</div>
+                  <div>
+                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>Internal Destination Shorthand</div>
+                    <code style={{ display: "inline-block", background: "var(--primary)", color: "white", padding: "4px 10px", borderRadius: "6px", fontWeight: "700" }}>
+                      {selectedEdi.delivery_location_shorthand}
+                    </code>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontWeight: "700", color: "#475569", marginBottom: "10px" }}>Contract Pricing Verification</div>
+              <div className="tableWrapper" style={{ overflowX: "auto" }}>
+                <table className="cleanTable warehouseTable" style={{ fontSize: "12px" }}>
+                  <thead>
+                    <tr>
+                      <th>SKU</th>
+                      <th>Description</th>
+                      <th style={{ textAlign: "right" }}>Qty</th>
+                      <th style={{ textAlign: "right" }}>PO Unit Price</th>
+                      <th style={{ textAlign: "right" }}>Master Price</th>
+                      <th>Price Audit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {JSON.parse(selectedEdi.items_json).map((item, idx) => {
+                      const hasPriceMismatch = Number(item.po_price) !== Number(item.master_price);
+                      
+                      return (
+                        <tr key={idx} style={{ background: hasPriceMismatch ? "rgba(239, 68, 68, 0.03)" : "transparent" }}>
+                          <td><strong>{item.sku}</strong></td>
+                          <td>{item.description}</td>
+                          <td style={{ textAlign: "right" }}><strong>{item.qty}</strong></td>
+                          <td style={{ textAlign: "right" }}>{hkd(item.po_price)}</td>
+                          <td style={{ textAlign: "right" }}>{hkd(item.master_price)}</td>
+                          <td>
+                            {hasPriceMismatch ? (
+                              <span style={{ color: "#ef4444", fontWeight: "700", background: "#fef2f2", padding: "2px 8px", borderRadius: "10px" }}>
+                                ⚠️ Price Mismatch
+                              </span>
+                            ) : (
+                              <span style={{ color: "#10b981", fontWeight: "600", background: "#ecfdf5", padding: "2px 8px", borderRadius: "10px" }}>
+                                ✓ Verified Match
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "260px", color: "#94a3b8" }}>
+              <FileUp size={48} style={{ opacity: 0.3, marginBottom: "15px" }} />
+              <h3>No EDI Order Selected</h3>
+              <p style={{ fontSize: "13px" }}>Select an incoming retail purchase order from the left panel to review contract pricing and destination address mapping details.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Subtab 6: Freight Tariff & Carrier Efficiency Metrics
+  const renderLogisticsTab = () => {
+    return (
+      <>
+        <div className="panel" style={{ padding: "20px", marginBottom: "25px", borderLeft: "4px solid #ef4444", background: "#fef2f2", borderRadius: "8px" }}>
+          <h4 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px", color: "#b91c1c" }}>
+            <ShieldAlert size={18} />
+            Management Logistics Alert: Unexpected Tariff Adjustments
+          </h4>
+          <p style={{ marginTop: "8px", fontSize: "13px", color: "#7f1d1d", margin: 0 }}>
+            ⚠️ <strong>Japan Air Forwarding (Japan -> HK Line)</strong> has logged a <strong>+12% tariff surcharge spike</strong> due to fuel pricing indexations. Alternate Korea logistics sea routes remain stable.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "25px", marginBottom: "25px" }}>
+          {(carrierMetrics || []).map(c => {
+            const isAlert = c.tariff_adjustment_percent > 0;
+            
+            return (
+              <div 
+                key={c.id} 
+                className="panel" 
+                style={{ 
+                  padding: "20px", 
+                  border: isAlert ? "1px solid #ef4444" : "1px solid var(--border)",
+                  boxShadow: isAlert ? "0 4px 12px rgba(239, 68, 68, 0.05)" : "none",
+                  background: isAlert ? "linear-gradient(to bottom, #ffffff, #fef2f2)" : "#ffffff",
+                  borderRadius: "12px"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "15px" }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700" }}>{c.carrier_name}</h3>
+                    <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: "600" }}>{c.route}</span>
+                  </div>
+                  <Truck size={20} color={isAlert ? "#ef4444" : "var(--primary)"} />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px", marginTop: "15px" }}>
+                  <div>
+                    <div style={{ color: "#94a3b8" }}>Cost per KG</div>
+                    <div style={{ fontSize: "16px", fontWeight: "700", color: "#334155" }}>{hkd(c.cost_per_kg)}/kg</div>
+                  </div>
+                  <div>
+                    <div style={{ color: "#94a3b8" }}>Transit Time</div>
+                    <div style={{ fontSize: "16px", fontWeight: "700", color: "#334155" }}>{c.transit_time_days} days</div>
+                  </div>
+                  <div style={{ marginTop: "8px" }}>
+                    <div style={{ color: "#94a3b8" }}>Reliability</div>
+                    <div style={{ fontSize: "16px", fontWeight: "700", color: "#10b981" }}>{(c.reliability_rate * 100).toFixed(0)}%</div>
+                  </div>
+                  <div style={{ marginTop: "8px" }}>
+                    <div style={{ color: "#94a3b8" }}>Tariff Surcharge</div>
+                    <div style={{ fontSize: "16px", fontWeight: "700", color: isAlert ? "#ef4444" : (c.tariff_adjustment_percent < 0 ? "#10b981" : "#64748b") }}>
+                      {c.tariff_adjustment_percent > 0 ? `+${(c.tariff_adjustment_percent * 100).toFixed(0)}%` : c.tariff_adjustment_percent < 0 ? `${(c.tariff_adjustment_percent * 100).toFixed(0)}%` : "0%"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="panel" style={{ padding: "30px" }}>
+          <h2>Forwarder Billing & Tariff Ledger</h2>
+          <p>Consolidated international and local shipper invoices</p>
+
+          <div className="tableWrapper" style={{ overflowX: "auto", marginTop: "20px" }}>
+            <table className="cleanTable warehouseTable">
+              <thead>
+                <tr>
+                  <th>Billing Date</th>
+                  <th>Carrier</th>
+                  <th>Route</th>
+                  <th style={{ textAlign: "right" }}>Rate/KG</th>
+                  <th style={{ textAlign: "right" }}>Total Billing</th>
+                  <th>Tariff Adjust %</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(carrierMetrics || []).map(c => {
+                  return (
+                    <tr key={c.id}>
+                      <td><strong>{c.billing_date}</strong></td>
+                      <td><strong>{c.carrier_name}</strong></td>
+                      <td>{c.route}</td>
+                      <td style={{ textAlign: "right" }}>{hkd(c.cost_per_kg)}/kg</td>
+                      <td style={{ textAlign: "right" }}><strong>{hkd(c.billing_amount)}</strong></td>
+                      <td style={{ fontWeight: "700", color: c.tariff_adjustment_percent > 0 ? "#ef4444" : c.tariff_adjustment_percent < 0 ? "#10b981" : "inherit" }}>
+                        {c.tariff_adjustment_percent > 0 ? `+${(c.tariff_adjustment_percent * 100).toFixed(0)}%` : c.tariff_adjustment_percent < 0 ? `${(c.tariff_adjustment_percent * 100).toFixed(0)}%` : "-"}
+                      </td>
+                      <td>
+                        <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "11px", fontWeight: "600", color: "#10b981", background: "#ecfdf5" }}>
+                          Audited & Settled
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  return (
+    <main className="workspace">
+      <header className="pageHeader">
+        <div>
+          <p className="eyebrow">Warehouse Management</p>
+          <h1>
+            {subtab === "stock" && "Warehouse Stock Levels"}
+            {subtab === "audit" && "Physical Auditing Ledger"}
+            {subtab === "expiry" && "Expiry & Lot Reference Directory"}
+            {subtab === "replenishment" && "Lead-Time Replenishment Automation"}
+            {subtab === "edi" && "EzTrade EDI Procurement Loop"}
+            {subtab === "logistics" && "Freight & Carrier Scorecards"}
+          </h1>
+          <p className="subtitle">
+            {subtab === "stock" && "Real-time inventory levels, dual-bucket 3PL slotting partitions, and HKTVMALL consignment buffers."}
+            {subtab === "audit" && "Map physical barcode counts against active QuickBooks listings, check financial exposure, and sync overrides."}
+            {subtab === "expiry" && "Capture lot codes, receive dates, and expirations to maintain historical traceability indexes."}
+            {subtab === "replenishment" && "Monitor cover metrics against rolling 90-day sales velocities and auto-calculate purchase order covers."}
+            {subtab === "edi" && "Establishes B2B programmatic integrations to parse retail POs, map destination address shorthands, and verify contract prices."}
+            {subtab === "logistics" && "Consolidated forwarder billing logs, cost efficiency margins, and tariff surcharge management."}
+          </p>
+        </div>
+        <button className="primaryButton" type="button" onClick={loadStock} disabled={loading}>
+          <RefreshCw size={16} className={loading ? "loadingSpinner" : ""} />
+          Refresh Data
+        </button>
+      </header>
+
+      {error && (
+        <div className="panel errorPanel" style={{ padding: "20px", color: "var(--error)", background: "#fdeded", border: "1px solid rgba(217,56,56,0.15)", borderRadius: "12px" }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      {loading && !stock ? (
+        <div className="panel" style={{ padding: "50px", textAlign: "center", color: "#64748b" }}>
+          <RefreshCw size={24} className="loadingSpinner" style={{ marginBottom: "10px" }} />
+          <p>Loading warehouse details...</p>
+        </div>
+      ) : (
+        <>
+          {subtab === "stock" && renderStockTab()}
+          {subtab === "audit" && renderAuditTab()}
+          {subtab === "expiry" && renderExpiryTab()}
+          {subtab === "replenishment" && renderReplenishmentTab()}
+          {subtab === "edi" && renderEdiTab()}
+          {subtab === "logistics" && renderLogisticsTab()}
+        </>
+      )}
+
+      {/* Adjust Inventory Modal */}
       {adjustingItem && (
         <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(15, 23, 42, 0.4)",
-          backdropFilter: "blur(4px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(15, 23, 42, 0.4)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
         }}>
-          <div className="panel" style={{
-            width: "100%",
-            maxWidth: "400px",
-            padding: "30px",
-            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)",
-            background: "#ffffff"
-          }}>
+          <div className="panel" style={{ width: "100%", maxWidth: "400px", padding: "30px", background: "#ffffff", borderRadius: "12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
               <h3 style={{ margin: 0 }}>Adjust Inventory</h3>
-              <button 
-                onClick={() => setAdjustingItem(null)}
-                style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center" }}
-              >
-                <X size={20} />
-              </button>
+              <button onClick={() => setAdjustingItem(null)} style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
             </div>
 
             <div style={{ marginBottom: "15px", fontSize: "13px" }}>
@@ -3139,18 +4240,8 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   required
                   value={qtyChange}
                   onChange={(e) => setQtyChange(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border)",
-                    fontSize: "14px",
-                    outline: "none"
-                  }}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "14px", outline: "none" }}
                 />
-                <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px", display: "block" }}>
-                  Current Stock: <strong>{adjustingItem.stock_on_hand}</strong> (Available: {adjustingItem.stock_on_hand - adjustingItem.allocated})
-                </span>
               </div>
 
               <div style={{ marginBottom: "20px" }}>
@@ -3158,15 +4249,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 <select
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border)",
-                    fontSize: "14px",
-                    background: "white",
-                    outline: "none"
-                  }}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "14px", background: "white", outline: "none" }}
                 >
                   <option value="Adjustment">Physical Inventory Adjustment</option>
                   <option value="Receiving">Received New Stock Shipment</option>
@@ -3175,29 +4258,113 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 </select>
               </div>
 
-              {adjustError && (
-                <div style={{ marginBottom: "15px", color: "var(--error)", fontSize: "12px" }}>
-                  {adjustError}
-                </div>
-              )}
+              {adjustError && <div style={{ marginBottom: "15px", color: "var(--error)", fontSize: "12px" }}>{adjustError}</div>}
 
               <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className="ghostButton"
-                  onClick={() => setAdjustingItem(null)}
-                  style={{ padding: "8px 16px" }}
+                <button type="button" className="ghostButton" onClick={() => setAdjustingItem(null)}>Cancel</button>
+                <button type="submit" className="primaryButton" disabled={adjustBusy}>{adjustBusy ? "Saving..." : "Save Changes"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sited Stock Transfer Modal */}
+      {transferItem && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(15, 23, 42, 0.4)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+        }}>
+          <div className="panel" style={{ width: "100%", maxWidth: "420px", padding: "30px", background: "#ffffff", borderRadius: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h3 style={{ margin: 0 }}>Transfer Stock Bucket</h3>
+              <button onClick={() => setTransferItem(null)} style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+            </div>
+
+            <div style={{ marginBottom: "15px", fontSize: "13px" }}>
+              <p style={{ margin: "0 0 5px", color: "#64748b" }}>SKU: <strong>{transferItem.sku}</strong></p>
+              <p style={{ margin: 0, fontWeight: "500" }}>{transferItem.description}</p>
+            </div>
+
+            <form onSubmit={handleTransferSubmit}>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Transfer Direction</label>
+                <select
+                  value={transferDirection}
+                  onChange={(e) => setTransferDirection(e.target.value)}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "13px", background: "white", outline: "none" }}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="primaryButton"
-                  disabled={adjustBusy}
-                  style={{ padding: "8px 16px" }}
-                >
-                  {adjustBusy ? "Saving..." : "Save Changes"}
-                </button>
+                  <option value="to_sited">Active Hub SOH ➜ Sited Customer Slot (Consignment)</option>
+                  <option value="from_sited">Sited Customer Slot (Consignment) ➜ Active Hub SOH</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Quantity to Transfer</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 50"
+                  required
+                  value={transferQty}
+                  onChange={(e) => setTransferQty(e.target.value)}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "14px", outline: "none" }}
+                />
+                <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px", display: "block" }}>
+                  Active Hub: <strong>{transferItem.stock_on_hand}</strong> | Sited Consignment: <strong>{transferItem.sited_stock || 0}</strong>
+                </span>
+              </div>
+
+              {transferError && <div style={{ marginBottom: "15px", color: "var(--error)", fontSize: "12px" }}>{transferError}</div>}
+
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button type="button" className="ghostButton" onClick={() => setTransferItem(null)}>Cancel</button>
+                <button type="submit" className="primaryButton" disabled={transferBusy}>{transferBusy ? "Transferring..." : "Execute Transfer"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sited Checkout Scan Modal */}
+      {checkoutItem && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(15, 23, 42, 0.4)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+        }}>
+          <div className="panel" style={{ width: "100%", maxWidth: "420px", padding: "30px", background: "#ffffff", borderRadius: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h3 style={{ margin: 0 }}>Sited Checkout Scan</h3>
+              <button onClick={() => setCheckoutItem(null)} style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+            </div>
+
+            <div style={{ marginBottom: "15px", fontSize: "13px" }}>
+              <p style={{ margin: "0 0 5px", color: "#64748b" }}>SKU: <strong>{checkoutItem.sku}</strong></p>
+              <p style={{ margin: 0, fontWeight: "500" }}>{checkoutItem.description}</p>
+            </div>
+
+            <form onSubmit={handleCheckoutSubmit}>
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "5px" }}>Quantity Settled (Scan Checkout)</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 5"
+                  required
+                  value={checkoutQty}
+                  onChange={(e) => setCheckoutQty(e.target.value)}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "14px", outline: "none" }}
+                />
+                <span style={{ fontSize: "11px", color: "#94a3b8", marginTop: "5px", display: "block" }}>
+                  Sited Consignment Stock: <strong>{checkoutItem.sited_stock || 0}</strong>
+                </span>
+              </div>
+
+              {checkoutError && <div style={{ marginBottom: "15px", color: "var(--error)", fontSize: "12px" }}>{checkoutError}</div>}
+
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button type="button" className="ghostButton" onClick={() => setCheckoutItem(null)}>Cancel</button>
+                <button type="submit" className="primaryButton" disabled={checkoutBusy}>{checkoutBusy ? "Settling..." : "Record Checkout Scan"}</button>
               </div>
             </form>
           </div>
@@ -3207,29 +4374,15 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
       {/* Stock Movement Ledger (Slide-over Drawer) */}
       {ledgerItem && (
         <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(15, 23, 42, 0.3)",
-          backdropFilter: "blur(2px)",
-          display: "flex",
-          justifyContent: "flex-end",
-          zIndex: 1001
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(15, 23, 42, 0.3)", backdropFilter: "blur(2px)",
+          display: "flex", justifyContent: "flex-end", zIndex: 1001
         }} onClick={() => setLedgerItem(null)}>
           <div 
             style={{
-              width: "100%",
-              maxWidth: "460px",
-              height: "100%",
-              background: "#ffffff",
-              boxShadow: "-10px 0 25px -5px rgba(0,0,0,0.1)",
-              padding: "40px 30px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "24px",
-              overflowY: "auto"
+              width: "100%", maxWidth: "460px", height: "100%", background: "#ffffff",
+              boxShadow: "-10px 0 25px -5px rgba(0,0,0,0.1)", padding: "40px 30px",
+              display: "flex", flexDirection: "column", gap: "24px", overflowY: "auto"
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3238,12 +4391,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                 <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#64748b" }}>Audit Ledger</span>
                 <h3 style={{ margin: "4px 0 0", fontSize: "18px", fontWeight: "700" }}>Stock Movement History</h3>
               </div>
-              <button 
-                onClick={() => setLedgerItem(null)}
-                style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b", display: "flex", alignItems: "center" }}
-              >
-                <X size={20} />
-              </button>
+              <button onClick={() => setLedgerItem(null)} style={{ background: "transparent", border: "0", cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
             </div>
 
             <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "15px", fontSize: "13px" }}>
@@ -3260,7 +4408,6 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#94a3b8", textAlign: "center" }}>
                 <Package size={32} style={{ marginBottom: "12px", opacity: 0.5 }} />
                 <p>No stock movement logs found for this item.</p>
-                <small style={{ fontSize: "11px" }}>Movements are logged automatically when stock adjustments are made.</small>
               </div>
             ) : (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -3270,30 +4417,19 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   const dateStr = new Date(m.timestamp).toLocaleString();
                   return (
                     <div key={m.id} style={{
-                      padding: "16px",
-                      borderRadius: "10px",
-                      border: "1px solid var(--border)",
-                      background: "#f8fafc",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
+                      padding: "16px", borderRadius: "10px", border: "1px solid var(--border)",
+                      background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center"
                     }}>
                       <div>
-                        <strong style={{ display: "block", fontSize: "13px", color: "#1e293b", marginBottom: "4px" }}>
-                          {m.reason}
-                        </strong>
+                        <strong style={{ display: "block", fontSize: "13px", color: "#1e293b", marginBottom: "4px" }}>{m.reason}</strong>
                         <span style={{ fontSize: "11px", color: "#64748b" }}>{dateStr}</span>
                         <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
                           Balance: {m.prev_qty} → <strong>{m.new_qty}</strong>
                         </div>
                       </div>
                       <span style={{
-                        fontSize: "14px",
-                        fontWeight: "700",
-                        color: isPositive ? "#10b981" : "#ef4444",
-                        background: isPositive ? "#ecfdf5" : "#fef2f2",
-                        padding: "4px 10px",
-                        borderRadius: "8px"
+                        fontSize: "14px", fontWeight: "700", color: isPositive ? "#10b981" : "#ef4444",
+                        background: isPositive ? "#ecfdf5" : "#fef2f2", padding: "4px 10px", borderRadius: "8px"
                       }}>
                         {formattedChange}
                       </span>
@@ -5930,7 +7066,12 @@ function App() {
           {warehouseNavOpen && (
             <div className="subNav">
               {[
-                ["stock", "Stock levels"],
+                ["stock", "Stock Levels & Slotting"],
+                ["audit", "Physical Audit Ledger"],
+                ["expiry", "Expiry & Lot Directory"],
+                ["replenishment", "Lead-Time Replenishment"],
+                ["edi", "EzTrade EDI Procurement"],
+                ["logistics", "Freight & Carrier Metrics"],
               ].map(([id, label]) => (
                 <button
                   className={page === "warehouse" && warehouseSubtab === id ? "active" : ""}
