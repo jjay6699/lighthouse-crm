@@ -6772,14 +6772,20 @@ function UpgradeInProgressScreen() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      minHeight: "100vh",
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: "100vw",
+      height: "100vh",
+      zIndex: 99999,
       background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
       color: "#f8fafc",
       fontFamily: "'Outfit', 'Inter', system-ui, sans-serif",
       padding: "20px",
       boxSizing: "border-box",
-      overflow: "hidden",
-      position: "relative"
+      overflow: "auto"
     }}>
       {/* Decorative blurred background shapes */}
       <div style={{
