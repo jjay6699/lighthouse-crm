@@ -6960,7 +6960,6 @@ function UpgradeInProgressScreen() {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", fontSize: "11px", marginTop: "2px" }}>
             <span>Progress: 78% completed</span>
-            <span>Est. Remaining: ~12m</span>
           </div>
         </div>
 
