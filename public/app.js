@@ -6920,7 +6920,7 @@ function UpgradeInProgressScreen() {
           color: "#94a3b8",
           margin: "0 0 32px"
         }}>
-          We are optimizing database indexes, configuring QuickBooks sync overrides, and upgrading the warehouse slotting matrix pipelines to improve transaction speeds.
+          We are optimizing database indexes, configuring QuickBooks sync overrides, upgrading the financial module, implementing API server integrations, and upgrading the warehouse slotting matrix pipelines to improve transaction speeds.
         </p>
 
         {/* Progress details */}
