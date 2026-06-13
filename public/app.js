@@ -6764,6 +6764,232 @@ When formatting your answer for the Ads screen:
   );
 }
 
+const UPGRADE_IN_PROGRESS = true; // Set to false to disable and restore dashboard access
+
+function UpgradeInProgressScreen() {
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: "100vh",
+      background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%)",
+      color: "#f8fafc",
+      fontFamily: "'Outfit', 'Inter', system-ui, sans-serif",
+      padding: "20px",
+      boxSizing: "border-box",
+      overflow: "hidden",
+      position: "relative"
+    }}>
+      {/* Decorative blurred background shapes */}
+      <div style={{
+        position: "absolute",
+        top: "10%",
+        left: "15%",
+        width: "350px",
+        height: "350px",
+        borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0) 70%)",
+        filter: "blur(60px)",
+        pointerEvents: "none"
+      }} />
+      <div style={{
+        position: "absolute",
+        bottom: "15%",
+        right: "10%",
+        width: "400px",
+        height: "400px",
+        borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(219, 39, 119, 0.12) 0%, rgba(219, 39, 119, 0) 70%)",
+        filter: "blur(70px)",
+        pointerEvents: "none"
+      }} />
+
+      {/* Main glassmorphic card */}
+      <div style={{
+        position: "relative",
+        zIndex: 1,
+        width: "100%",
+        maxWidth: "520px",
+        background: "rgba(30, 41, 59, 0.45)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        borderRadius: "24px",
+        padding: "48px 40px",
+        boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1)",
+        textAlign: "center",
+        boxSizing: "border-box"
+      }}>
+        {/* Animated concentric loader */}
+        <div style={{
+          position: "relative",
+          width: "90px",
+          height: "90px",
+          margin: "0 auto 32px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center"
+        }}>
+          {/* Outer glowing pulsing ring */}
+          <div style={{
+            position: "absolute",
+            width: "90px",
+            height: "90px",
+            borderRadius: "50%",
+            border: "2px solid rgba(99, 102, 241, 0.3)",
+            animation: "pulseGlow 2.5s infinite ease-in-out"
+          }} />
+          
+          {/* Inner rotating ring */}
+          <div style={{
+            position: "absolute",
+            width: "70px",
+            height: "70px",
+            borderRadius: "50%",
+            border: "3px solid transparent",
+            borderTopColor: "#6366f1",
+            borderBottomColor: "#db2777",
+            animation: "spinSlow 3s infinite linear"
+          }} />
+
+          {/* Core static/glowing database icon */}
+          <div style={{
+            position: "absolute",
+            width: "46px",
+            height: "46px",
+            borderRadius: "50%",
+            background: "linear-gradient(135deg, #4f46e5 0%, #c084fc 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 0 20px rgba(99, 102, 241, 0.5)"
+          }}>
+            <Database size={22} color="#ffffff" />
+          </div>
+        </div>
+
+        {/* Status Badge */}
+        <div style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "rgba(99, 102, 241, 0.12)",
+          border: "1px solid rgba(99, 102, 241, 0.25)",
+          color: "#a5b4fc",
+          fontSize: "12px",
+          fontWeight: "600",
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+          padding: "6px 14px",
+          borderRadius: "30px",
+          marginBottom: "24px"
+        }}>
+          <span style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            background: "#818cf8",
+            animation: "dotBlink 1.5s infinite"
+          }} />
+          System Maintenance
+        </div>
+
+        {/* Text descriptions */}
+        <h1 style={{
+          fontSize: "30px",
+          fontWeight: "800",
+          letterSpacing: "-0.02em",
+          margin: "0 0 16px",
+          background: "linear-gradient(to right, #ffffff, #e2e8f0)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent"
+        }}>
+          Upgrade in Progress
+        </h1>
+        
+        <p style={{
+          fontSize: "15px",
+          lineHeight: "1.6",
+          color: "#94a3b8",
+          margin: "0 0 32px"
+        }}>
+          We are optimizing database indexes, configuring QuickBooks sync overrides, and upgrading the warehouse slotting matrix pipelines to improve transaction speeds.
+        </p>
+
+        {/* Progress details */}
+        <div style={{
+          background: "rgba(15, 23, 42, 0.3)",
+          border: "1px solid rgba(255, 255, 255, 0.04)",
+          borderRadius: "16px",
+          padding: "16px 20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          fontSize: "13px",
+          textAlign: "left",
+          marginBottom: "24px"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b" }}>
+            <span>Task status:</span>
+            <strong style={{ color: "#a78bfa" }}>Seeding schema upgrades...</strong>
+          </div>
+          <div style={{
+            height: "6px",
+            background: "rgba(255, 255, 255, 0.06)",
+            borderRadius: "10px",
+            overflow: "hidden",
+            position: "relative"
+          }}>
+            <div style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              height: "100%",
+              width: "78%",
+              background: "linear-gradient(to right, #6366f1, #c084fc)",
+              borderRadius: "10px",
+              animation: "progressPulse 2s infinite ease-in-out"
+            }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", fontSize: "11px", marginTop: "2px" }}>
+            <span>Progress: 78% completed</span>
+            <span>Est. Remaining: ~12m</span>
+          </div>
+        </div>
+
+        <div style={{
+          fontSize: "12px",
+          color: "#475569",
+          marginTop: "16px"
+        }}>
+          Lightmart CRM v2.1.0 • Auto-refreshing page
+        </div>
+      </div>
+
+      {/* Embedded CSS animations */}
+      <style>{`
+        @keyframes spinSlow {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes pulseGlow {
+          0%, 100% { transform: scale(1); opacity: 0.3; }
+          50% { transform: scale(1.1); opacity: 0.7; }
+        }
+        @keyframes dotBlink {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 1; }
+        }
+        @keyframes progressPulse {
+          0%, 100% { opacity: 0.85; }
+          50% { opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function App() {
   const [page, setPage] = useState("overview");
   const [financeSubtab, setFinanceSubtab] = useState("summary");
@@ -6994,6 +7220,7 @@ function App() {
     window.location.href = "/login";
   }
 
+  if (UPGRADE_IN_PROGRESS) return <UpgradeInProgressScreen />;
   if (!data) return <LoadingState />;
   if (!data.ready && page !== "debit") return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
 
