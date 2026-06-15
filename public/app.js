@@ -6952,14 +6952,14 @@ function UpgradeInProgressScreen() {
               left: 0,
               top: 0,
               height: "100%",
-              width: "85%",
+              width: "89%",
               background: "linear-gradient(to right, #6366f1, #c084fc)",
               borderRadius: "10px",
               animation: "progressPulse 2s infinite ease-in-out"
             }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", fontSize: "11px", marginTop: "2px" }}>
-            <span>Progress: 85% completed</span>
+            <span>Progress: 89% completed</span>
           </div>
         </div>
 
