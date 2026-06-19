@@ -6920,7 +6920,7 @@ function UpgradeInProgressScreen() {
           color: "#94a3b8",
           margin: "0 0 32px"
         }}>
-          We are optimizing database indexes, configuring QuickBooks sync overrides, upgrading the financial module, implementing API server integrations, and upgrading the warehouse slotting matrix pipelines to improve transaction speeds.
+          We are optimizing database indexes, configuring QuickBooks sync overrides, upgrading the financial module, implementing API server integrations, integrating the Meta Ads Library and Threads analytics, deploying the AI upgrade, and upgrading the warehouse slotting matrix pipelines to improve transaction speeds.
         </p>
 
         {/* Progress details */}
@@ -6952,14 +6952,14 @@ function UpgradeInProgressScreen() {
               left: 0,
               top: 0,
               height: "100%",
-              width: "57%",
+              width: "83%",
               background: "linear-gradient(to right, #6366f1, #c084fc)",
               borderRadius: "10px",
               animation: "progressPulse 2s infinite ease-in-out"
             }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", fontSize: "11px", marginTop: "2px" }}>
-            <span>Progress: 57% completed</span>
+            <span>Progress: 83% completed</span>
           </div>
         </div>
 
