@@ -1551,6 +1551,102 @@ tr:hover {
   color: var(--ink);
 }
 
+.wideSearch {
+  width: 270px;
+}
+
+.compactSelect {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 30px 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+}
+
+.compactSelect:focus {
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.08);
+}
+
+tr.selectedRow td {
+  background: #f0fdfa;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.mutedCell {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.statusPill {
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  background: #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.statusPill.scaling,
+.statusPill.aggressive {
+  color: #065f46;
+  background: #d1fae5;
+}
+
+.statusPill.testing {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.statusPill.stable {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+.analysisList {
+  display: grid;
+  gap: 10px;
+}
+
+.analysisList div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.analysisList span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.analysisList strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .lineTiles {
   display: grid;
   gap: 8px;
@@ -2982,4 +3078,3 @@ tr:hover {
 .crm-chat-settings-panel button.primary:hover {
   background: #047857;
 }
-

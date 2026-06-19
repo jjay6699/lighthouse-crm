@@ -59,6 +59,160 @@ import {
 
 const chartColors = ["#1A7F78", "#E49A38", "#3E6FB1", "#A94867", "#5F9347", "#7861B0"];
 
+const metaLibraryRows = [
+  {
+    brand: "GlowLab HK",
+    category: "Skincare",
+    market: "Hong Kong",
+    ads: 42,
+    monthlySpend: 182000,
+    cpm: 48,
+    creative: "Dermatologist-led serum carousel",
+    angle: "Clinical proof + before/after",
+    landing: "Shopify product page",
+    status: "Scaling",
+    risk: "High overlap with brightening keywords",
+    lastSeen: "2026-06-18",
+  },
+  {
+    brand: "FitFuel Asia",
+    category: "Supplements",
+    market: "Malaysia",
+    ads: 29,
+    monthlySpend: 124000,
+    cpm: 36,
+    creative: "Creator testimonial reels",
+    angle: "Convenience for busy professionals",
+    landing: "Bundle offer page",
+    status: "Testing",
+    risk: "Low price pressure",
+    lastSeen: "2026-06-17",
+  },
+  {
+    brand: "PureBaby Co",
+    category: "Mother & Baby",
+    market: "Singapore",
+    ads: 37,
+    monthlySpend: 156500,
+    cpm: 44,
+    creative: "UGC problem-solution video",
+    angle: "Safety certification + parent trust",
+    landing: "Collection page",
+    status: "Scaling",
+    risk: "Strong trust positioning",
+    lastSeen: "2026-06-19",
+  },
+  {
+    brand: "Urban Pantry",
+    category: "Grocery",
+    market: "Hong Kong",
+    ads: 18,
+    monthlySpend: 77500,
+    cpm: 31,
+    creative: "Static offer tiles",
+    angle: "Weekly savings and fast delivery",
+    landing: "Promo landing page",
+    status: "Stable",
+    risk: "Seasonal offer copy",
+    lastSeen: "2026-06-16",
+  },
+  {
+    brand: "VitaCare",
+    category: "Healthcare",
+    market: "Malaysia",
+    ads: 51,
+    monthlySpend: 211000,
+    cpm: 52,
+    creative: "Educational reels + lead form",
+    angle: "Expert guidance for families",
+    landing: "Lead generation form",
+    status: "Aggressive",
+    risk: "High spend velocity",
+    lastSeen: "2026-06-19",
+  },
+];
+
+const threadsCreators = [
+  {
+    handle: "@skinwithmei",
+    name: "Mei Tan",
+    category: "Skincare",
+    followers: 284000,
+    posts7d: 18,
+    avgEngagement: 7.8,
+    latestPostScore: 94,
+    growth: 12.4,
+    region: "Hong Kong",
+    content: "Routine breakdowns, product comparisons, skin barrier education",
+    opportunity: "High fit for dermocosmetic launches and education-led bundles",
+  },
+  {
+    handle: "@warehousewins",
+    name: "Darren Koh",
+    category: "Logistics",
+    followers: 78500,
+    posts7d: 11,
+    avgEngagement: 5.9,
+    latestPostScore: 81,
+    growth: 6.2,
+    region: "Singapore",
+    content: "Operations threads, warehouse process videos, B2B productivity",
+    opportunity: "Useful for trade operations credibility and supply-chain content",
+  },
+  {
+    handle: "@beautydealwatch",
+    name: "Sofia Lim",
+    category: "Skincare",
+    followers: 412000,
+    posts7d: 25,
+    avgEngagement: 8.6,
+    latestPostScore: 98,
+    growth: 18.1,
+    region: "Malaysia",
+    content: "Deal alerts, product rankings, affiliate-style list posts",
+    opportunity: "Strong promo amplification for bundles, launches, and flash sales",
+  },
+  {
+    handle: "@mombasket",
+    name: "Priya Nair",
+    category: "Mother & Baby",
+    followers: 196000,
+    posts7d: 14,
+    avgEngagement: 6.7,
+    latestPostScore: 87,
+    growth: 9.5,
+    region: "Malaysia",
+    content: "Parenting questions, newborn essentials, community replies",
+    opportunity: "Good fit for trust-led content and sampling campaigns",
+  },
+  {
+    handle: "@fitmarketdaily",
+    name: "Alex Wong",
+    category: "Supplements",
+    followers: 132000,
+    posts7d: 21,
+    avgEngagement: 6.1,
+    latestPostScore: 89,
+    growth: 10.8,
+    region: "Hong Kong",
+    content: "Gym routines, nutrition stacks, quick product reviews",
+    opportunity: "Performance supplement comparisons and creator offer codes",
+  },
+  {
+    handle: "@retailpulseasia",
+    name: "Jo Chan",
+    category: "Retail",
+    followers: 93000,
+    posts7d: 9,
+    avgEngagement: 4.8,
+    latestPostScore: 76,
+    growth: 4.7,
+    region: "Hong Kong",
+    content: "Retail trend commentary, pop-up launches, store observations",
+    opportunity: "Brand-awareness and market readout content",
+  },
+];
+
 function hkd(value) {
   return new Intl.NumberFormat("en-HK", {
     style: "currency",
@@ -1042,6 +1196,16 @@ function Overview({ data, goFinance, setPage }) {
               <LineChart size={18} style={{ color: "var(--primary)" }} />
               <strong>Ads Optimization</strong>
               <span>Monitor Meta campaign performance, connect ad accounts, and enable AI auto-optimization toggles.</span>
+            </button>
+            <button className="moduleCard" type="button" onClick={() => setPage("metaLibrary")} style={{ marginTop: "15px" }}>
+              <Tags size={18} style={{ color: "var(--primary)" }} />
+              <strong>Meta Ads Library</strong>
+              <span>Research competitor creatives, estimated ad spend, audience pressure, and campaign angles.</span>
+            </button>
+            <button className="moduleCard" type="button" onClick={() => setPage("threads")} style={{ marginTop: "15px" }}>
+              <MessageSquare size={18} style={{ color: "var(--primary)" }} />
+              <strong>Threads</strong>
+              <span>Find trending creators by category, followers, post velocity, engagement, and latest momentum.</span>
             </button>
           </div>
         </div>
@@ -6764,7 +6928,289 @@ When formatting your answer for the Ads screen:
   );
 }
 
-const UPGRADE_IN_PROGRESS = true; // Set to false to disable and restore dashboard access
+function MetaAdsLibraryDashboard() {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [category, setCategory] = useState("all");
+  const [market, setMarket] = useState("all");
+  const [sortBy, setSortBy] = useState("monthlySpend");
+  const [selectedBrand, setSelectedBrand] = useState(metaLibraryRows[0]);
+
+  const categories = useMemo(() => ["all", ...new Set(metaLibraryRows.map((row) => row.category))], []);
+  const markets = useMemo(() => ["all", ...new Set(metaLibraryRows.map((row) => row.market))], []);
+
+  const filteredRows = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return metaLibraryRows
+      .filter((row) => category === "all" || row.category === category)
+      .filter((row) => market === "all" || row.market === market)
+      .filter((row) => !term || [row.brand, row.category, row.market, row.creative, row.angle].join(" ").toLowerCase().includes(term))
+      .sort((a, b) => Number(b[sortBy] || 0) - Number(a[sortBy] || 0));
+  }, [searchTerm, category, market, sortBy]);
+
+  const totals = useMemo(() => {
+    const spend = filteredRows.reduce((sum, row) => sum + row.monthlySpend, 0);
+    const ads = filteredRows.reduce((sum, row) => sum + row.ads, 0);
+    const avgCpm = filteredRows.length ? filteredRows.reduce((sum, row) => sum + row.cpm, 0) / filteredRows.length : 0;
+    return { spend, ads, avgCpm };
+  }, [filteredRows]);
+
+  return (
+    <main className="workspace">
+      <header className="pageHeader">
+        <div>
+          <p className="eyebrow">Meta Ads Library</p>
+          <h1>Competitor creative intelligence</h1>
+          <p className="subtitle">Review competitor ad activity, estimated spend, active creative angles, landing pages, and market risk signals.</p>
+        </div>
+        <button className="ghostButton" type="button">
+          <Download size={16} />
+          Export view
+        </button>
+      </header>
+
+      <section className="metricGrid">
+        <Kpi title="Tracked competitors" value={filteredRows.length} note="Matching current filters" icon={Tags} />
+        <Kpi title="Active ads" value={compact(totals.ads)} note="Observed ad variations" icon={BarChart3} />
+        <Kpi title="Est. monthly spend" value={hkd(totals.spend)} note="Directional planning estimate" icon={CircleDollarSign} />
+        <Kpi title="Avg CPM" value={hkd(totals.avgCpm)} note="Estimated auction pressure" icon={TrendingUp} />
+      </section>
+
+      <section className="panel">
+        <div className="panelHeader">
+          <div>
+            <h2>Competitor explorer</h2>
+            <p>Filter by category or market, then click a competitor for creative and risk notes.</p>
+          </div>
+          <div className="headerActions">
+            <label className="search">
+              <Search size={14} />
+              <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search competitor" />
+            </label>
+            <select className="compactSelect" value={category} onChange={(event) => setCategory(event.target.value)}>
+              {categories.map((item) => <option key={item} value={item}>{item === "all" ? "All categories" : item}</option>)}
+            </select>
+            <select className="compactSelect" value={market} onChange={(event) => setMarket(event.target.value)}>
+              {markets.map((item) => <option key={item} value={item}>{item === "all" ? "All markets" : item}</option>)}
+            </select>
+            <select className="compactSelect" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              <option value="monthlySpend">Sort by spend</option>
+              <option value="ads">Sort by active ads</option>
+              <option value="cpm">Sort by CPM</option>
+            </select>
+          </div>
+        </div>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Competitor</th>
+                <th>Category</th>
+                <th>Market</th>
+                <th>Active ads</th>
+                <th>Est. spend</th>
+                <th>CPM</th>
+                <th>Status</th>
+                <th>Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row) => (
+                <tr key={row.brand} className={selectedBrand?.brand === row.brand ? "selectedRow" : ""} onClick={() => setSelectedBrand(row)}>
+                  <td><strong>{row.brand}</strong></td>
+                  <td>{row.category}</td>
+                  <td>{row.market}</td>
+                  <td>{row.ads}</td>
+                  <td>{hkd(row.monthlySpend)}</td>
+                  <td>{hkd(row.cpm)}</td>
+                  <td><span className={`statusPill ${row.status.toLowerCase()}`}>{row.status}</span></td>
+                  <td>{row.lastSeen}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="cleanGrid">
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Creative analysis</h2>
+              <p>{selectedBrand.brand}</p>
+            </div>
+          </div>
+          <div className="analysisList">
+            <div><span>Creative format</span><strong>{selectedBrand.creative}</strong></div>
+            <div><span>Message angle</span><strong>{selectedBrand.angle}</strong></div>
+            <div><span>Landing path</span><strong>{selectedBrand.landing}</strong></div>
+            <div><span>Competitive risk</span><strong>{selectedBrand.risk}</strong></div>
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Action checklist</h2>
+              <p>Planning prompts for the selected competitor.</p>
+            </div>
+          </div>
+          <div className="compactList">
+            <div><strong>Mirror scan</strong><span>Compare offer, proof, hook, format, and landing route.</span></div>
+            <div><strong>Budget watch</strong><span>Monitor spend velocity and CPM pressure before campaign launches.</span></div>
+            <div><strong>Creative gap</strong><span>Build a response concept where their current angle is weak.</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function ThreadsDashboard() {
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [minFollowers, setMinFollowers] = useState("0");
+  const [region, setRegion] = useState("all");
+  const [sortBy, setSortBy] = useState("latestPostScore");
+  const [selectedCreator, setSelectedCreator] = useState(threadsCreators[0]);
+
+  const regions = useMemo(() => ["all", ...new Set(threadsCreators.map((creator) => creator.region))], []);
+
+  const filteredCreators = useMemo(() => {
+    const term = categoryQuery.trim().toLowerCase();
+    const min = Number(minFollowers || 0);
+    return threadsCreators
+      .filter((creator) => creator.followers >= min)
+      .filter((creator) => region === "all" || creator.region === region)
+      .filter((creator) => !term || [creator.category, creator.handle, creator.name, creator.content].join(" ").toLowerCase().includes(term))
+      .sort((a, b) => Number(b[sortBy] || 0) - Number(a[sortBy] || 0));
+  }, [categoryQuery, minFollowers, region, sortBy]);
+
+  const topCreator = filteredCreators[0] || threadsCreators[0];
+  const avgEngagement = filteredCreators.length
+    ? filteredCreators.reduce((sum, creator) => sum + creator.avgEngagement, 0) / filteredCreators.length
+    : 0;
+
+  useEffect(() => {
+    if (filteredCreators.length && !filteredCreators.some((creator) => creator.handle === selectedCreator.handle)) {
+      setSelectedCreator(filteredCreators[0]);
+    }
+  }, [filteredCreators, selectedCreator.handle]);
+
+  return (
+    <main className="workspace">
+      <header className="pageHeader">
+        <div>
+          <p className="eyebrow">Threads</p>
+          <h1>Trending creator discovery</h1>
+          <p className="subtitle">Search by category, filter by follower count, and rank creators by latest post momentum, activity, growth, or engagement.</p>
+        </div>
+        <button className="ghostButton" type="button">
+          <RefreshCw size={16} />
+          Refresh scan
+        </button>
+      </header>
+
+      <section className="metricGrid">
+        <Kpi title="Creators found" value={filteredCreators.length} note="Matching discovery rules" icon={MessageSquare} />
+        <Kpi title="Top latest score" value={topCreator.latestPostScore} note={topCreator.handle} icon={TrendingUp} />
+        <Kpi title="Avg engagement" value={`${avgEngagement.toFixed(1)}%`} note="Across filtered creators" icon={ThumbsUp} />
+        <Kpi title="Top audience" value={compact(topCreator.followers)} note={topCreator.region} icon={Target} />
+      </section>
+
+      <section className="panel">
+        <div className="panelHeader">
+          <div>
+            <h2>Creator search</h2>
+            <p>Type a category such as skincare, retail, supplements, logistics, or mother & baby.</p>
+          </div>
+          <div className="headerActions">
+            <label className="search wideSearch">
+              <Search size={14} />
+              <input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Search category or creator" />
+            </label>
+            <select className="compactSelect" value={minFollowers} onChange={(event) => setMinFollowers(event.target.value)}>
+              <option value="0">Any followers</option>
+              <option value="50000">50k+</option>
+              <option value="100000">100k+</option>
+              <option value="200000">200k+</option>
+              <option value="400000">400k+</option>
+            </select>
+            <select className="compactSelect" value={region} onChange={(event) => setRegion(event.target.value)}>
+              {regions.map((item) => <option key={item} value={item}>{item === "all" ? "All regions" : item}</option>)}
+            </select>
+            <select className="compactSelect" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              <option value="latestPostScore">Latest posts</option>
+              <option value="followers">Followers</option>
+              <option value="avgEngagement">Engagement</option>
+              <option value="posts7d">Post volume</option>
+              <option value="growth">Growth</option>
+            </select>
+          </div>
+        </div>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Creator</th>
+                <th>Category</th>
+                <th>Region</th>
+                <th>Followers</th>
+                <th>7d posts</th>
+                <th>Engagement</th>
+                <th>Latest score</th>
+                <th>Growth</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCreators.map((creator) => (
+                <tr key={creator.handle} className={selectedCreator.handle === creator.handle ? "selectedRow" : ""} onClick={() => setSelectedCreator(creator)}>
+                  <td><strong>{creator.handle}</strong><br /><span className="mutedCell">{creator.name}</span></td>
+                  <td>{creator.category}</td>
+                  <td>{creator.region}</td>
+                  <td>{compact(creator.followers)}</td>
+                  <td>{creator.posts7d}</td>
+                  <td>{creator.avgEngagement.toFixed(1)}%</td>
+                  <td>{creator.latestPostScore}</td>
+                  <td>{creator.growth.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="cleanGrid">
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Creator analysis</h2>
+              <p>{selectedCreator.handle}</p>
+            </div>
+          </div>
+          <div className="analysisList">
+            <div><span>Content pattern</span><strong>{selectedCreator.content}</strong></div>
+            <div><span>Commercial opportunity</span><strong>{selectedCreator.opportunity}</strong></div>
+            <div><span>Why it is trending</span><strong>{selectedCreator.posts7d} posts in 7 days with {selectedCreator.growth.toFixed(1)}% audience growth.</strong></div>
+            <div><span>Suggested next step</span><strong>Shortlist for outreach, compare recent post hooks, and test creator-specific promo copy.</strong></div>
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Ranking rules</h2>
+              <p>How this screen scores creators.</p>
+            </div>
+          </div>
+          <div className="compactList">
+            <div><strong>Latest posts</strong><span>Prioritizes fresh posts with fast engagement movement.</span></div>
+            <div><strong>Follower filters</strong><span>Use thresholds to separate micro, mid-tier, and large creators.</span></div>
+            <div><strong>Category search</strong><span>Matches creator niche, profile name, handle, and content pattern.</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+const UPGRADE_IN_PROGRESS = false; // Set to false to disable and restore dashboard access
 
 function UpgradeInProgressScreen() {
   return (
@@ -7227,7 +7673,7 @@ function App() {
 
   if (UPGRADE_IN_PROGRESS) return <UpgradeInProgressScreen />;
   if (!data) return <LoadingState />;
-  if (!data.ready && page !== "debit") return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
+  if (!data.ready && !["debit", "metaLibrary", "threads"].includes(page)) return <EmptyState message={data.message || data.error || "Finance database is not ready."} />;
 
   return (
     <>
@@ -7410,6 +7856,26 @@ function App() {
               ))}
             </div>
           )}
+          <button className={page === "metaLibrary" ? "active" : ""} type="button" onClick={() => {
+            setPage("metaLibrary");
+            setFinanceNavOpen(false);
+            setDebitNavOpen(false);
+            setWarehouseNavOpen(false);
+            setAdsNavOpen(false);
+          }}>
+            <Tags size={18} />
+            Meta Ads Library
+          </button>
+          <button className={page === "threads" ? "active" : ""} type="button" onClick={() => {
+            setPage("threads");
+            setFinanceNavOpen(false);
+            setDebitNavOpen(false);
+            setWarehouseNavOpen(false);
+            setAdsNavOpen(false);
+          }}>
+            <MessageSquare size={18} />
+            Threads
+          </button>
         </nav>
         <div className="sidePanel">
           <span>Currency standard</span>
@@ -7484,6 +7950,10 @@ function App() {
           error={adsError}
           loadData={loadAdsData}
         />
+      ) : page === "metaLibrary" ? (
+        <MetaAdsLibraryDashboard />
+      ) : page === "threads" ? (
+        <ThreadsDashboard />
       ) : (
         <FinancialDashboard
           data={data}
