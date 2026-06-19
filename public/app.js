@@ -6928,12 +6928,13 @@ When formatting your answer for the Ads screen:
   );
 }
 
-function MetaAdsLibraryDashboard() {
+function MetaAdsLibraryDashboard({ subtab, setSubtab }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [category, setCategory] = useState("all");
   const [market, setMarket] = useState("all");
   const [sortBy, setSortBy] = useState("monthlySpend");
   const [selectedBrand, setSelectedBrand] = useState(metaLibraryRows[0]);
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
 
   const categories = useMemo(() => ["all", ...new Set(metaLibraryRows.map((row) => row.category))], []);
   const markets = useMemo(() => ["all", ...new Set(metaLibraryRows.map((row) => row.market))], []);
@@ -6953,6 +6954,131 @@ function MetaAdsLibraryDashboard() {
     const avgCpm = filteredRows.length ? filteredRows.reduce((sum, row) => sum + row.cpm, 0) / filteredRows.length : 0;
     return { spend, ads, avgCpm };
   }, [filteredRows]);
+
+  const watchlistRows = useMemo(() => {
+    const priorityBrands = new Set(["GlowLab HK", "PureBaby Co", "VitaCare"]);
+    return filteredRows.filter((row) => !watchlistOnly || priorityBrands.has(row.brand));
+  }, [filteredRows, watchlistOnly]);
+
+  if (subtab === "competitors") {
+    return (
+      <main className="workspace">
+        <header className="pageHeader">
+          <div>
+            <p className="eyebrow">Meta Ads Library</p>
+            <h1>Competitor tracker</h1>
+            <p className="subtitle">Track priority competitors by market, spend pressure, active ad volume, creative angle, and follow-up action.</p>
+          </div>
+          <button className="ghostButton" type="button" onClick={() => setSubtab("overview")}>
+            <LayoutDashboard size={16} />
+            Overview
+          </button>
+        </header>
+
+        <section className="metricGrid">
+          <Kpi title="Competitors" value={watchlistRows.length} note={watchlistOnly ? "Priority watchlist" : "Visible competitors"} icon={Tags} />
+          <Kpi title="Spend pressure" value={hkd(watchlistRows.reduce((sum, row) => sum + row.monthlySpend, 0))} note="Estimated monthly activity" icon={CircleDollarSign} />
+          <Kpi title="Highest CPM" value={hkd(Math.max(...watchlistRows.map((row) => row.cpm), 0))} note="Auction pressure signal" icon={TrendingUp} />
+          <Kpi title="Active creatives" value={compact(watchlistRows.reduce((sum, row) => sum + row.ads, 0))} note="Observed ad variants" icon={Image} />
+        </section>
+
+        <section className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Competitor watchlist</h2>
+              <p>Use this as the operating table for brands you want to monitor closely.</p>
+            </div>
+            <div className="headerActions">
+              <label className="search">
+                <Search size={14} />
+                <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search competitor" />
+              </label>
+              <select className="compactSelect" value={category} onChange={(event) => setCategory(event.target.value)}>
+                {categories.map((item) => <option key={item} value={item}>{item === "all" ? "All categories" : item}</option>)}
+              </select>
+              <select className="compactSelect" value={market} onChange={(event) => setMarket(event.target.value)}>
+                {markets.map((item) => <option key={item} value={item}>{item === "all" ? "All markets" : item}</option>)}
+              </select>
+              <select className="compactSelect" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                <option value="monthlySpend">Spend high to low</option>
+                <option value="ads">Active ads high to low</option>
+                <option value="cpm">CPM high to low</option>
+              </select>
+              <button className={`toggleChip ${watchlistOnly ? "active" : ""}`} type="button" onClick={() => setWatchlistOnly((value) => !value)}>
+                Watchlist
+              </button>
+            </div>
+          </div>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Brand</th>
+                  <th>Priority</th>
+                  <th>Category</th>
+                  <th>Market</th>
+                  <th>Active ads</th>
+                  <th>Est. spend</th>
+                  <th>CPM</th>
+                  <th>Primary angle</th>
+                  <th>Next action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {watchlistRows.map((row) => {
+                  const priority = row.monthlySpend > 175000 || row.ads > 40 ? "High" : row.monthlySpend > 100000 ? "Medium" : "Low";
+                  const action = priority === "High" ? "Review creative weekly" : priority === "Medium" ? "Monitor spend changes" : "Check monthly";
+                  return (
+                    <tr key={row.brand} className={selectedBrand?.brand === row.brand ? "selectedRow" : ""} onClick={() => setSelectedBrand(row)}>
+                      <td><strong>{row.brand}</strong><br /><span className="mutedCell">{row.status}</span></td>
+                      <td><span className={`statusPill ${priority.toLowerCase()}`}>{priority}</span></td>
+                      <td>{row.category}</td>
+                      <td>{row.market}</td>
+                      <td>{row.ads}</td>
+                      <td>{hkd(row.monthlySpend)}</td>
+                      <td>{hkd(row.cpm)}</td>
+                      <td>{row.angle}</td>
+                      <td>{action}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="cleanGrid">
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Selected competitor brief</h2>
+                <p>{selectedBrand.brand}</p>
+              </div>
+            </div>
+            <div className="analysisList">
+              <div><span>Creative format</span><strong>{selectedBrand.creative}</strong></div>
+              <div><span>Landing route</span><strong>{selectedBrand.landing}</strong></div>
+              <div><span>Risk signal</span><strong>{selectedBrand.risk}</strong></div>
+              <div><span>Monitoring note</span><strong>Track new creatives, spend spikes, and changes in offer framing before your next campaign refresh.</strong></div>
+            </div>
+          </div>
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Tracker functions</h2>
+                <p>Built into this first submenu.</p>
+              </div>
+            </div>
+            <div className="compactList">
+              <div><strong>Watchlist filter</strong><span>Focus on the highest-priority brands first.</span></div>
+              <div><strong>Priority scoring</strong><span>Spend and active ads automatically classify competitor urgency.</span></div>
+              <div><strong>Action queue</strong><span>Each competitor gets a practical monitoring cadence.</span></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="workspace">
@@ -7459,6 +7585,8 @@ function App() {
   const [adsCampaigns, setAdsCampaigns] = useState(null);
   const [adsLoading, setAdsLoading] = useState(false);
   const [adsError, setAdsError] = useState(null);
+  const [metaLibraryNavOpen, setMetaLibraryNavOpen] = useState(false);
+  const [metaLibrarySubtab, setMetaLibrarySubtab] = useState("overview");
   
   const [debitAudit, setDebitAudit] = useState(null);
   const [debitLoading, setDebitLoading] = useState(false);
@@ -7856,22 +7984,51 @@ function App() {
               ))}
             </div>
           )}
-          <button className={page === "metaLibrary" ? "active" : ""} type="button" onClick={() => {
-            setPage("metaLibrary");
-            setFinanceNavOpen(false);
-            setDebitNavOpen(false);
-            setWarehouseNavOpen(false);
-            setAdsNavOpen(false);
-          }}>
+          <button
+            className={`groupButton ${page === "metaLibrary" ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setPage("metaLibrary");
+              setMetaLibraryNavOpen((open) => !open);
+              setFinanceNavOpen(false);
+              setDebitNavOpen(false);
+              setWarehouseNavOpen(false);
+              setAdsNavOpen(false);
+            }}
+          >
             <Tags size={18} />
             Meta Ads Library
+            <span className="chevron">
+              {metaLibraryNavOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
           </button>
+          {metaLibraryNavOpen && (
+            <div className="subNav">
+              {[
+                ["overview", "Overview"],
+                ["competitors", "Competitors"],
+              ].map(([id, label]) => (
+                <button
+                  className={page === "metaLibrary" && metaLibrarySubtab === id ? "active" : ""}
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setPage("metaLibrary");
+                    setMetaLibrarySubtab(id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <button className={page === "threads" ? "active" : ""} type="button" onClick={() => {
             setPage("threads");
             setFinanceNavOpen(false);
             setDebitNavOpen(false);
             setWarehouseNavOpen(false);
             setAdsNavOpen(false);
+            setMetaLibraryNavOpen(false);
           }}>
             <MessageSquare size={18} />
             Threads
@@ -7951,7 +8108,7 @@ function App() {
           loadData={loadAdsData}
         />
       ) : page === "metaLibrary" ? (
-        <MetaAdsLibraryDashboard />
+        <MetaAdsLibraryDashboard subtab={metaLibrarySubtab} setSubtab={setMetaLibrarySubtab} />
       ) : page === "threads" ? (
         <ThreadsDashboard />
       ) : (
