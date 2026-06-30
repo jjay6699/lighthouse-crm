@@ -213,6 +213,54 @@ const threadsCreators = [
   },
 ];
 
+const threadsResponderFlows = [
+  {
+    key: "product-education",
+    label: "Product education",
+    trigger: "When a user asks how the product works or whether it fits their skin / routine.",
+    firstReply: "Start with a simple benefit statement, mention the best-fit use case, then move the conversation into DM for routine matching.",
+    followUp: "Send a 3-message DM ladder covering problem, proof, and offer.",
+    escalation: "Hand to sales when the user asks about bundles, wholesale, or stock availability.",
+  },
+  {
+    key: "promo-conversion",
+    label: "Promo conversion",
+    trigger: "When a user reacts to a launch post, coupon post, or price-drop hook.",
+    firstReply: "Acknowledge the offer, add urgency with stock / time framing, and give a one-step CTA to claim it.",
+    followUp: "DM with bundle breakdown, code, and two proof points from creator content.",
+    escalation: "Send to operations if the user asks about shipping windows or payment methods.",
+  },
+  {
+    key: "ugc-seeding",
+    label: "UGC seeding",
+    trigger: "When a creator or high-intent customer asks about trying the product or collaborating.",
+    firstReply: "Thank them, confirm fit, and move the thread into a short qualification DM.",
+    followUp: "DM asking for audience niche, country, and preferred content format.",
+    escalation: "Route to creator ops when the account matches the follower and engagement thresholds.",
+  },
+];
+
+const threadsWorkflowStages = [
+  {
+    title: "UGC Pipeline",
+    owner: "Creator Ops",
+    metric: "6 briefs pending",
+    detail: "Shortlist creators, assign hook angle, and lock sample / posting dates for the next launch wave.",
+  },
+  {
+    title: "Auto Reply Coverage",
+    owner: "Community Team",
+    metric: "82% mapped intents",
+    detail: "Expand reply trees for promo, skincare education, wholesale, and logistics inquiries.",
+  },
+  {
+    title: "Offer Testing",
+    owner: "Growth",
+    metric: "3 CTAs live",
+    detail: "Rotate CTA copy by creator segment and compare DM-open to purchase-intent lift.",
+  },
+];
+
 function hkd(value) {
   return new Intl.NumberFormat("en-HK", {
     style: "currency",
@@ -6402,7 +6450,7 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
 // AI Chat Widget Helpers & Component
 // ==========================================================================
 
-function extractScreenContext({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, data, debitAudit, warehouseStock, adsCampaigns }) {
+function extractScreenContext({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, threadsSubtab, data, debitAudit, warehouseStock, adsCampaigns }) {
   const context = {
     page,
     timestamp: new Date().toISOString(),
@@ -6555,6 +6603,18 @@ function extractScreenContext({ page, financeSubtab, debitSubtab, warehouseSubta
       warehouseStockSummary: stockSummary,
       warehouseStockAlerts: stockAlerts.slice(0, 15)
     };
+  } else if (page === "threads") {
+    context.details = {
+      title: `Threads - Subtab: ${threadsSubtab}`,
+      creatorsTracked: threadsCreators.length,
+      topCreators: threadsCreators.slice(0, 3).map((creator) => ({
+        handle: creator.handle,
+        category: creator.category,
+        followers: creator.followers,
+        engagement: creator.avgEngagement
+      })),
+      responderFlows: threadsResponderFlows.map((flow) => flow.label)
+    };
   }
 
   return context;
@@ -6668,7 +6728,7 @@ function parseInlineMarkdown(text) {
   });
 }
 
-function ChatWidget({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, data, debitAudit, warehouseStock, adsCampaigns }) {
+function ChatWidget({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, threadsSubtab, data, debitAudit, warehouseStock, adsCampaigns }) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showContext, setShowContext] = useState(false);
@@ -6716,12 +6776,13 @@ function ChatWidget({ page, financeSubtab, debitSubtab, warehouseSubtab, adsSubt
       debitSubtab,
       warehouseSubtab,
       adsSubtab,
+      threadsSubtab,
       data,
       debitAudit,
       warehouseStock,
       adsCampaigns
     });
-  }, [page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, data, debitAudit, warehouseStock, adsCampaigns]);
+  }, [page, financeSubtab, debitSubtab, warehouseSubtab, adsSubtab, threadsSubtab, data, debitAudit, warehouseStock, adsCampaigns]);
 
   const saveSettings = (model) => {
     localStorage.setItem("lightmart_crm_openai_model", model);
@@ -7196,12 +7257,15 @@ function MetaAdsLibraryDashboard({ subtab, setSubtab }) {
   );
 }
 
-function ThreadsDashboard() {
+function ThreadsDashboard({ subtab, setSubtab }) {
   const [categoryQuery, setCategoryQuery] = useState("");
   const [minFollowers, setMinFollowers] = useState("0");
   const [region, setRegion] = useState("all");
   const [sortBy, setSortBy] = useState("latestPostScore");
   const [selectedCreator, setSelectedCreator] = useState(threadsCreators[0]);
+  const [ugcFormat, setUgcFormat] = useState("Problem / solution demo");
+  const [ugcObjective, setUgcObjective] = useState("Drive trial bundle");
+  const [responderFlow, setResponderFlow] = useState(threadsResponderFlows[0].key);
 
   const regions = useMemo(() => ["all", ...new Set(threadsCreators.map((creator) => creator.region))], []);
 
@@ -7219,6 +7283,19 @@ function ThreadsDashboard() {
   const avgEngagement = filteredCreators.length
     ? filteredCreators.reduce((sum, creator) => sum + creator.avgEngagement, 0) / filteredCreators.length
     : 0;
+  const activeFlow = threadsResponderFlows.find((flow) => flow.key === responderFlow) || threadsResponderFlows[0];
+  const ugcHook = `${selectedCreator.handle} opens with a ${ugcFormat.toLowerCase()} tailored to ${selectedCreator.category.toLowerCase()} buyers in ${selectedCreator.region}.`;
+  const ugcScript = [
+    `Hook: "If you are comparing ${selectedCreator.category.toLowerCase()} options and want faster clarity, watch this before you buy."`,
+    `Proof: Show ${selectedCreator.content.toLowerCase()} and frame why ${selectedCreator.opportunity.toLowerCase()}.`,
+    `CTA: Push ${ugcObjective.toLowerCase()} with a creator code, comment keyword, and DM trigger for follow-up.`,
+  ];
+  const responderSteps = [
+    `Trigger: ${activeFlow.trigger}`,
+    `Public reply: ${activeFlow.firstReply}`,
+    `DM follow-up: ${activeFlow.followUp}`,
+    `Escalation: ${activeFlow.escalation}`,
+  ];
 
   useEffect(() => {
     if (filteredCreators.length && !filteredCreators.some((creator) => creator.handle === selectedCreator.handle)) {
@@ -7231,14 +7308,27 @@ function ThreadsDashboard() {
       <header className="pageHeader">
         <div>
           <p className="eyebrow">Threads</p>
-          <h1>Trending creator discovery</h1>
-          <p className="subtitle">Search by category, filter by follower count, and rank creators by latest post momentum, activity, growth, or engagement.</p>
+          <h1>Threads growth workspace</h1>
+          <p className="subtitle">Discover creators, draft UGC angles, build auto-responder flows, and coordinate execution from one screen.</p>
         </div>
         <button className="ghostButton" type="button">
           <RefreshCw size={16} />
           Refresh scan
         </button>
       </header>
+
+      <div className="toggleContainer" style={{ marginBottom: "20px", width: "max-content", maxWidth: "100%", overflowX: "auto" }}>
+        {[
+          ["discovery", "Discovery"],
+          ["ugc", "UGC Studio"],
+          ["responders", "Auto Responders"],
+          ["workflow", "Workflow"],
+        ].map(([id, label]) => (
+          <button key={id} className={`toggleButton ${subtab === id ? "active" : ""}`} type="button" onClick={() => setSubtab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
 
       <section className="metricGrid">
         <Kpi title="Creators found" value={filteredCreators.length} note="Matching discovery rules" icon={MessageSquare} />
@@ -7247,97 +7337,247 @@ function ThreadsDashboard() {
         <Kpi title="Top audience" value={compact(topCreator.followers)} note={topCreator.region} icon={Target} />
       </section>
 
-      <section className="panel">
-        <div className="panelHeader">
-          <div>
-            <h2>Creator search</h2>
-            <p>Type a category such as skincare, retail, supplements, logistics, or mother & baby.</p>
-          </div>
-          <div className="headerActions">
-            <label className="search wideSearch">
-              <Search size={14} />
-              <input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Search category or creator" />
-            </label>
-            <select className="compactSelect" value={minFollowers} onChange={(event) => setMinFollowers(event.target.value)}>
-              <option value="0">Any followers</option>
-              <option value="50000">50k+</option>
-              <option value="100000">100k+</option>
-              <option value="200000">200k+</option>
-              <option value="400000">400k+</option>
-            </select>
-            <select className="compactSelect" value={region} onChange={(event) => setRegion(event.target.value)}>
-              {regions.map((item) => <option key={item} value={item}>{item === "all" ? "All regions" : item}</option>)}
-            </select>
-            <select className="compactSelect" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
-              <option value="latestPostScore">Latest posts</option>
-              <option value="followers">Followers</option>
-              <option value="avgEngagement">Engagement</option>
-              <option value="posts7d">Post volume</option>
-              <option value="growth">Growth</option>
-            </select>
-          </div>
-        </div>
-        <div className="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Creator</th>
-                <th>Category</th>
-                <th>Region</th>
-                <th>Followers</th>
-                <th>7d posts</th>
-                <th>Engagement</th>
-                <th>Latest score</th>
-                <th>Growth</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCreators.map((creator) => (
-                <tr key={creator.handle} className={selectedCreator.handle === creator.handle ? "selectedRow" : ""} onClick={() => setSelectedCreator(creator)}>
-                  <td><strong>{creator.handle}</strong><br /><span className="mutedCell">{creator.name}</span></td>
-                  <td>{creator.category}</td>
-                  <td>{creator.region}</td>
-                  <td>{compact(creator.followers)}</td>
-                  <td>{creator.posts7d}</td>
-                  <td>{creator.avgEngagement.toFixed(1)}%</td>
-                  <td>{creator.latestPostScore}</td>
-                  <td>{creator.growth.toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {subtab === "discovery" && (
+        <>
+          <section className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Creator search</h2>
+                <p>Type a category such as skincare, retail, supplements, logistics, or mother & baby.</p>
+              </div>
+              <div className="headerActions">
+                <label className="search wideSearch">
+                  <Search size={14} />
+                  <input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Search category or creator" />
+                </label>
+                <select className="compactSelect" value={minFollowers} onChange={(event) => setMinFollowers(event.target.value)}>
+                  <option value="0">Any followers</option>
+                  <option value="50000">50k+</option>
+                  <option value="100000">100k+</option>
+                  <option value="200000">200k+</option>
+                  <option value="400000">400k+</option>
+                </select>
+                <select className="compactSelect" value={region} onChange={(event) => setRegion(event.target.value)}>
+                  {regions.map((item) => <option key={item} value={item}>{item === "all" ? "All regions" : item}</option>)}
+                </select>
+                <select className="compactSelect" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                  <option value="latestPostScore">Latest posts</option>
+                  <option value="followers">Followers</option>
+                  <option value="avgEngagement">Engagement</option>
+                  <option value="posts7d">Post volume</option>
+                  <option value="growth">Growth</option>
+                </select>
+              </div>
+            </div>
+            <div className="tableWrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Creator</th>
+                    <th>Category</th>
+                    <th>Region</th>
+                    <th>Followers</th>
+                    <th>7d posts</th>
+                    <th>Engagement</th>
+                    <th>Latest score</th>
+                    <th>Growth</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCreators.map((creator) => (
+                    <tr key={creator.handle} className={selectedCreator.handle === creator.handle ? "selectedRow" : ""} onClick={() => setSelectedCreator(creator)}>
+                      <td><strong>{creator.handle}</strong><br /><span className="mutedCell">{creator.name}</span></td>
+                      <td>{creator.category}</td>
+                      <td>{creator.region}</td>
+                      <td>{compact(creator.followers)}</td>
+                      <td>{creator.posts7d}</td>
+                      <td>{creator.avgEngagement.toFixed(1)}%</td>
+                      <td>{creator.latestPostScore}</td>
+                      <td>{creator.growth.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-      <section className="cleanGrid">
-        <div className="panel">
-          <div className="panelHeader">
-            <div>
-              <h2>Creator analysis</h2>
-              <p>{selectedCreator.handle}</p>
+          <section className="cleanGrid">
+            <div className="panel">
+              <div className="panelHeader">
+                <div>
+                  <h2>Creator analysis</h2>
+                  <p>{selectedCreator.handle}</p>
+                </div>
+              </div>
+              <div className="analysisList">
+                <div><span>Content pattern</span><strong>{selectedCreator.content}</strong></div>
+                <div><span>Commercial opportunity</span><strong>{selectedCreator.opportunity}</strong></div>
+                <div><span>Why it is trending</span><strong>{selectedCreator.posts7d} posts in 7 days with {selectedCreator.growth.toFixed(1)}% audience growth.</strong></div>
+                <div><span>Suggested next step</span><strong>Shortlist for outreach, compare recent post hooks, and test creator-specific promo copy.</strong></div>
+              </div>
+            </div>
+            <div className="panel">
+              <div className="panelHeader">
+                <div>
+                  <h2>Ranking rules</h2>
+                  <p>How this screen scores creators.</p>
+                </div>
+              </div>
+              <div className="compactList">
+                <div><strong>Latest posts</strong><span>Prioritizes fresh posts with fast engagement movement.</span></div>
+                <div><strong>Follower filters</strong><span>Use thresholds to separate micro, mid-tier, and large creators.</span></div>
+                <div><strong>Category search</strong><span>Matches creator niche, profile name, handle, and content pattern.</span></div>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {subtab === "ugc" && (
+        <section className="cleanGrid">
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>UGC creator brief</h2>
+                <p>Turn the selected creator into a ready-to-produce Threads content brief.</p>
+              </div>
+            </div>
+            <div className="headerActions" style={{ marginBottom: "18px" }}>
+              <select className="compactSelect" value={ugcFormat} onChange={(event) => setUgcFormat(event.target.value)}>
+                <option>Problem / solution demo</option>
+                <option>Routine walkthrough</option>
+                <option>Before / after proof</option>
+                <option>Comment-to-DM hook</option>
+              </select>
+              <select className="compactSelect" value={ugcObjective} onChange={(event) => setUgcObjective(event.target.value)}>
+                <option>Drive trial bundle</option>
+                <option>Push launch waitlist</option>
+                <option>Collect skincare consult leads</option>
+                <option>Promote limited-time code</option>
+              </select>
+            </div>
+            <div className="analysisList">
+              <div><span>Selected creator</span><strong>{selectedCreator.name} ({selectedCreator.handle})</strong></div>
+              <div><span>Creative angle</span><strong>{ugcHook}</strong></div>
+              <div><span>Offer objective</span><strong>{ugcObjective} for {selectedCreator.region} audience clusters.</strong></div>
+              <div><span>Production notes</span><strong>Prioritize handheld vertical framing, creator voiceover, and one comment keyword to trigger the responder flow.</strong></div>
             </div>
           </div>
-          <div className="analysisList">
-            <div><span>Content pattern</span><strong>{selectedCreator.content}</strong></div>
-            <div><span>Commercial opportunity</span><strong>{selectedCreator.opportunity}</strong></div>
-            <div><span>Why it is trending</span><strong>{selectedCreator.posts7d} posts in 7 days with {selectedCreator.growth.toFixed(1)}% audience growth.</strong></div>
-            <div><span>Suggested next step</span><strong>Shortlist for outreach, compare recent post hooks, and test creator-specific promo copy.</strong></div>
-          </div>
-        </div>
-        <div className="panel">
-          <div className="panelHeader">
-            <div>
-              <h2>Ranking rules</h2>
-              <p>How this screen scores creators.</p>
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>UGC script draft</h2>
+                <p>Fast draft for creator handoff and internal review.</p>
+              </div>
+            </div>
+            <div className="compactList">
+              {ugcScript.map((line) => (
+                <div key={line}>
+                  <strong>{line.split(":")[0]}</strong>
+                  <span>{line.split(":").slice(1).join(":").trim()}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: "18px", padding: "16px", borderRadius: "10px", background: "rgba(79, 70, 229, 0.06)", border: "1px solid rgba(79, 70, 229, 0.16)" }}>
+              <strong style={{ display: "block", marginBottom: "6px" }}>Recommended CTA stack</strong>
+              <span style={{ color: "#475569", fontSize: "13px", lineHeight: "1.6" }}>
+                Post CTA: ask viewers to comment a keyword. Auto reply moves them into DM. DM closes with product match, bundle, and creator code.
+              </span>
             </div>
           </div>
-          <div className="compactList">
-            <div><strong>Latest posts</strong><span>Prioritizes fresh posts with fast engagement movement.</span></div>
-            <div><strong>Follower filters</strong><span>Use thresholds to separate micro, mid-tier, and large creators.</span></div>
-            <div><strong>Category search</strong><span>Matches creator niche, profile name, handle, and content pattern.</span></div>
+        </section>
+      )}
+
+      {subtab === "responders" && (
+        <section className="cleanGrid">
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Reply intent library</h2>
+                <p>Map public comments to DM follow-up flows and human escalation.</p>
+              </div>
+            </div>
+            <div className="compactList">
+              {threadsResponderFlows.map((flow) => (
+                <button
+                  key={flow.key}
+                  type="button"
+                  onClick={() => setResponderFlow(flow.key)}
+                  style={{
+                    textAlign: "left",
+                    border: flow.key === activeFlow.key ? "1px solid rgba(79, 70, 229, 0.35)" : "1px solid var(--border)",
+                    background: flow.key === activeFlow.key ? "rgba(79, 70, 229, 0.06)" : "#fff",
+                    borderRadius: "10px",
+                    padding: "14px 16px",
+                    cursor: "pointer"
+                  }}
+                >
+                  <strong>{flow.label}</strong>
+                  <span>{flow.trigger}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Automation playbook</h2>
+                <p>{activeFlow.label}</p>
+              </div>
+            </div>
+            <div className="analysisList">
+              {responderSteps.map((step) => (
+                <div key={step}>
+                  <span>{step.split(":")[0]}</span>
+                  <strong>{step.split(":").slice(1).join(":").trim()}</strong>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: "18px", padding: "16px", borderRadius: "10px", background: "#f8fafc", border: "1px solid var(--border)" }}>
+              <strong style={{ display: "block", marginBottom: "6px" }}>Suggested trigger keywords</strong>
+              <span style={{ color: "#475569", fontSize: "13px", lineHeight: "1.6" }}>
+                Interested, price, where to buy, routine, sample, bundle, code, wholesale, stock, shipping.
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {subtab === "workflow" && (
+        <section className="cleanGrid">
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Execution queue</h2>
+                <p>Operational modules to turn Threads discovery into repeatable growth work.</p>
+              </div>
+            </div>
+            <div className="compactList">
+              {threadsWorkflowStages.map((stage) => (
+                <div key={stage.title}>
+                  <strong>{stage.title}</strong>
+                  <span>{stage.detail}</span>
+                  <em style={{ fontStyle: "normal", color: "#6366f1", fontWeight: "600" }}>{stage.owner} • {stage.metric}</em>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Suggested module additions</h2>
+                <p>Next options to build into this section.</p>
+              </div>
+            </div>
+            <div className="overviewGrid" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <Kpi title="UGC briefs" value="Ready" note="Creator-by-creator scripts and hook angles" icon={Image} />
+              <Kpi title="Auto replies" value="Ready" note="Intent routing and DM response ladder" icon={Bot} />
+              <Kpi title="Creator outreach" value="Next" note="Track status, samples, codes, and approval" icon={Send} />
+              <Kpi title="Workflow rules" value="Next" note="Score creators into launch, evergreen, and retention queues" icon={Settings} />
+            </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }
@@ -7593,6 +7833,8 @@ function App() {
   const [adsError, setAdsError] = useState(null);
   const [metaLibraryNavOpen, setMetaLibraryNavOpen] = useState(false);
   const [metaLibrarySubtab, setMetaLibrarySubtab] = useState("overview");
+  const [threadsNavOpen, setThreadsNavOpen] = useState(false);
+  const [threadsSubtab, setThreadsSubtab] = useState("discovery");
   
   const [debitAudit, setDebitAudit] = useState(null);
   const [debitLoading, setDebitLoading] = useState(false);
@@ -7823,6 +8065,8 @@ function App() {
             setDebitNavOpen(false);
             setWarehouseNavOpen(false);
             setAdsNavOpen(false);
+            setMetaLibraryNavOpen(false);
+            setThreadsNavOpen(false);
           }}>
             <LayoutDashboard size={18} />
             Overview
@@ -7836,6 +8080,8 @@ function App() {
               setDebitNavOpen(false);
               setWarehouseNavOpen(false);
               setAdsNavOpen(false);
+              setMetaLibraryNavOpen(false);
+              setThreadsNavOpen(false);
             }}
           >
             <CircleDollarSign size={18} />
@@ -7875,6 +8121,8 @@ function App() {
               setFinanceNavOpen(false);
               setWarehouseNavOpen(false);
               setAdsNavOpen(false);
+              setMetaLibraryNavOpen(false);
+              setThreadsNavOpen(false);
             }}
           >
             <Receipt size={18} />
@@ -7921,6 +8169,8 @@ function App() {
               setFinanceNavOpen(false);
               setDebitNavOpen(false);
               setAdsNavOpen(false);
+              setMetaLibraryNavOpen(false);
+              setThreadsNavOpen(false);
             }}
           >
             <Package size={18} />
@@ -7962,6 +8212,8 @@ function App() {
               setFinanceNavOpen(false);
               setDebitNavOpen(false);
               setWarehouseNavOpen(false);
+              setMetaLibraryNavOpen(false);
+              setThreadsNavOpen(false);
             }}
           >
             <LineChart size={18} />
@@ -8000,6 +8252,7 @@ function App() {
               setDebitNavOpen(false);
               setWarehouseNavOpen(false);
               setAdsNavOpen(false);
+              setThreadsNavOpen(false);
             }}
           >
             <Tags size={18} />
@@ -8028,8 +8281,9 @@ function App() {
               ))}
             </div>
           )}
-          <button className={page === "threads" ? "active" : ""} type="button" onClick={() => {
+          <button className={`groupButton ${page === "threads" ? "active" : ""}`} type="button" onClick={() => {
             setPage("threads");
+            setThreadsNavOpen((open) => !open);
             setFinanceNavOpen(false);
             setDebitNavOpen(false);
             setWarehouseNavOpen(false);
@@ -8038,7 +8292,32 @@ function App() {
           }}>
             <MessageSquare size={18} />
             Threads
+            <span className="chevron">
+              {threadsNavOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
           </button>
+          {threadsNavOpen && (
+            <div className="subNav">
+              {[
+                ["discovery", "Discovery"],
+                ["ugc", "UGC Studio"],
+                ["responders", "Auto Responders"],
+                ["workflow", "Workflow"],
+              ].map(([id, label]) => (
+                <button
+                  className={page === "threads" && threadsSubtab === id ? "active" : ""}
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setPage("threads");
+                    setThreadsSubtab(id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="sidePanel">
           <span>Currency standard</span>
@@ -8116,7 +8395,7 @@ function App() {
       ) : page === "metaLibrary" ? (
         <MetaAdsLibraryDashboard subtab={metaLibrarySubtab} setSubtab={setMetaLibrarySubtab} />
       ) : page === "threads" ? (
-        <ThreadsDashboard />
+        <ThreadsDashboard subtab={threadsSubtab} setSubtab={setThreadsSubtab} />
       ) : (
         <FinancialDashboard
           data={data}
@@ -8149,6 +8428,7 @@ function App() {
         debitSubtab={debitSubtab}
         warehouseSubtab={warehouseSubtab}
         adsSubtab={adsSubtab}
+        threadsSubtab={threadsSubtab}
         data={data}
         debitAudit={debitAudit}
         warehouseStock={warehouseStock}
