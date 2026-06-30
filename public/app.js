@@ -1530,21 +1530,26 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
   const [expandedExpenses, setExpandedExpenses] = useState({});
   const growthWindow = comparison?.current;
   const growthWindowLabel = growthWindow?.start && growthWindow?.end ? `${growthWindow.start} to ${growthWindow.end}` : "";
+  const preferredSectionTotals = {
+    Income: "Total for Income",
+    "Cost of Sales": "Total for Cost of Sales",
+    "Other Income(Loss)": "Total for Other Income(Loss)",
+    Expenses: "Total for Expenses",
+    "Other Expenses": "Total for Other Expenses",
+  };
   const groups = rows.reduce((acc, row) => {
     if (!acc[row.section]) acc[row.section] = [];
     acc[row.section].push(row);
     return acc;
   }, {});
 
+  function preferredSectionRow(section, sectionRows) {
+    const preferred = preferredSectionTotals[section];
+    return sectionRows.find((item) => item.line_item === preferred) || sectionRows.find((item) => item.is_total);
+  }
+
   function sectionAmount(section, sectionRows) {
-    const preferred = {
-      Income: "Total for Income",
-      "Cost of Sales": "Gross Profit",
-      "Other Income(Loss)": "Total for Other Income(Loss)",
-      Expenses: "Total for Expenses",
-      "Other Expenses": "Net Earnings",
-    }[section];
-    const row = sectionRows.find((item) => item.line_item === preferred) || sectionRows.find((item) => item.is_total);
+    const row = preferredSectionRow(section, sectionRows);
     return row ? row.amount : sectionRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   }
 
@@ -1562,9 +1567,10 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
         const open = !!expanded[section];
         const amount = sectionAmount(section, sectionRows);
         const sectionPct = revenueBase ? `${((Number(amount || 0) / revenueBase) * 100).toFixed(1)}%` : "-";
+        const collapsedSummaryRow = preferredSectionRow(section, sectionRows);
         const visibleRows = open
           ? sectionRows
-          : sectionRows.filter((row) => row.line_item === "Gross Profit" || row.line_item === "Net Earnings");
+          : (collapsedSummaryRow ? [collapsedSummaryRow] : []);
 
         return (
           <React.Fragment key={section}>
@@ -1577,7 +1583,7 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
             </button>
             {visibleRows.map((row) => {
               const rowPct = revenueBase ? `${((Number(row.amount || 0) / revenueBase) * 100).toFixed(1)}%` : "-";
-              const isKeyTotal = row.line_item === "Gross Profit" || row.line_item === "Net Earnings";
+              const isKeyTotal = row.line_item === preferredSectionTotals[row.section] || row.line_item === "Gross Profit" || row.line_item === "Net Earnings";
               const expenseKey = `${row.section}-${row.line_item}`;
               const contributors = row.expense_contributors || [];
               const showContributors = row.section === "Expenses" && contributors.length > 0;

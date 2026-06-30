@@ -1455,17 +1455,6 @@ function getDashboard(params) {
     )
     .all(sectionFilter.values);
 
-  const sectionSummary = db
-    .prepare(
-      `
-      SELECT f.section, SUM(${pnlAmount}) AS amount, COUNT(*) AS rows
-      ${baseJoin}
-      GROUP BY f.section
-      ORDER BY ABS(amount) DESC
-      `
-    )
-    .all(filter.values);
-
   const costOfSalesTotal = Number(
     db
       .prepare(
@@ -1660,6 +1649,29 @@ function getDashboard(params) {
       ...(contributors ? { expense_contributors: contributors } : {}),
     };
   });
+  const sectionSummary = Object.entries(
+    pAndL.reduce((acc, row) => {
+      if (!acc[row.section]) acc[row.section] = [];
+      acc[row.section].push(row);
+      return acc;
+    }, {})
+  )
+    .map(([section, sectionRows]) => {
+      const preferredLineItem = {
+        Income: "Total for Income",
+        "Cost of Sales": "Total for Cost of Sales",
+        "Other Income(Loss)": "Total for Other Income(Loss)",
+        Expenses: "Total for Expenses",
+        "Other Expenses": "Total for Other Expenses",
+      }[section];
+      const preferredRow = sectionRows.find((row) => row.line_item === preferredLineItem) || sectionRows.find((row) => row.is_total);
+      return {
+        section,
+        amount: Number(preferredRow?.amount || 0),
+        rows: sectionRows.length,
+      };
+    })
+    .sort((a, b) => Math.abs(Number(b.amount || 0)) - Math.abs(Number(a.amount || 0)));
 
   const filteredReports = db
     .prepare(
