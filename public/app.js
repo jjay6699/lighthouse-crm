@@ -7336,7 +7336,7 @@ function ThreadsDashboard() {
   );
 }
 
-const UPGRADE_IN_PROGRESS = true; // Set to false to disable and restore dashboard access
+const UPGRADE_IN_PROGRESS = false; // Set to false to disable and restore dashboard access
 
 function UpgradeInProgressScreen() {
   return (
