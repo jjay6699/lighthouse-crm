@@ -70,6 +70,26 @@ def fetch_rate_to_hkd(source: str) -> tuple[float, str, str]:
         return FALLBACK_RATES_TO_HKD[source], "fallback", datetime.now(timezone.utc).date().isoformat()
 
 
+def load_stored_rates(db_path: Path) -> dict[str, tuple[float, str, str]]:
+    if not db_path.exists():
+        return {}
+    conn = sqlite3.connect(db_path)
+    try:
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'fx_rates'"
+        ).fetchone()
+        if not table:
+            return {}
+        return {
+            source: (float(rate), provider, as_of)
+            for source, rate, provider, as_of in conn.execute(
+                "SELECT source_currency, rate, provider, as_of FROM fx_rates"
+            )
+        }
+    finally:
+        conn.close()
+
+
 def clean_label(value) -> str | None:
     if pd.isna(value):
         return None
@@ -655,7 +675,12 @@ def main():
 
     sku_costs = parse_mapping_files(discover_mapping_files())
     currencies = sorted({report["currency"] for report in reports + sales_reports})
-    rates = {currency: fetch_rate_to_hkd(currency) for currency in currencies}
+    refresh_fx = os.environ.get("REFRESH_FX_RATES", "").strip().lower() in {"1", "true", "yes"}
+    stored_rates = {} if refresh_fx else load_stored_rates(DB_PATH)
+    rates = {
+        currency: stored_rates.get(currency) or fetch_rate_to_hkd(currency)
+        for currency in currencies
+    }
 
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
