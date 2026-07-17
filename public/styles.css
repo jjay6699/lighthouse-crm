@@ -1803,6 +1803,26 @@ tbody tr:hover td {
   font-weight: 600;
 }
 
+.brandMarginCell {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.brandMarginCell em {
+  color: #0f172a;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.brandMarginCell small {
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
 /* Beautiful Interactive Search Panel Results */
 .skuHeader {
   display: grid;

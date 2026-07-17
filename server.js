@@ -1195,6 +1195,14 @@ function comparisonWindow(start, end) {
   };
 }
 
+function trailingMonthWindow(end, monthCount = 3) {
+  if (!end) return { start: "", end: "" };
+  const [year, month] = end.split("-").map(Number);
+  if (!year || !month) return { start: "", end };
+  const start = new Date(Date.UTC(year, month - monthCount, 1)).toISOString().slice(0, 10);
+  return { start, end };
+}
+
 function minIsoDate(...values) {
   return values.filter(Boolean).sort()[0] || "";
 }
@@ -1243,6 +1251,7 @@ function fairGrowthMetric(currentSum, daysCurrent, compareMap, daysCompare, key)
   }
   const currentDaily = cSum / daysCurrent;
   const compareDaily = pSum / daysCompare;
+  const normalizedCompare = compareDaily * daysCurrent;
   
   if (Math.abs(compareDaily) < 0.01) {
     return { growth: null, value: cSum - pSum, status: "no_prior" };
@@ -1250,7 +1259,7 @@ function fairGrowthMetric(currentSum, daysCurrent, compareMap, daysCompare, key)
   
   return {
     growth: safeGrowth(currentDaily, compareDaily),
-    value: cSum - pSum,
+    value: cSum - normalizedCompare,
     status: "ok",
   };
 }
@@ -1555,8 +1564,9 @@ function getDashboard(params) {
   const p2From = params.get("dateFrom2") || (p1From ? shiftDate(p1From, { years: -1 }) : "");
   const p2To = params.get("dateTo2") || (p1To ? shiftDate(p1To, { years: -1 }) : "");
 
-  const p3From = params.get("dateFrom3") || (p1From ? shiftDate(p1From, { months: -3 }) : "");
-  const p3To = params.get("dateTo3") || (p1From ? shiftDate(p1From, { days: -1 }) : "");
+  const trailingP3 = trailingMonthWindow(p1To, 3);
+  const p3From = params.get("dateFrom3") || trailingP3.start;
+  const p3To = params.get("dateTo3") || trailingP3.end;
 
   const daysP1 = daysBetween(p1From, p1To);
   const daysP2 = daysBetween(p2From, p2To);
@@ -1859,6 +1869,7 @@ function getDashboard(params) {
           SELECT
             SUM(s.quantity) AS quantity,
             SUM(s.amount_hkd) AS revenue,
+            SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.amount_hkd END) AS costed_revenue,
             SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN NULL ELSE s.quantity * sc.unit_cost_hkd END) AS cogs_hkd,
             SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.quantity END) AS costed_quantity,
             COUNT(DISTINCT s.sku) AS sku_count,
@@ -1888,17 +1899,18 @@ function getDashboard(params) {
         SELECT
           ${skuBrandKey} AS brand_key,
           MIN(${skuBrandValue}) AS brand,
-          s.sku,
-          COALESCE(sc.mapped_product_name, s.product_name) AS product_name,
+          MIN(s.sku) AS sku,
+          MIN(COALESCE(sc.mapped_product_name, s.product_name)) AS product_name,
           SUM(s.quantity) AS quantity,
           SUM(s.amount_hkd) AS revenue,
+          SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.amount_hkd END) AS costed_revenue,
           SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN NULL ELSE s.quantity * sc.unit_cost_hkd END) AS cogs_hkd,
           SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.quantity END) AS costed_quantity,
           CASE WHEN SUM(s.quantity) != 0 THEN SUM(s.amount_hkd) / SUM(s.quantity) ELSE 0 END AS avg_price,
           COUNT(DISTINCT c.name) AS company_count,
           COUNT(DISTINCT s.customer) AS customer_count
         ${skuJoin}
-        GROUP BY ${skuBrandKey}, s.sku, COALESCE(sc.mapped_product_name, s.product_name)
+        GROUP BY ${skuBrandKey}, lower(s.sku), lower(trim(COALESCE(sc.mapped_product_name, s.product_name)))
         HAVING ABS(revenue) > 0.01
         ORDER BY revenue DESC
         LIMIT 250
@@ -1913,6 +1925,7 @@ function getDashboard(params) {
           MIN(${skuBrandValue}) AS brand,
           SUM(s.quantity) AS quantity,
           SUM(s.amount_hkd) AS revenue,
+          SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.amount_hkd END) AS costed_revenue,
           SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN NULL ELSE s.quantity * sc.unit_cost_hkd END) AS cogs_hkd,
           SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.quantity END) AS costed_quantity,
           COUNT(DISTINCT s.sku) AS sku_count
@@ -1932,6 +1945,7 @@ function getDashboard(params) {
           s.customer AS customer,
           SUM(s.quantity) AS quantity,
           SUM(s.amount_hkd) AS revenue,
+          SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.amount_hkd END) AS costed_revenue,
           SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN NULL ELSE s.quantity * sc.unit_cost_hkd END) AS cogs_hkd,
           SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.quantity END) AS costed_quantity,
           COUNT(DISTINCT s.sku) AS sku_count
@@ -2145,18 +2159,23 @@ function getDashboard(params) {
   const skuCurrentRevenue = sumRevenue(skuBrandCurrent);
   const skuLyRevenue = sumRevenue(skuBrandLy);
   const skuP3mRevenue = sumRevenue(skuBrandP3m);
+  const skuTotalP2Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuLyRevenue]]), daysP2, "total");
+  const skuTotalP3Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuP3mRevenue]]), daysP3, "total");
   const skuKey = (row) =>
     `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").trim().toLowerCase()}`;
   const skuGrossProfit = (row) => {
     if (row.cogs_hkd === null || row.cogs_hkd === undefined) return null;
-    const quantity = Number(row.quantity || 0);
-    const costedQuantity = Number(row.costed_quantity || 0);
-    if (Math.abs(quantity - costedQuantity) > 0.0001) return null;
-    return Number(row.revenue || 0) - Number(row.cogs_hkd || 0);
+    const costedRevenue = Number(row.costed_revenue || 0);
+    if (Math.abs(costedRevenue) < 0.01) return null;
+    return costedRevenue - Number(row.cogs_hkd || 0);
   };
   const skuGrossMargin = (row, grossProfit) => {
+    const costedRevenue = Number(row.costed_revenue || 0);
+    return grossProfit === null || !costedRevenue ? null : grossProfit / costedRevenue;
+  };
+  const skuMarginCoverage = (row) => {
     const revenue = Number(row.revenue || 0);
-    return grossProfit === null || !revenue ? null : grossProfit / revenue;
+    return revenue ? Number(row.costed_revenue || 0) / revenue : 0;
   };
 
   const pnlAvailable = meta.pnlCoverage.exact;
@@ -2192,8 +2211,11 @@ function getDashboard(params) {
         current_revenue: skuCurrentRevenue,
         p2_revenue: skuLyRevenue,
         p3_revenue: skuP3mRevenue,
-        growth_p2: fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuLyRevenue]]), daysP2, "total").growth,
-        growth_p3: fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuP3mRevenue]]), daysP3, "total").growth,
+        growth_p2: skuTotalP2Metric.growth,
+        growth_p3: skuTotalP3Metric.growth,
+        status_p2: skuTotalP2Metric.status,
+        status_p3: skuTotalP3Metric.status,
+        basis: "transaction_sales_monthly",
         window: skuComparison,
       },
       topRevenueCompany: pnlAvailable ? topRevenueCompany : null,
@@ -2229,6 +2251,7 @@ function getDashboard(params) {
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
           gross_margin: grossMargin,
           gross_profit: mappedGrossProfit,
+          margin_coverage: skuMarginCoverage(row),
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
           growth_p2: p2Metric.growth,
           growth_p3: p3Metric.growth,
@@ -2250,6 +2273,7 @@ function getDashboard(params) {
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
           gross_profit: mappedGrossProfit,
           gross_margin: grossMargin,
+          margin_coverage: skuMarginCoverage(row),
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
           growth_p2: p2Metric.growth,
           growth_p3: p3Metric.growth,
@@ -2268,6 +2292,7 @@ function getDashboard(params) {
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
           gross_profit: mappedGrossProfit,
           gross_margin: grossMargin,
+          margin_coverage: skuMarginCoverage(row),
           margin_source: mappedGrossProfit === null ? "missing_sku_cogs" : "sku_cogs",
           growth_p2: p2Metric.growth,
           growth_p3: p3Metric.growth,

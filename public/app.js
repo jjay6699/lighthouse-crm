@@ -287,6 +287,28 @@ function jsShiftDate(val, { years = 0, months = 0, days = 0 }) {
   return d.toISOString().slice(0, 10);
 }
 
+function jsTrailingMonthWindow(end, monthCount = 3) {
+  if (!end) return { start: "", end: "" };
+  const [year, month] = end.split("-").map(Number);
+  if (!year || !month) return { start: "", end };
+  const start = new Date(Date.UTC(year, month - monthCount, 1)).toISOString().slice(0, 10);
+  return { start, end };
+}
+
+function latestCompletedMonthRange(maxDate) {
+  if (!maxDate) return { start: "", end: "" };
+  const current = new Date(`${maxDate}T00:00:00Z`);
+  if (Number.isNaN(current.getTime())) return { start: "", end: "" };
+  const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0));
+  const targetEnd = current.getUTCDate() === monthEnd.getUTCDate()
+    ? monthEnd
+    : new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 0));
+  return {
+    start: new Date(Date.UTC(targetEnd.getUTCFullYear(), targetEnd.getUTCMonth(), 1)).toISOString().slice(0, 10),
+    end: targetEnd.toISOString().slice(0, 10),
+  };
+}
+
 function pctOrDash(value) {
   return value === null || value === undefined ? "n/a" : pct(value);
 }
@@ -350,13 +372,17 @@ function ContributionList({ rows }) {
 }
 
 function InsightGrid({ insights }) {
+  const exactPnlGrowth = insights.revenueGrowth || {};
+  const skuGrowth = insights.skuGrowth || {};
+  const p2UsesSku = exactPnlGrowth.growth_p2 === null || exactPnlGrowth.growth_p2 === undefined;
+  const p3UsesSku = exactPnlGrowth.growth_p3 === null || exactPnlGrowth.growth_p3 === undefined;
   const cards = [
     {
       label: "Revenue",
       value: hkd(insights.revenueTotal),
       lines: [
-        ["Growth vs P2", <Growth value={insights.revenueGrowth?.growth_p2} status={insights.revenueGrowth?.status_p2} />],
-        ["Growth vs P3", <Growth value={insights.revenueGrowth?.growth_p3} status={insights.revenueGrowth?.status_p3} />],
+        [p2UsesSku ? "Sales vs P2" : "P&L vs P2", <Growth value={p2UsesSku ? skuGrowth.growth_p2 : exactPnlGrowth.growth_p2} status={p2UsesSku ? skuGrowth.status_p2 : exactPnlGrowth.status_p2} missingLabel="no sales" />],
+        [p3UsesSku ? "Sales vs P3" : "P&L vs P3", <Growth value={p3UsesSku ? skuGrowth.growth_p3 : exactPnlGrowth.growth_p3} status={p3UsesSku ? skuGrowth.status_p3 : exactPnlGrowth.status_p3} missingLabel="no sales" />],
         [
           "Top company",
           insights.topRevenueCompany ? (
@@ -550,7 +576,7 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
       <div className="brandMixHead">
         <span>{entityLabel}</span>
         <span>Revenue</span>
-        <span>Margin $</span>
+        <span>Costed margin</span>
         <span>Share</span>
         <span>vs P2</span>
         <span>vs P3</span>
@@ -567,10 +593,13 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
               </div>
             </div>
             <em>{hkd(row.revenue)}</em>
-            <em>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</em>
+            <span className="brandMarginCell">
+              <em>{row.gross_profit === null || row.gross_profit === undefined ? "No COGS" : hkd(row.gross_profit)}</em>
+              <small>{pct(row.margin_coverage)} covered</small>
+            </span>
             <strong>{pct(row.revenue_share)}</strong>
-            <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" />
-            <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" />
+            <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="New" />
+            <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="New" />
           </div>
         );
       })}
@@ -726,7 +755,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           <p>Sales by Product/Service detail, external customers only, converted to HKD.</p>
         </div>
         <p className="sourceNote">
-          SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. Aggregate SKU margin is shown only when every included sale has mapped COGS.
+          SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. Costed margin uses only sales with mapped COGS and always shows its coverage.
         </p>
         <div className="skuReconcile">
           <span>P&L revenue {pnlRevenueAvailable ? hkd(pnlRevenue) : "unavailable for this period"}</span>
@@ -740,7 +769,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
               <span>
                 {missingCostMap
                   ? "Upload MAPPING DATA.xlsx with the Sales by Product files, then reimport finance data."
-                  : `${pct(mappedRevenueShare)} of visible SKU revenue has mapped COGS. Aggregate and partially mapped group margins remain n/a.`}
+                  : `${pct(mappedRevenueShare)} of visible SKU revenue has mapped COGS. Displayed costed margins apply only to that mapped revenue.`}
               </span>
             </div>
           </div>
@@ -787,15 +816,15 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                 <div className="skuResultMeta">
                   <span>
                     <b>Margin $</b>
-                    {hkdOrDash(row.gross_profit)}
+                    {row.gross_profit === null || row.gross_profit === undefined ? "No COGS" : hkd(row.gross_profit)}
                   </span>
                   <span>
                     <b>vs P2</b>
-                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" />
+                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="New" />
                   </span>
                   <span>
                     <b>vs P3</b>
-                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" />
+                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="New" />
                   </span>
                 </div>
               </button>
@@ -862,11 +891,11 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                   <td>{hkd(row.revenue)}</td>
                   <td>{pct(row.revenue_share)}</td>
                   <td>{hkd(row.avg_price)}</td>
-                  <td>{row.gross_profit === null || row.gross_profit === undefined ? "n/a" : hkd(row.gross_profit)}</td>
+                  <td>{row.gross_profit === null || row.gross_profit === undefined ? "No COGS" : hkd(row.gross_profit)}</td>
                   <td>{row.growth_value_p2 === null || row.growth_value_p2 === undefined ? "n/a" : hkd(row.growth_value_p2)}</td>
-                  <td><Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" /></td>
+                  <td><Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="New" /></td>
                   <td>{row.growth_value_p3 === null || row.growth_value_p3 === undefined ? "n/a" : hkd(row.growth_value_p3)}</td>
-                  <td><Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" /></td>
+                  <td><Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="New" /></td>
                 </tr>
               ))}
             </tbody>
@@ -974,8 +1003,8 @@ function ScopeStrip({ filters }) {
     { label: "Brand", value: filters.brand?.length ? `${filters.brand.length} selected` : "All brands" },
     { label: "Customer", value: filters.customer?.length ? `${filters.customer.length} selected` : "All customers" },
     { label: "Active Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
-    { label: "Comparison Period A", value: filters.dateFrom2 && filters.dateTo2 ? `${filters.dateFrom2} to ${filters.dateTo2}` : "Not set" },
-    { label: "Comparison Period B", value: filters.dateFrom3 && filters.dateTo3 ? `${filters.dateFrom3} to ${filters.dateTo3}` : "Not set" },
+    { label: "P2 Last Year", value: filters.dateFrom2 && filters.dateTo2 ? `${filters.dateFrom2} to ${filters.dateTo2}` : "Not set" },
+    { label: "P3 Trailing 3M", value: filters.dateFrom3 && filters.dateTo3 ? `${filters.dateFrom3} to ${filters.dateTo3}` : "Not set" },
   ];
   return (
     <div className="scopeStrip">
@@ -1298,8 +1327,9 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
     if (comparisonMode === "standard" && filters.dateFrom && filters.dateTo) {
       const from2 = jsShiftDate(filters.dateFrom, { years: -1 });
       const to2 = jsShiftDate(filters.dateTo, { years: -1 });
-      const from3 = jsShiftDate(filters.dateFrom, { months: -3 });
-      const to3 = jsShiftDate(filters.dateFrom, { days: -1 });
+      const trailingP3 = jsTrailingMonthWindow(filters.dateTo, 3);
+      const from3 = trailingP3.start;
+      const to3 = trailingP3.end;
       
       if (
         from2 !== filters.dateFrom2 ||
@@ -1355,14 +1385,13 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const expenseRatio = revenueBase ? Number(data.kpis.expenses || 0) / revenueBase : 0;
   const netMargin = revenueBase ? Number(data.kpis.net_earnings || 0) / revenueBase : 0;
   const skuRevenue = Number(data.sku?.totals?.revenue || 0);
+  const skuCostedRevenue = Number(data.sku?.totals?.costed_revenue || 0);
   const skuCogs = data.sku?.totals?.cogs_hkd === null || data.sku?.totals?.cogs_hkd === undefined
     ? null
     : Number(data.sku.totals.cogs_hkd || 0);
-  const skuQuantity = Number(data.sku?.totals?.quantity || 0);
-  const skuCostedQuantity = Number(data.sku?.totals?.costed_quantity || 0);
-  const skuCostsComplete = skuCogs !== null && Math.abs(skuQuantity - skuCostedQuantity) <= 0.0001;
-  const skuGrossProfit = skuCostsComplete ? skuRevenue - skuCogs : null;
-  const skuGrossMargin = skuGrossProfit === null || !skuRevenue ? null : skuGrossProfit / skuRevenue;
+  const skuGrossProfit = skuCogs === null || !skuCostedRevenue ? null : skuCostedRevenue - skuCogs;
+  const skuGrossMargin = skuGrossProfit === null ? null : skuGrossProfit / skuCostedRevenue;
+  const skuMarginCoverage = skuRevenue ? skuCostedRevenue / skuRevenue : 0;
   const statementContext = [
     filters.company !== "all" ? filters.company : "All companies",
     isClassView
@@ -1372,7 +1401,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const metricCards = subtab === "sku"
     ? [
         { title: "SKU revenue", value: hkd(skuRevenue), note: "Sales by Product rows", icon: TrendingUp },
-        { title: "SKU gross margin", value: pctOrDash(skuGrossMargin), note: skuGrossProfit === null ? "Complete COGS coverage required" : hkd(skuGrossProfit), icon: LineChart },
+        { title: "Costed gross margin", value: pctOrDash(skuGrossMargin), note: skuGrossProfit === null ? "No mapped COGS" : `${hkd(skuGrossProfit)} | ${pct(skuMarginCoverage)} covered`, icon: LineChart },
         { title: "Units sold", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.quantity || 0)), note: "Filtered transaction dates", icon: Package },
         { title: "SKUs", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.sku_count || 0)), note: `${data.sku?.totals?.brand_count || 0} brands`, icon: Tags },
       ]
@@ -7931,10 +7960,11 @@ function App() {
       if (d.ready) {
         setData(d);
         if (!datesInitialized && d.meta.dateRange.min && d.meta.dateRange.max) {
+          const monthlyRange = latestCompletedMonthRange(d.meta.skuDateRange?.max || d.meta.dateRange.max);
           setFilters((prev) => ({
             ...prev,
-            dateFrom: d.meta.dateRange.min,
-            dateTo: d.meta.dateRange.max,
+            dateFrom: monthlyRange.start || d.meta.dateRange.min,
+            dateTo: monthlyRange.end || d.meta.dateRange.max,
           }));
           setDatesInitialized(true);
         }

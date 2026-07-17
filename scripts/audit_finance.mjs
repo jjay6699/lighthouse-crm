@@ -83,11 +83,34 @@ assert(full.insights.revenueGrowth.growth_p2 === null, "Estimated P&L growth mus
 assert(full.meta.fxPolicy?.basis === "stored_import_rate", "FX conversion basis is missing");
 
 for (const row of [...full.sku.rows, ...full.sku.brands, ...full.sku.customers]) {
-  const complete = Math.abs(amount(row.quantity) - amount(row.costed_quantity)) <= 0.0001;
-  if (!complete) assert(row.gross_profit === null, `Partial COGS row exposed a margin: ${row.sku || row.brand || row.customer}`);
-  if (complete && row.cogs_hkd !== null) {
-    assert(Math.abs(amount(row.gross_profit) - (amount(row.revenue) - amount(row.cogs_hkd))) <= tolerance, "SKU margin mismatch");
+  const costedRevenue = amount(row.costed_revenue);
+  const expectedCoverage = amount(row.revenue) ? costedRevenue / amount(row.revenue) : 0;
+  assert(Math.abs(amount(row.margin_coverage) - expectedCoverage) <= 0.000001, "SKU margin coverage mismatch");
+  if (!costedRevenue) {
+    assert(row.gross_profit === null, `Uncosted row exposed a margin: ${row.sku || row.brand || row.customer}`);
+  } else if (row.cogs_hkd !== null) {
+    const expectedProfit = costedRevenue - amount(row.cogs_hkd);
+    assert(Math.abs(amount(row.gross_profit) - expectedProfit) <= tolerance, "SKU costed margin mismatch");
+    assert(Math.abs(amount(row.gross_margin) - expectedProfit / costedRevenue) <= 0.000001, "SKU costed margin rate mismatch");
   }
 }
 
-console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, dimension parity, ${unavailableCases.length} blocked estimate cases, SKU COGS coverage rules, comparison coverage, and FX basis.`);
+const aprilMonthly = await dashboard({
+  dimension: "class",
+  dateFrom: "2026-04-01",
+  dateTo: "2026-04-30",
+  dateFrom2: "2025-04-01",
+  dateTo2: "2025-04-30",
+  dateFrom3: "2026-02-01",
+  dateTo3: "2026-04-30",
+});
+assert(aprilMonthly.sku.comparison.p3m.start === "2026-02-01", "P3 must start at the first day of the trailing three-month window");
+assert(aprilMonthly.sku.comparison.p3m.end === "2026-04-30", "P3 must end on the selected period end date");
+assert(aprilMonthly.insights.skuGrowth.growth_p2 !== null, "Monthly P2 sales growth is missing");
+assert(aprilMonthly.insights.skuGrowth.growth_p3 !== null, "Trailing P3 sales growth is missing");
+for (const row of aprilMonthly.sku.rows.filter((item) => item.growth_status_p3 === "ok")) {
+  const expectedValue = amount(row.revenue) * amount(row.growth_p3) / (1 + amount(row.growth_p3));
+  assert(Math.abs(amount(row.growth_value_p3) - expectedValue) <= tolerance, `P3 growth dollars are not normalized: ${row.sku}`);
+}
+
+console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, dimension parity, ${unavailableCases.length} blocked estimate cases, costed SKU margins, monthly P2/P3 comparisons, and FX basis.`);
