@@ -1788,6 +1788,42 @@ function getDashboard(params) {
   };
   const requestedDimension = params.get("dimension") || "class";
 
+  const pnlRangeClauses = ["r.period_start IS NOT NULL", "r.period_end IS NOT NULL", "r.dimension = $rangeDimension"];
+  const pnlRangeValues = { $rangeDimension: requestedDimension };
+  const rangeCompany = params.get("company");
+  const rangeBatch = params.get("batch");
+  if (rangeCompany && rangeCompany !== "all") {
+    pnlRangeClauses.push("c.name = $rangeCompany");
+    pnlRangeValues.$rangeCompany = rangeCompany;
+  }
+  if (rangeBatch && rangeBatch !== "all") {
+    pnlRangeClauses.push("b.batch_key = $rangeBatch");
+    pnlRangeValues.$rangeBatch = rangeBatch;
+  }
+  const pnlAvailableRanges = db
+    .prepare(
+      `
+      SELECT
+        r.period_start AS start,
+        r.period_end AS end,
+        COUNT(DISTINCT r.id) AS report_count,
+        COUNT(DISTINCT r.company_id) AS company_count
+      FROM reports r
+      JOIN batches b ON b.id = r.batch_id
+      JOIN companies c ON c.id = r.company_id
+      WHERE ${pnlRangeClauses.join(" AND ")}
+      GROUP BY r.period_start, r.period_end
+      ORDER BY r.period_end DESC, r.period_start DESC
+      `
+    )
+    .all(pnlRangeValues);
+  const widestCompanyCoverage = Math.max(...pnlAvailableRanges.map((range) => Number(range.company_count || 0)), 0);
+  const completePnlRanges = pnlAvailableRanges.filter(
+    (range) => Number(range.company_count || 0) === widestCompanyCoverage
+  );
+  const monthlyPnlRanges = completePnlRanges.filter((range) => daysBetween(range.start, range.end) <= 45);
+  const preferredPnlRange = monthlyPnlRanges[0] || completePnlRanges[0] || null;
+
   const meta = {
     batches: db.prepare("SELECT batch_key, name, uploaded_at, period_start, period_end FROM batches ORDER BY COALESCE(period_start, uploaded_at) DESC, id DESC").all(),
     companies: db.prepare("SELECT name, source_currency AS currency FROM companies ORDER BY name").all(),
@@ -1800,6 +1836,8 @@ function getDashboard(params) {
     dateRange: reportDateRange,
     skuDateRange,
     availableDateRange,
+    pnlAvailableRanges,
+    preferredPnlRange,
     pnlCoverage: {
       requested: requestedPnlRange,
       active: filteredReportDateRange,

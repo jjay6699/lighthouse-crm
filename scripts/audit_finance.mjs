@@ -82,6 +82,15 @@ assert(full.insights.revenueGrowth.status_p2 === "no_prior", "P&L growth should 
 assert(full.insights.revenueGrowth.growth_p2 === null, "Estimated P&L growth must not be returned");
 assert(full.meta.fxPolicy?.basis === "stored_import_rate", "FX conversion basis is missing");
 
+const initialClass = await dashboard({ dimension: "class" });
+assert(initialClass.meta.preferredPnlRange?.start === "2026-04-01", "Complete monthly P&L should be the preferred initial range");
+assert(initialClass.meta.preferredPnlRange?.end === "2026-04-30", "Preferred monthly P&L end date is wrong");
+const historicalBatch = initialClass.meta.batches.find((batch) => batch.name === "Historical backfill 2023-2026");
+assert(historicalBatch, "Historical-only regression batch is missing");
+const historicalOnly = await dashboard({ dimension: "class", batch: historicalBatch.batch_key });
+assert(historicalOnly.meta.preferredPnlRange?.start === "2023-01-01", "Historical-only data should fall back to its exact P&L start");
+assert(historicalOnly.meta.preferredPnlRange?.end === "2026-05-22", "Historical-only data should fall back to its exact P&L end");
+
 for (const row of [...full.sku.rows, ...full.sku.brands, ...full.sku.customers]) {
   const costedRevenue = amount(row.costed_revenue);
   const expectedCoverage = amount(row.revenue) ? costedRevenue / amount(row.revenue) : 0;

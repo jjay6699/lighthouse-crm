@@ -1913,6 +1913,12 @@ tbody tr:hover td {
   box-shadow: var(--shadow);
 }
 
+.skuRangeNotice > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
 .skuRangeNotice.warning {
   border-color: #f59e0b;
   background: #fffbeb;

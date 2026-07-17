@@ -295,20 +295,6 @@ function jsTrailingMonthWindow(end, monthCount = 3) {
   return { start, end };
 }
 
-function latestCompletedMonthRange(maxDate) {
-  if (!maxDate) return { start: "", end: "" };
-  const current = new Date(`${maxDate}T00:00:00Z`);
-  if (Number.isNaN(current.getTime())) return { start: "", end: "" };
-  const monthEnd = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0));
-  const targetEnd = current.getUTCDate() === monthEnd.getUTCDate()
-    ? monthEnd
-    : new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 0));
-  return {
-    start: new Date(Date.UTC(targetEnd.getUTCFullYear(), targetEnd.getUTCMonth(), 1)).toISOString().slice(0, 10),
-    end: targetEnd.toISOString().slice(0, 10),
-  };
-}
-
 function pctOrDash(value) {
   return value === null || value === undefined ? "n/a" : pct(value);
 }
@@ -7930,6 +7916,24 @@ function App() {
   const [uploadState, setUploadState] = useState({ busy: false, message: "" });
   const [datesInitialized, setDatesInitialized] = useState(false);
   const loadRequestId = useRef(0);
+  const financeRangeScopeRef = useRef(`${filters.batch}|${filters.company}|${filters.dimension}`);
+
+  useEffect(() => {
+    const nextScope = `${filters.batch}|${filters.company}|${filters.dimension}`;
+    if (financeRangeScopeRef.current === nextScope) return;
+    financeRangeScopeRef.current = nextScope;
+    if (!datesInitialized) return;
+    setDatesInitialized(false);
+    setFilters((current) => ({
+      ...current,
+      dateFrom: "",
+      dateTo: "",
+      dateFrom2: "",
+      dateTo2: "",
+      dateFrom3: "",
+      dateTo3: "",
+    }));
+  }, [filters.batch, filters.company, filters.dimension, datesInitialized]);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -7960,11 +7964,11 @@ function App() {
       if (d.ready) {
         setData(d);
         if (!datesInitialized && d.meta.dateRange.min && d.meta.dateRange.max) {
-          const monthlyRange = latestCompletedMonthRange(d.meta.skuDateRange?.max || d.meta.dateRange.max);
+          const exactRange = d.meta.preferredPnlRange;
           setFilters((prev) => ({
             ...prev,
-            dateFrom: monthlyRange.start || d.meta.dateRange.min,
-            dateTo: monthlyRange.end || d.meta.dateRange.max,
+            dateFrom: exactRange?.start || d.meta.dateRange.min,
+            dateTo: exactRange?.end || d.meta.dateRange.max,
           }));
           setDatesInitialized(true);
         }
