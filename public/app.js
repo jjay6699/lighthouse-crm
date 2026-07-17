@@ -355,8 +355,8 @@ function InsightGrid({ insights }) {
       label: "Revenue",
       value: hkd(insights.revenueTotal),
       lines: [
-        ["Growth vs P2", <Growth value={insights.skuGrowth?.growth_p2} />],
-        ["Growth vs P3", <Growth value={insights.skuGrowth?.growth_p3} />],
+        ["Growth vs P2", <Growth value={insights.revenueGrowth?.growth_p2} status={insights.revenueGrowth?.status_p2} />],
+        ["Growth vs P3", <Growth value={insights.revenueGrowth?.growth_p3} status={insights.revenueGrowth?.status_p3} />],
         [
           "Top company",
           insights.topRevenueCompany ? (
@@ -582,7 +582,7 @@ function Growth({ value, status, missingLabel = "n/a" }) {
   const numeric = Number(value);
   const empty = value === null || value === undefined || Number.isNaN(numeric);
   const tone = empty ? "na" : numeric >= 0 ? "up" : "down";
-  const label = empty && status === "no_prior" ? missingLabel : pctOrDash(value);
+  const label = empty && status === "unavailable" ? "unavailable" : empty && status === "no_prior" ? missingLabel : pctOrDash(value);
   return <span className={`growth ${tone}`}>{label}</span>;
 }
 
@@ -629,14 +629,15 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
   const activeRange = sku.activeRange || {};
   const dataRange = sku.dataRange || {};
   const costCoverage = sku.costCoverage || {};
-  const pnlRevenue = Number(kpis?.revenue || 0);
+  const pnlRevenueAvailable = kpis?.revenue !== null && kpis?.revenue !== undefined;
+  const pnlRevenue = pnlRevenueAvailable ? Number(kpis.revenue || 0) : null;
   const skuRevenue = Number(sku.totals.revenue || 0);
-  const revenueGap = pnlRevenue - skuRevenue;
+  const revenueGap = pnlRevenueAvailable ? pnlRevenue - skuRevenue : null;
   const mappedRevenueShare = Number(costCoverage.revenue || 0)
     ? Number(costCoverage.matched_revenue || 0) / Number(costCoverage.revenue || 0)
     : 0;
   const missingCostMap = !Number(costCoverage.valid_cost_rows || 0);
-  const lowCostCoverage = !missingCostMap && mappedRevenueShare < 0.7;
+  const lowCostCoverage = !missingCostMap && mappedRevenueShare < 0.999999;
   const activeDays = isoDays(activeRange.from, activeRange.to);
   const narrowRange = activeDays > 0 && activeDays <= 7;
   const resetSkuFilters = () => {
@@ -725,12 +726,12 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           <p>Sales by Product/Service detail, external customers only, converted to HKD.</p>
         </div>
         <p className="sourceNote">
-          SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. SKU margin uses mapped SKU COGS and stays n/a when SKU cost is missing.
+          SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. Aggregate SKU margin is shown only when every included sale has mapped COGS.
         </p>
         <div className="skuReconcile">
-          <span>P&L revenue {hkd(pnlRevenue)}</span>
+          <span>P&L revenue {pnlRevenueAvailable ? hkd(pnlRevenue) : "unavailable for this period"}</span>
           <span>SKU revenue {hkd(skuRevenue)}</span>
-          <strong>Difference {hkd(revenueGap)}</strong>
+          <strong>Difference {revenueGap === null ? "n/a" : hkd(revenueGap)}</strong>
         </div>
         {(missingCostMap || lowCostCoverage) && (
           <div className="skuRangeNotice warning">
@@ -739,7 +740,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
               <span>
                 {missingCostMap
                   ? "Upload MAPPING DATA.xlsx with the Sales by Product files, then reimport finance data."
-                  : `${pct(mappedRevenueShare)} of visible SKU revenue has mapped COGS. Rows without COGS show n/a margin.`}
+                  : `${pct(mappedRevenueShare)} of visible SKU revenue has mapped COGS. Aggregate and partially mapped group margins remain n/a.`}
               </span>
             </div>
           </div>
@@ -1286,7 +1287,7 @@ function Overview({ data, goFinance, setPage }) {
 
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh, subtab, setSubtab }) {
   const isClassView = filters.dimension === "class";
-  const [comparisonMode, setComparisonMode] = useState("custom");
+  const [comparisonMode, setComparisonMode] = useState("standard");
   
   const comparisonModeOptions = [
     { value: "standard", label: "Auto-comparison (LY / P3M)" },
@@ -1348,6 +1349,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   ];
 
   const filteredLines = data.lines.filter((row) => `${row.line_item} ${row.section}`.toLowerCase().includes(search.toLowerCase()));
+  const pnlExact = data.meta.pnlCoverage?.exact !== false;
   const revenueBase = Number(data.kpis.revenue || 0);
   const grossMargin = revenueBase ? Number(data.kpis.gross_profit || 0) / revenueBase : 0;
   const expenseRatio = revenueBase ? Number(data.kpis.expenses || 0) / revenueBase : 0;
@@ -1356,7 +1358,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const skuCogs = data.sku?.totals?.cogs_hkd === null || data.sku?.totals?.cogs_hkd === undefined
     ? null
     : Number(data.sku.totals.cogs_hkd || 0);
-  const skuGrossProfit = skuCogs === null ? null : skuRevenue - skuCogs;
+  const skuQuantity = Number(data.sku?.totals?.quantity || 0);
+  const skuCostedQuantity = Number(data.sku?.totals?.costed_quantity || 0);
+  const skuCostsComplete = skuCogs !== null && Math.abs(skuQuantity - skuCostedQuantity) <= 0.0001;
+  const skuGrossProfit = skuCostsComplete ? skuRevenue - skuCogs : null;
   const skuGrossMargin = skuGrossProfit === null || !skuRevenue ? null : skuGrossProfit / skuRevenue;
   const statementContext = [
     filters.company !== "all" ? filters.company : "All companies",
@@ -1367,16 +1372,21 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const metricCards = subtab === "sku"
     ? [
         { title: "SKU revenue", value: hkd(skuRevenue), note: "Sales by Product rows", icon: TrendingUp },
-        { title: "SKU gross margin", value: pctOrDash(skuGrossMargin), note: skuGrossProfit === null ? "COGS mapping needed" : hkd(skuGrossProfit), icon: LineChart },
+        { title: "SKU gross margin", value: pctOrDash(skuGrossMargin), note: skuGrossProfit === null ? "Complete COGS coverage required" : hkd(skuGrossProfit), icon: LineChart },
         { title: "Units sold", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.quantity || 0)), note: "Filtered transaction dates", icon: Package },
         { title: "SKUs", value: new Intl.NumberFormat("en-HK").format(Number(data.sku?.totals?.sku_count || 0)), note: `${data.sku?.totals?.brand_count || 0} brands`, icon: Tags },
       ]
     : [
-        { title: "Revenue", value: hkd(data.kpis.revenue), note: "Total for Income", icon: TrendingUp },
-        { title: "Gross margin", value: pct(grossMargin), note: hkd(data.kpis.gross_profit), icon: LineChart },
-        { title: "Expense ratio", value: pct(expenseRatio), note: hkd(data.kpis.expenses), icon: Receipt },
-        { title: "Net margin", value: pct(netMargin), note: hkd(data.kpis.net_earnings), icon: CircleDollarSign },
+        { title: "Revenue", value: pnlExact ? hkd(data.kpis.revenue) : "Unavailable", note: pnlExact ? "Total for Income" : "Exact report required", icon: TrendingUp },
+        { title: "Gross margin", value: pnlExact ? pct(grossMargin) : "Unavailable", note: pnlExact ? hkd(data.kpis.gross_profit) : "No proration used", icon: LineChart },
+        { title: "Expense ratio", value: pnlExact ? pct(expenseRatio) : "Unavailable", note: pnlExact ? hkd(data.kpis.expenses) : "No proration used", icon: Receipt },
+        { title: "Net margin", value: pnlExact ? pct(netMargin) : "Unavailable", note: pnlExact ? hkd(data.kpis.net_earnings) : "No proration used", icon: CircleDollarSign },
       ];
+
+  const fxBasis = (data.meta.fx || [])
+    .filter((rate) => rate.source_currency !== "HKD")
+    .map((rate) => `${rate.source_currency} ${Number(rate.rate || 0).toFixed(4)} as of ${rate.as_of || "import"}`)
+    .join("; ");
 
   return (
     <main className="workspace">
@@ -1406,7 +1416,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           {isClassView ? (
             <MultiSelect label="Select Brands" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
           ) : (
-            <MultiSelect label="Select Customers" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...values, customer: values })} />
+            <MultiSelect label="Select Customers" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...filters, customer: values })} />
           )}
         </div>
         
@@ -1442,13 +1452,42 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
 
       <ScopeStrip filters={filters} />
 
+      {subtab !== "sku" && !pnlExact && (
+        <div className="skuRangeNotice warning">
+          <div>
+            <strong>Exact P&amp;L is unavailable for this period</strong>
+            <span>
+              Requested {data.meta.pnlCoverage?.requested?.from || "-"} to {data.meta.pnlCoverage?.requested?.to || "-"}. The selected source reports cover {data.meta.pnlCoverage?.active?.min || "-"} to {data.meta.pnlCoverage?.active?.max || "-"}; estimated proration has been disabled.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {fxBasis && (
+        <div className="skuRangeNotice">
+          <div>
+            <strong>Stored FX conversion basis</strong>
+            <span>{fxBasis}. These are import rates, not historical daily rates.</span>
+          </div>
+        </div>
+      )}
+
+      {subtab !== "sku" && data.intercompany?.included && (
+        <div className="skuRangeNotice">
+          <div>
+            <strong>Intercompany treatment</strong>
+            <span>Source P&amp;L totals are shown without automatic name-based eliminations. Explicit elimination entries are required before intercompany amounts can be removed accurately.</span>
+          </div>
+        </div>
+      )}
+
       <section className="metricGrid">
         {metricCards.map((card) => (
           <Kpi title={card.title} value={card.value} note={card.note} icon={card.icon} key={card.title} />
         ))}
       </section>
 
-      {subtab === "summary" && (
+      {subtab === "summary" && pnlExact && (
         <section className="summaryStack">
           <div className="summaryTop">
             <div className="panel">
@@ -1493,7 +1532,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         </section>
       )}
 
-      {subtab === "lines" && (
+      {subtab === "lines" && pnlExact && (
         <section className="cleanGrid statementGrid">
           <div className="panel">
             <div className="panelHeader">

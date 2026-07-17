@@ -877,6 +877,7 @@ function addInClause(clauses, values, expression, items, prefix) {
 
 function whereFromSearch(params, options = {}) {
   const includeSection = options.includeSection ?? false;
+  const intercompanyMode = options.intercompanyMode || "include";
   const clauses = [];
   const values = {};
   const dimension = params.get("dimension") || "class";
@@ -937,7 +938,8 @@ function whereFromSearch(params, options = {}) {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
   }
-  clauses.push("f.is_intercompany = 0");
+  if (intercompanyMode === "exclude") clauses.push("f.is_intercompany = 0");
+  if (intercompanyMode === "only") clauses.push("f.is_intercompany = 1");
   if (dateFrom) {
     clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
     values.$dateFrom = dateFrom;
@@ -1018,7 +1020,6 @@ function entityOptionsWhere(params) {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
   }
-  clauses.push("f.is_intercompany = 0");
   if (dateFrom) {
     clauses.push("(r.period_end IS NULL OR r.period_end >= $dateFrom)");
     values.$dateFrom = dateFrom;
@@ -1487,10 +1488,7 @@ function getDashboard(params) {
       share_of_revenue: revenueTotal ? Number(row.amount || 0) / revenueTotal : 0,
     }));
 
-  const eliminationWhere = filter.sql
-    ? `${filter.sql.replace("f.is_intercompany = 0", "f.is_intercompany = 1")}`
-    : "WHERE f.is_intercompany = 1";
-  const eliminationValues = { ...filter.values };
+  const eliminationFilter = whereFromSearch(params, { intercompanyMode: "only" });
   const intercompanyEliminations = db
     .prepare(
       `
@@ -1506,10 +1504,10 @@ function getDashboard(params) {
       JOIN reports r ON r.id = f.report_id
       JOIN batches b ON b.id = r.batch_id
       JOIN companies c ON c.id = r.company_id
-      ${eliminationWhere}
+      ${eliminationFilter.sql}
       `
     )
-    .get(eliminationValues);
+    .get(eliminationFilter.values);
 
   const companyEntity = db
     .prepare(
@@ -1601,9 +1599,50 @@ function getDashboard(params) {
       .all(windowFilter.values);
   }
 
-  const pnlCurrentMap = new Map(pnlRowsForWindow(pnlComparison.p1.start, pnlComparison.p1.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
-  const pnlP2Map = new Map(pnlRowsForWindow(pnlComparison.p2.start, pnlComparison.p2.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
-  const pnlP3Map = new Map(pnlRowsForWindow(pnlComparison.p3.start, pnlComparison.p3.end).map((row) => [pnlLineKey(row), Number(row.amount || 0)]));
+  function pnlWindowCoverage(start, end) {
+    if (!start || !end) return { start, end, reportCount: 0, exact: false };
+    const windowParams = periodParams(params, start, end);
+    const windowFilter = whereFromSearch(windowParams);
+    const reports = db
+      .prepare(
+        `
+        SELECT DISTINCT r.id, r.period_start, r.period_end
+        FROM (
+          SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+          FROM facts raw_f
+        ) f
+        JOIN reports r ON r.id = f.report_id
+        JOIN batches b ON b.id = r.batch_id
+        JOIN companies c ON c.id = r.company_id
+        ${windowFilter.sql}
+        `
+      )
+      .all(windowFilter.values);
+    return {
+      start,
+      end,
+      reportCount: reports.length,
+      exact: Boolean(reports.length && reports.every((report) => report.period_start === start && report.period_end === end)),
+    };
+  }
+
+  const pnlComparisonCoverage = {
+    p1: pnlWindowCoverage(pnlComparison.p1.start, pnlComparison.p1.end),
+    p2: pnlWindowCoverage(pnlComparison.p2.start, pnlComparison.p2.end),
+    p3: pnlWindowCoverage(pnlComparison.p3.start, pnlComparison.p3.end),
+  };
+  const pnlCurrentMap = new Map(
+    (pnlComparisonCoverage.p1.exact ? pnlRowsForWindow(pnlComparison.p1.start, pnlComparison.p1.end) : [])
+      .map((row) => [pnlLineKey(row), Number(row.amount || 0)])
+  );
+  const pnlP2Map = new Map(
+    (pnlComparisonCoverage.p2.exact ? pnlRowsForWindow(pnlComparison.p2.start, pnlComparison.p2.end) : [])
+      .map((row) => [pnlLineKey(row), Number(row.amount || 0)])
+  );
+  const pnlP3Map = new Map(
+    (pnlComparisonCoverage.p3.exact ? pnlRowsForWindow(pnlComparison.p3.start, pnlComparison.p3.end) : [])
+      .map((row) => [pnlLineKey(row), Number(row.amount || 0)])
+  );
   const expenseContributorRows = db
     .prepare(
       `
@@ -1757,11 +1796,19 @@ function getDashboard(params) {
       reportCount: filteredReports.length,
       exact: Boolean(
         filteredReports.length &&
-          (!requestedPnlRange.from || requestedPnlRange.from === filteredReportDateRange.min) &&
-          (!requestedPnlRange.to || requestedPnlRange.to === filteredReportDateRange.max)
+          filteredReports.every(
+            (report) =>
+              (!requestedPnlRange.from || report.period_start === requestedPnlRange.from) &&
+              (!requestedPnlRange.to || report.period_end === requestedPnlRange.to)
+          )
       ),
     },
     pnlComparison,
+    pnlComparisonCoverage,
+    fxPolicy: {
+      basis: "stored_import_rate",
+      note: "HKD values use the stored import rate shown in meta.fx; they are not represented as historical daily rates.",
+    },
     timezone: "Asia/Hong_Kong",
     currentDate,
   };
@@ -2102,6 +2149,9 @@ function getDashboard(params) {
     `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").trim().toLowerCase()}`;
   const skuGrossProfit = (row) => {
     if (row.cogs_hkd === null || row.cogs_hkd === undefined) return null;
+    const quantity = Number(row.quantity || 0);
+    const costedQuantity = Number(row.costed_quantity || 0);
+    if (Math.abs(quantity - costedQuantity) > 0.0001) return null;
     return Number(row.revenue || 0) - Number(row.cogs_hkd || 0);
   };
   const skuGrossMargin = (row, grossProfit) => {
@@ -2109,24 +2159,35 @@ function getDashboard(params) {
     return grossProfit === null || !revenue ? null : grossProfit / revenue;
   };
 
+  const pnlAvailable = meta.pnlCoverage.exact;
+  const unavailableKpis = { revenue: null, gross_profit: null, expenses: null, net_earnings: null };
+  const revenueGrowthRow = pAndL.find((row) => row.section === "Income" && row.line_item === "Total for Income");
+
   return {
     ready: true,
     filters: Object.fromEntries(params.entries()),
-    kpis: kpiRows[0] || {},
-    byCompany,
-    companyPerformance,
-    byEntity,
-    expenses: expenseBreakdown,
-    lines,
-    pAndL,
-    sectionSummary,
-    companyEntity,
+    kpis: pnlAvailable ? (kpiRows[0] || {}) : unavailableKpis,
+    byCompany: pnlAvailable ? byCompany : [],
+    companyPerformance: pnlAvailable ? companyPerformance : [],
+    byEntity: pnlAvailable ? byEntity : [],
+    expenses: pnlAvailable ? expenseBreakdown : [],
+    lines: pnlAvailable ? lines : [],
+    pAndL: pnlAvailable ? pAndL : [],
+    sectionSummary: pnlAvailable ? sectionSummary : [],
+    companyEntity: pnlAvailable ? companyEntity : [],
     insights: {
-      revenueTotal,
-      expenseTotal,
-      costOfSalesTotal,
-      netEarnings: Number((kpiRows[0] || {}).net_earnings || 0),
-      netMargin: revenueTotal ? Number((kpiRows[0] || {}).net_earnings || 0) / revenueTotal : 0,
+      available: pnlAvailable,
+      revenueTotal: pnlAvailable ? revenueTotal : null,
+      expenseTotal: pnlAvailable ? expenseTotal : null,
+      costOfSalesTotal: pnlAvailable ? costOfSalesTotal : null,
+      netEarnings: pnlAvailable ? Number((kpiRows[0] || {}).net_earnings || 0) : null,
+      netMargin: pnlAvailable && revenueTotal ? Number((kpiRows[0] || {}).net_earnings || 0) / revenueTotal : null,
+      revenueGrowth: {
+        growth_p2: pnlAvailable ? (revenueGrowthRow?.growth_p2 ?? null) : null,
+        growth_p3: pnlAvailable ? (revenueGrowthRow?.growth_p3 ?? null) : null,
+        status_p2: pnlAvailable ? (revenueGrowthRow?.growth_status_p2 || "no_prior") : "unavailable",
+        status_p3: pnlAvailable ? (revenueGrowthRow?.growth_status_p3 || "no_prior") : "unavailable",
+      },
       skuGrowth: {
         current_revenue: skuCurrentRevenue,
         p2_revenue: skuLyRevenue,
@@ -2135,18 +2196,18 @@ function getDashboard(params) {
         growth_p3: fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuP3mRevenue]]), daysP3, "total").growth,
         window: skuComparison,
       },
-      topRevenueCompany,
-      topRevenueBrand,
-      bestMarginCompany,
-      bestMarginBrand,
-      largestExpense,
-      topCostOfSalesBrand,
-      lossCompanies,
+      topRevenueCompany: pnlAvailable ? topRevenueCompany : null,
+      topRevenueBrand: pnlAvailable ? topRevenueBrand : null,
+      bestMarginCompany: pnlAvailable ? bestMarginCompany : null,
+      bestMarginBrand: pnlAvailable ? bestMarginBrand : null,
+      largestExpense: pnlAvailable ? largestExpense : null,
+      topCostOfSalesBrand: pnlAvailable ? topCostOfSalesBrand : null,
+      lossCompanies: pnlAvailable ? lossCompanies : [],
     },
     intercompany: {
-      included: false,
-      eliminated: intercompanyEliminations || {},
-      rule: "Entity/customer names matching group company names are excluded by default.",
+      included: true,
+      candidates: intercompanyEliminations || {},
+      rule: "No automatic P&L elimination is applied. Name-matched candidates are disclosed separately until explicit elimination entries are supplied.",
     },
     sku: {
       totals: skuTotals,
