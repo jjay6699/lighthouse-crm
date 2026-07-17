@@ -90,6 +90,11 @@ assert(historicalBatch, "Historical-only regression batch is missing");
 const historicalOnly = await dashboard({ dimension: "class", batch: historicalBatch.batch_key });
 assert(historicalOnly.meta.preferredPnlRange?.start === "2023-01-01", "Historical-only data should fall back to its exact P&L start");
 assert(historicalOnly.meta.preferredPnlRange?.end === "2026-05-22", "Historical-only data should fall back to its exact P&L end");
+const quickBatch = initialClass.meta.batches.find((batch) => batch.name === "Quick upload 2026-05-21");
+assert(quickBatch, "Quick-upload regression batch is missing");
+const mixedCustomerPeriods = await dashboard({ dimension: "customer", batch: quickBatch.batch_key });
+assert(mixedCustomerPeriods.meta.pnlScopeCompanyCount === 5, "Quick-upload customer scope should contain five companies");
+assert(mixedCustomerPeriods.meta.preferredPnlRange === null, "Mixed customer report periods must not advertise a false exact range");
 
 for (const row of [...full.sku.rows, ...full.sku.brands, ...full.sku.customers]) {
   const costedRevenue = amount(row.costed_revenue);

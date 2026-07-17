@@ -1817,9 +1817,21 @@ function getDashboard(params) {
       `
     )
     .all(pnlRangeValues);
-  const widestCompanyCoverage = Math.max(...pnlAvailableRanges.map((range) => Number(range.company_count || 0)), 0);
+  const pnlScopeCompanyCount = Number(
+    db
+      .prepare(
+        `
+        SELECT COUNT(DISTINCT r.company_id) AS company_count
+        FROM reports r
+        JOIN batches b ON b.id = r.batch_id
+        JOIN companies c ON c.id = r.company_id
+        WHERE ${pnlRangeClauses.join(" AND ")}
+        `
+      )
+      .get(pnlRangeValues)?.company_count || 0
+  );
   const completePnlRanges = pnlAvailableRanges.filter(
-    (range) => Number(range.company_count || 0) === widestCompanyCoverage
+    (range) => Number(range.company_count || 0) === pnlScopeCompanyCount
   );
   const monthlyPnlRanges = completePnlRanges.filter((range) => daysBetween(range.start, range.end) <= 45);
   const preferredPnlRange = monthlyPnlRanges[0] || completePnlRanges[0] || null;
@@ -1837,6 +1849,7 @@ function getDashboard(params) {
     skuDateRange,
     availableDateRange,
     pnlAvailableRanges,
+    pnlScopeCompanyCount,
     preferredPnlRange,
     pnlCoverage: {
       requested: requestedPnlRange,

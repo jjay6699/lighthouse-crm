@@ -1366,6 +1366,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
 
   const filteredLines = data.lines.filter((row) => `${row.line_item} ${row.section}`.toLowerCase().includes(search.toLowerCase()));
   const pnlExact = data.meta.pnlCoverage?.exact !== false;
+  const noCommonPnlRange = !data.meta.preferredPnlRange && Boolean(data.meta.pnlAvailableRanges?.length);
   const revenueBase = Number(data.kpis.revenue || 0);
   const grossMargin = revenueBase ? Number(data.kpis.gross_profit || 0) / revenueBase : 0;
   const expenseRatio = revenueBase ? Number(data.kpis.expenses || 0) / revenueBase : 0;
@@ -1470,9 +1471,11 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       {subtab !== "sku" && !pnlExact && (
         <div className="skuRangeNotice warning">
           <div>
-            <strong>Exact P&amp;L is unavailable for this period</strong>
+            <strong>{noCommonPnlRange ? "Company P&L periods do not align" : "Exact P&L is unavailable for this period"}</strong>
             <span>
-              Requested {data.meta.pnlCoverage?.requested?.from || "-"} to {data.meta.pnlCoverage?.requested?.to || "-"}. The selected source reports cover {data.meta.pnlCoverage?.active?.min || "-"} to {data.meta.pnlCoverage?.active?.max || "-"}; estimated proration has been disabled.
+              {noCommonPnlRange
+                ? `No single exact report period covers all ${data.meta.pnlScopeCompanyCount || "selected"} companies. Uploaded reports span ${data.meta.pnlCoverage?.active?.min || "-"} to ${data.meta.pnlCoverage?.active?.max || "-"}; align the source report dates before consolidating.`
+                : `Requested ${data.meta.pnlCoverage?.requested?.from || "-"} to ${data.meta.pnlCoverage?.requested?.to || "-"}. The selected source reports cover ${data.meta.pnlCoverage?.active?.min || "-"} to ${data.meta.pnlCoverage?.active?.max || "-"}; estimated proration has been disabled.`}
             </span>
           </div>
         </div>
@@ -7965,10 +7968,11 @@ function App() {
         setData(d);
         if (!datesInitialized && d.meta.dateRange.min && d.meta.dateRange.max) {
           const exactRange = d.meta.preferredPnlRange;
+          const activeRange = d.meta.pnlCoverage?.active;
           setFilters((prev) => ({
             ...prev,
-            dateFrom: exactRange?.start || d.meta.dateRange.min,
-            dateTo: exactRange?.end || d.meta.dateRange.max,
+            dateFrom: exactRange?.start || activeRange?.min || d.meta.dateRange.min,
+            dateTo: exactRange?.end || activeRange?.max || d.meta.dateRange.max,
           }));
           setDatesInitialized(true);
         }
