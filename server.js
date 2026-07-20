@@ -1294,7 +1294,7 @@ function pnlAmountExpression(params, factAlias = "f", reportAlias = "r") {
   END)`;
 }
 
-function getDashboard(params) {
+function getDashboard(params, { skipConsolidationReconciliation = false } = {}) {
   const db = openDb();
   if (!db) {
     return {
@@ -2296,33 +2296,71 @@ function getDashboard(params) {
   };
 
   const pnlAvailable = meta.pnlCoverage.exact;
+  const selectedBrandFilters = params.getAll("brand").filter((value) => value && value !== "all");
+  const shouldReconcileFromCustomers =
+    !skipConsolidationReconciliation && requestedDimension === "class" && selectedBrandFilters.length === 0;
+  let customerConsolidation = null;
+  if (shouldReconcileFromCustomers) {
+    const customerParams = new URLSearchParams(params);
+    customerParams.set("dimension", "customer");
+    customerParams.delete("brand");
+    customerParams.delete("customer");
+    customerParams.delete("entity");
+    customerConsolidation = getDashboard(customerParams, { skipConsolidationReconciliation: true });
+  }
+  const useCustomerConsolidation = Boolean(
+    pnlAvailable &&
+      customerConsolidation?.ready &&
+      customerConsolidation.meta?.pnlCoverage?.exact &&
+      customerConsolidation.insights?.available
+  );
+  const financialSource = useCustomerConsolidation ? customerConsolidation : null;
+  const responseKpis = financialSource?.kpis || kpiRows[0] || {};
+  const responsePAndL = financialSource?.pAndL || pAndL;
+  const responseRevenueGrowthRow = responsePAndL.find(
+    (row) => row.section === "Income" && row.line_item === "Total for Income"
+  );
+  const responseRevenueTotal = Number(responseKpis.revenue || 0);
+  const responseExpenseTotal = Number(responseKpis.expenses || 0);
   const unavailableKpis = { revenue: null, gross_profit: null, expenses: null, net_earnings: null };
-  const revenueGrowthRow = pAndL.find((row) => row.section === "Income" && row.line_item === "Total for Income");
+  const responseMeta = {
+    ...meta,
+    consolidationBasis: {
+      requestedDimension,
+      financialDimension: useCustomerConsolidation ? "customer" : requestedDimension,
+      reconciled: useCustomerConsolidation,
+      reason: useCustomerConsolidation
+        ? "Customer P&L provides the counterparty detail required for intercompany elimination."
+        : selectedBrandFilters.length
+          ? "Brand filters require the class P&L source."
+          : "Exact customer P&L coverage is unavailable for this scope.",
+    },
+  };
 
   return {
     ready: true,
     filters: Object.fromEntries(params.entries()),
-    kpis: pnlAvailable ? (kpiRows[0] || {}) : unavailableKpis,
-    byCompany: pnlAvailable ? byCompany : [],
-    companyPerformance: pnlAvailable ? companyPerformance : [],
+    kpis: pnlAvailable ? responseKpis : unavailableKpis,
+    byCompany: pnlAvailable ? (financialSource?.byCompany || byCompany) : [],
+    companyPerformance: pnlAvailable ? (financialSource?.companyPerformance || companyPerformance) : [],
     byEntity: pnlAvailable ? byEntity : [],
-    expenses: pnlAvailable ? expenseBreakdown : [],
-    lines: pnlAvailable ? lines : [],
-    pAndL: pnlAvailable ? pAndL : [],
-    sectionSummary: pnlAvailable ? sectionSummary : [],
+    expenses: pnlAvailable ? (financialSource?.expenses || expenseBreakdown) : [],
+    lines: pnlAvailable ? (financialSource?.lines || lines) : [],
+    pAndL: pnlAvailable ? responsePAndL : [],
+    sectionSummary: pnlAvailable ? (financialSource?.sectionSummary || sectionSummary) : [],
     companyEntity: pnlAvailable ? companyEntity : [],
     insights: {
       available: pnlAvailable,
-      revenueTotal: pnlAvailable ? revenueTotal : null,
-      expenseTotal: pnlAvailable ? expenseTotal : null,
-      costOfSalesTotal: pnlAvailable ? costOfSalesTotal : null,
-      netEarnings: pnlAvailable ? Number((kpiRows[0] || {}).net_earnings || 0) : null,
-      netMargin: pnlAvailable && revenueTotal ? Number((kpiRows[0] || {}).net_earnings || 0) / revenueTotal : null,
+      revenueTotal: pnlAvailable ? responseRevenueTotal : null,
+      expenseTotal: pnlAvailable ? responseExpenseTotal : null,
+      costOfSalesTotal: pnlAvailable ? (financialSource?.insights?.costOfSalesTotal ?? costOfSalesTotal) : null,
+      netEarnings: pnlAvailable ? Number(responseKpis.net_earnings || 0) : null,
+      netMargin: pnlAvailable && responseRevenueTotal ? Number(responseKpis.net_earnings || 0) / responseRevenueTotal : null,
       revenueGrowth: {
-        growth_p2: pnlAvailable ? (revenueGrowthRow?.growth_p2 ?? null) : null,
-        growth_p3: pnlAvailable ? (revenueGrowthRow?.growth_p3 ?? null) : null,
-        status_p2: pnlAvailable ? (revenueGrowthRow?.growth_status_p2 || "no_prior") : "unavailable",
-        status_p3: pnlAvailable ? (revenueGrowthRow?.growth_status_p3 || "no_prior") : "unavailable",
+        growth_p2: pnlAvailable ? (responseRevenueGrowthRow?.growth_p2 ?? null) : null,
+        growth_p3: pnlAvailable ? (responseRevenueGrowthRow?.growth_p3 ?? null) : null,
+        status_p2: pnlAvailable ? (responseRevenueGrowthRow?.growth_status_p2 || "no_prior") : "unavailable",
+        status_p3: pnlAvailable ? (responseRevenueGrowthRow?.growth_status_p3 || "no_prior") : "unavailable",
       },
       entityLabel: requestedDimension === "customer" ? "customer" : "brand",
       skuGrowth: {
@@ -2336,15 +2374,15 @@ function getDashboard(params) {
         basis: "transaction_sales_monthly",
         window: skuComparison,
       },
-      topRevenueCompany: pnlAvailable ? topRevenueCompany : null,
+      topRevenueCompany: pnlAvailable ? (financialSource?.insights?.topRevenueCompany || topRevenueCompany) : null,
       topRevenueBrand: pnlAvailable ? topRevenueBrand : null,
-      bestMarginCompany: pnlAvailable ? bestMarginCompany : null,
+      bestMarginCompany: pnlAvailable ? (financialSource?.insights?.bestMarginCompany || bestMarginCompany) : null,
       bestMarginBrand: pnlAvailable ? bestMarginBrand : null,
-      largestExpense: pnlAvailable ? largestExpense : null,
+      largestExpense: pnlAvailable ? (financialSource?.insights?.largestExpense || largestExpense) : null,
       topCostOfSalesBrand: pnlAvailable ? topCostOfSalesBrand : null,
-      lossCompanies: pnlAvailable ? lossCompanies : [],
+      lossCompanies: pnlAvailable ? (financialSource?.insights?.lossCompanies || lossCompanies) : [],
     },
-    intercompany: {
+    intercompany: financialSource?.intercompany || {
       included: false,
       excluded: true,
       candidates: intercompanyEliminations || {},
@@ -2420,7 +2458,7 @@ function getDashboard(params) {
         };
       }),
     },
-    meta,
+    meta: responseMeta,
   };
 }
 

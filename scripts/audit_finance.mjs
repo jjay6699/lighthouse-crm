@@ -65,15 +65,24 @@ for (const [label, params] of exactCases) {
 const fullClass = exactResults.get("full class");
 const fullCustomer = exactResults.get("full customer");
 const excludedRevenue = Math.abs(amount(fullCustomer.intercompany?.candidates?.revenue));
-const excludedNetEarnings = Math.abs(amount(fullCustomer.intercompany?.candidates?.net_earnings));
 assert(excludedRevenue > tolerance, "Customer view should identify intercompany revenue for elimination");
 assert(
-  Math.abs(amount(fullClass.kpis.revenue) - amount(fullCustomer.kpis.revenue) - excludedRevenue) <= tolerance,
-  "Customer-view revenue does not reconcile to the intercompany exclusion"
+  Math.abs(amount(fullClass.kpis.revenue) - amount(fullCustomer.kpis.revenue)) <= tolerance,
+  "Consolidated revenue changes between class and customer views"
 );
 assert(
-  Math.abs(amount(fullClass.kpis.net_earnings) - amount(fullCustomer.kpis.net_earnings) - excludedNetEarnings) <= tolerance,
-  "Customer-view net earnings do not reconcile to the intercompany exclusion"
+  Math.abs(amount(fullClass.kpis.net_earnings) - amount(fullCustomer.kpis.net_earnings)) <= tolerance,
+  "Consolidated net earnings changes between class and customer views"
+);
+assert(fullClass.meta.consolidationBasis?.financialDimension === "customer", "Class view did not use the reconciled customer P&L");
+assert(fullClass.meta.consolidationBasis?.reconciled === true, "Class view was not marked as reconciled");
+assert(
+  Math.abs(line(fullClass, "Income", "Total for Income") - line(fullCustomer, "Income", "Total for Income")) <= tolerance,
+  "Class-view P&L revenue does not match the reconciled customer P&L"
+);
+assert(
+  Math.abs(amount(fullClass.intercompany?.candidates?.revenue) - amount(fullCustomer.intercompany?.candidates?.revenue)) <= tolerance,
+  "Class view did not expose the customer-derived intercompany elimination"
 );
 
 const unavailableCases = [
