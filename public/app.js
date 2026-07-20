@@ -1494,17 +1494,17 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       {fxBasis && (
         <div className="skuRangeNotice">
           <div>
-            <strong>Stored FX conversion basis</strong>
-            <span>{fxBasis}. These are import rates, not historical daily rates.</span>
+            <strong>Automatic FX conversion</strong>
+            <span>{fxBasis}. Rates refresh automatically when you press Refresh; the last stored rate is used only if the provider is unavailable.</span>
           </div>
         </div>
       )}
 
-      {subtab !== "sku" && data.intercompany?.included && (
+      {subtab !== "sku" && data.intercompany?.excluded && (
         <div className="skuRangeNotice">
           <div>
-            <strong>Intercompany treatment</strong>
-            <span>Source P&amp;L totals are shown without automatic name-based eliminations. Explicit elimination entries are required before intercompany amounts can be removed accurately.</span>
+            <strong>Intercompany excluded</strong>
+            <span>Detected intercompany transactions are removed from consolidated P&amp;L totals. The rule matches known company and intercompany entity names.</span>
           </div>
         </div>
       )}
@@ -8100,7 +8100,7 @@ function App() {
 
   async function rebuildDatabase() {
     setLoading(true);
-    setUploadState({ busy: true, message: "Rebuilding finance database..." });
+    setUploadState({ busy: true, message: "Refreshing FX rates and finance database..." });
     try {
       const imported = await fetch("/api/reimport-finance", { method: "POST" }).then((response) => response.json());
       setUploadState({ busy: false, message: imported.ok ? imported.stdout : imported.stderr || "Reimport failed." });

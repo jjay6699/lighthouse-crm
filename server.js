@@ -249,7 +249,7 @@ async function uploadFinanceFiles(req) {
   return { ok: true, files };
 }
 
-function runImporter() {
+function runImporter({ refreshFx = false } = {}) {
   const python = process.env.PYTHON || (bundledPython && existsSync(bundledPython) ? bundledPython : "python3");
   return new Promise((resolve) => {
     const child = spawn(python, [join(__dirname, "scripts", "import_finance.py")], {
@@ -259,6 +259,7 @@ function runImporter() {
         DATA_DIR: dataDir,
         DATABASE_PATH: dbPath,
         FINANCE_DIR: financeDir,
+        REFRESH_FX_RATES: refreshFx ? "1" : process.env.REFRESH_FX_RATES || "",
       },
     });
 
@@ -881,7 +882,7 @@ function addInClause(clauses, values, expression, items, prefix) {
 
 function whereFromSearch(params, options = {}) {
   const includeSection = options.includeSection ?? false;
-  const intercompanyMode = options.intercompanyMode || "include";
+  const intercompanyMode = options.intercompanyMode || "exclude";
   const clauses = [];
   const values = {};
   const dimension = params.get("dimension") || "class";
@@ -1859,8 +1860,8 @@ function getDashboard(params) {
     pnlComparison,
     pnlComparisonCoverage,
     fxPolicy: {
-      basis: "stored_import_rate",
-      note: "HKD values use the stored import rate shown in meta.fx; they are not represented as historical daily rates.",
+      basis: "live_refresh_rate",
+      note: "Rates are refreshed from the FX provider when Refresh is used; the last stored rate remains as fallback if the provider is unavailable.",
     },
     timezone: "Asia/Hong_Kong",
     currentDate,
@@ -2271,9 +2272,10 @@ function getDashboard(params) {
       lossCompanies: pnlAvailable ? lossCompanies : [],
     },
     intercompany: {
-      included: true,
+      included: false,
+      excluded: true,
       candidates: intercompanyEliminations || {},
-      rule: "No automatic P&L elimination is applied. Name-matched candidates are disclosed separately until explicit elimination entries are supplied.",
+      rule: "Transactions identified by known company and intercompany entity names are excluded from consolidated P&L and SKU totals.",
     },
     sku: {
       totals: skuTotals,
@@ -2515,7 +2517,7 @@ createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/reimport-finance" && req.method === "POST") {
-    json(res, 200, await runImporter());
+      json(res, 200, await runImporter({ refreshFx: true }));
     return;
   }
 

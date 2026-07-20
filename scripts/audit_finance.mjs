@@ -58,13 +58,18 @@ for (const [label, params] of exactCases) {
   exactResults.set(label, data);
 }
 
+const fullClass = exactResults.get("full class");
+const fullCustomer = exactResults.get("full customer");
+const excludedRevenue = Math.abs(amount(fullCustomer.intercompany?.candidates?.revenue));
+const excludedNetEarnings = Math.abs(amount(fullCustomer.intercompany?.candidates?.net_earnings));
+assert(excludedRevenue > tolerance, "Customer view should identify intercompany revenue for elimination");
 assert(
-  Math.abs(amount(exactResults.get("full class").kpis.revenue) - amount(exactResults.get("full customer").kpis.revenue)) <= tolerance,
-  "Class and customer dimensions changed consolidated revenue without an explicit entity filter"
+  Math.abs(amount(fullClass.kpis.revenue) - amount(fullCustomer.kpis.revenue) - excludedRevenue) <= tolerance,
+  "Customer-view revenue does not reconcile to the intercompany exclusion"
 );
 assert(
-  Math.abs(amount(exactResults.get("full class").kpis.net_earnings) - amount(exactResults.get("full customer").kpis.net_earnings)) <= tolerance,
-  "Class and customer dimensions changed consolidated net earnings without an explicit entity filter"
+  Math.abs(amount(fullClass.kpis.net_earnings) - amount(fullCustomer.kpis.net_earnings) - excludedNetEarnings) <= tolerance,
+  "Customer-view net earnings do not reconcile to the intercompany exclusion"
 );
 
 const unavailableCases = [
@@ -83,7 +88,8 @@ for (const [label, params] of unavailableCases) {
 const full = await dashboard(exactCases[0][1]);
 assert(full.insights.revenueGrowth.status_p2 === "no_prior", "P&L growth should require an exact comparison report");
 assert(full.insights.revenueGrowth.growth_p2 === null, "Estimated P&L growth must not be returned");
-assert(full.meta.fxPolicy?.basis === "stored_import_rate", "FX conversion basis is missing");
+assert(full.meta.fxPolicy?.basis === "live_refresh_rate", "FX conversion basis is missing");
+assert(full.intercompany?.excluded === true, "Intercompany transactions must be excluded from consolidated totals");
 
 const initialClass = await dashboard({ dimension: "class" });
 assert(initialClass.meta.preferredPnlRange?.start === "2026-04-01", "Complete monthly P&L should be the preferred initial range");
@@ -148,4 +154,4 @@ for (const row of aprilMonthly.sku.rows.filter((item) => item.growth_status_p3 =
   assert(Math.abs(amount(row.growth_value_p3) - expectedValue) <= tolerance, `P3 growth dollars are not normalized: ${row.sku}`);
 }
 
-console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, dimension parity, ${unavailableCases.length} blocked estimate cases, costed SKU margins, monthly P2/P3 comparisons, and FX basis.`);
+console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, intercompany elimination reconciliation, ${unavailableCases.length} blocked estimate cases, costed SKU margins, monthly P2/P3 comparisons, and FX basis.`);
