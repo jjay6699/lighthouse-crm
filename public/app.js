@@ -660,7 +660,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     setFilters({
       ...filters,
       batch: "all",
-      company: "all",
+      company: [],
       brand: [],
       customer: [],
       dateFrom: dataRange.min || "",
@@ -983,9 +983,12 @@ function MultiSelect({ label, values, onChange, options }) {
 }
 
 function ScopeStrip({ filters }) {
+  const selectedCompanies = Array.isArray(filters.company)
+    ? filters.company
+    : filters.company && filters.company !== "all" ? [filters.company] : [];
   const scopeItems = [
     { label: "Batch", value: filters.batch === "all" ? "All batches" : filters.batch },
-    { label: "Company", value: filters.company === "all" ? "All companies" : filters.company },
+    { label: "Company", value: selectedCompanies.length ? `${selectedCompanies.length} selected` : "All companies" },
     { label: "Brand", value: filters.brand?.length ? `${filters.brand.length} selected` : "All brands" },
     { label: "Customer", value: filters.customer?.length ? `${filters.customer.length} selected` : "All customers" },
     { label: "Active Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
@@ -1380,7 +1383,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const skuGrossMargin = skuGrossProfit === null ? null : skuGrossProfit / skuCostedRevenue;
   const skuMarginCoverage = skuRevenue ? skuCostedRevenue / skuRevenue : 0;
   const statementContext = [
-    filters.company !== "all" ? filters.company : "All companies",
+    Array.isArray(filters.company) && filters.company.length ? `${filters.company.length} companies` : "All companies",
     isClassView
       ? filters.brand?.length ? `${filters.brand.length} brands` : "All brands"
       : filters.customer?.length ? `${filters.customer.length} customers` : "All customers",
@@ -1427,7 +1430,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       <section className="filterBar">
         <div className="filterGroup">
           <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
-          <Select label="Company" value={filters.company} options={companyOptions} onChange={(value) => setFilters({ ...filters, company: value })} />
+          <MultiSelect label="Select Companies" values={filters.company} options={companyOptions} onChange={(values) => setFilters({ ...filters, company: values })} />
           <SegmentedToggle label="View By" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, brand: [], customer: [] })} />
           {isClassView ? (
             <MultiSelect label="Select Brands" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
@@ -7902,7 +7905,7 @@ function App() {
   const [filters, setFilters] = useState({
     batch: "all",
     dimension: "class",
-    company: "all",
+    company: [],
     brand: [],
     customer: [],
     section: "all",

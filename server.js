@@ -865,6 +865,10 @@ function selectedEntities(params) {
   return params.getAll("entity").filter((value) => value && value !== "all");
 }
 
+function selectedCompanies(params) {
+  return params.getAll("company").filter((value) => value && value !== "all");
+}
+
 function addInClause(clauses, values, expression, items, prefix) {
   if (!items.length) return;
   const placeholders = items.map((item, index) => {
@@ -881,7 +885,7 @@ function whereFromSearch(params, options = {}) {
   const clauses = [];
   const values = {};
   const dimension = params.get("dimension") || "class";
-  const company = params.get("company");
+  const companies = selectedCompanies(params);
   const selectedBrands = params.getAll("brand").filter((value) => value && value !== "all");
   const selectedCustomers = params.getAll("customer").filter((value) => value && value !== "all");
   const section = params.get("section");
@@ -912,10 +916,7 @@ function whereFromSearch(params, options = {}) {
     clauses.push("r.dimension = $dimension");
     values.$dimension = dimension;
   }
-  if (company && company !== "all") {
-    clauses.push("c.name = $company");
-    values.$company = company;
-  }
+  addInClause(clauses, values, "c.name", companies, "company");
   if (dimension === "class" && selectedBrands.length) {
     const brandConditions = selectedBrands.map((brand, index) => {
       const key = `$brand${index}`;
@@ -985,7 +986,7 @@ function entityOptionsWhere(params) {
   const clauses = [];
   const values = {};
   const dimension = params.get("dimension") || "class";
-  const company = params.get("company");
+  const companies = selectedCompanies(params);
   const batch = params.get("batch");
   const dateFrom = params.get("dateFrom");
   const dateTo = params.get("dateTo");
@@ -1012,10 +1013,7 @@ function entityOptionsWhere(params) {
     clauses.push("r.dimension = $dimension");
     values.$dimension = dimension;
   }
-  if (company && company !== "all") {
-    clauses.push("c.name = $company");
-    values.$company = company;
-  }
+  addInClause(clauses, values, "c.name", companies, "company");
   if (batch && batch !== "all") {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
@@ -1124,7 +1122,7 @@ function skuWhereFromSearch(params) {
   const clauses = [];
   const values = {};
   const dimension = params.get("dimension") || "class";
-  const company = params.get("company");
+  const companies = selectedCompanies(params);
   const selectedBrands = params.getAll("brand").filter((value) => value && value !== "all");
   const selectedCustomers = params.getAll("customer").filter((value) => value && value !== "all");
   const batch = params.get("batch");
@@ -1133,10 +1131,7 @@ function skuWhereFromSearch(params) {
   const skuDate = skuDateExpression("s");
 
   clauses.push(`NOT ${intercompanyExpression("s", "customer")}`);
-  if (company && company !== "all") {
-    clauses.push("c.name = $company");
-    values.$company = company;
-  }
+  addInClause(clauses, values, "c.name", companies, "company");
   if (batch && batch !== "all") {
     clauses.push("b.batch_key = $batch");
     values.$batch = batch;
@@ -1790,12 +1785,9 @@ function getDashboard(params) {
 
   const pnlRangeClauses = ["r.period_start IS NOT NULL", "r.period_end IS NOT NULL", "r.dimension = $rangeDimension"];
   const pnlRangeValues = { $rangeDimension: requestedDimension };
-  const rangeCompany = params.get("company");
+  const rangeCompanies = selectedCompanies(params);
   const rangeBatch = params.get("batch");
-  if (rangeCompany && rangeCompany !== "all") {
-    pnlRangeClauses.push("c.name = $rangeCompany");
-    pnlRangeValues.$rangeCompany = rangeCompany;
-  }
+  addInClause(pnlRangeClauses, pnlRangeValues, "c.name", rangeCompanies, "rangeCompany");
   if (rangeBatch && rangeBatch !== "all") {
     pnlRangeClauses.push("b.batch_key = $rangeBatch");
     pnlRangeValues.$rangeBatch = rangeBatch;

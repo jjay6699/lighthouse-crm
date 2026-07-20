@@ -11,7 +11,10 @@ function amount(value) {
 
 async function dashboard(params = {}) {
   const url = new URL(baseUrl);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) value.forEach((item) => url.searchParams.append(key, item));
+    else url.searchParams.set(key, value);
+  }
   const response = await fetch(url);
   assert(response.ok, `Dashboard request failed: ${response.status} ${url}`);
   return response.json();
@@ -95,6 +98,24 @@ assert(quickBatch, "Quick-upload regression batch is missing");
 const mixedCustomerPeriods = await dashboard({ dimension: "customer", batch: quickBatch.batch_key });
 assert(mixedCustomerPeriods.meta.pnlScopeCompanyCount === 5, "Quick-upload customer scope should contain five companies");
 assert(mixedCustomerPeriods.meta.preferredPnlRange === null, "Mixed customer report periods must not advertise a false exact range");
+
+const companyA = "Lighthouse Mart Trading Limited";
+const companyB = "Moment Health Limited";
+const companyPair = await dashboard({
+  dimension: "class",
+  company: [companyA, companyB],
+  dateFrom: "2026-04-01",
+  dateTo: "2026-04-30",
+});
+const companyAData = await dashboard({ dimension: "class", company: companyA, dateFrom: "2026-04-01", dateTo: "2026-04-30" });
+const companyBData = await dashboard({ dimension: "class", company: companyB, dateFrom: "2026-04-01", dateTo: "2026-04-30" });
+assert(companyPair.meta.pnlCoverage.exact, "Two-company selection should retain exact P&L coverage");
+assert(companyPair.companyPerformance.length === 2, "Two-company selection should return two company rows");
+for (const key of ["revenue", "gross_profit", "expenses", "net_earnings"]) {
+  const expected = amount(companyAData.kpis[key]) + amount(companyBData.kpis[key]);
+  assert(Math.abs(amount(companyPair.kpis[key]) - expected) <= tolerance, `Two-company ${key} total mismatch`);
+}
+assert(amount(companyPair.sku.totals.revenue) < amount(full.sku.totals.revenue), "Two-company SKU scope did not narrow revenue");
 
 for (const row of [...full.sku.rows, ...full.sku.brands, ...full.sku.customers]) {
   const costedRevenue = amount(row.costed_revenue);
