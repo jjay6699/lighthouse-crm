@@ -1409,11 +1409,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         { title: "Net margin", value: pnlExact ? pct(netMargin) : "Unavailable", note: pnlExact ? hkd(data.kpis.net_earnings) : "No proration used", icon: CircleDollarSign },
       ];
 
-  const fxBasis = (data.meta.fx || [])
-    .filter((rate) => rate.source_currency !== "HKD")
-    .map((rate) => `${rate.source_currency} ${Number(rate.rate || 0).toFixed(4)} as of ${rate.as_of || "import"}`)
-    .join("; ");
-
   return (
     <main className="workspace">
       <header className="pageHeader">
@@ -1487,24 +1482,6 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
                 ? `No single exact report period covers all ${data.meta.pnlScopeCompanyCount || "selected"} companies. Uploaded reports span ${data.meta.pnlCoverage?.active?.min || "-"} to ${data.meta.pnlCoverage?.active?.max || "-"}; align the source report dates before consolidating.`
                 : `Requested ${data.meta.pnlCoverage?.requested?.from || "-"} to ${data.meta.pnlCoverage?.requested?.to || "-"}. The selected source reports cover ${data.meta.pnlCoverage?.active?.min || "-"} to ${data.meta.pnlCoverage?.active?.max || "-"}; estimated proration has been disabled.`}
             </span>
-          </div>
-        </div>
-      )}
-
-      {fxBasis && (
-        <div className="skuRangeNotice">
-          <div>
-            <strong>Automatic FX conversion</strong>
-            <span>{fxBasis}. Rates refresh automatically when you press Refresh; the last stored rate is used only if the provider is unavailable.</span>
-          </div>
-        </div>
-      )}
-
-      {subtab !== "sku" && data.intercompany?.excluded && (
-        <div className="skuRangeNotice">
-          <div>
-            <strong>Intercompany excluded</strong>
-            <span>Detected intercompany transactions are removed from consolidated P&amp;L totals. The rule matches known company and intercompany entity names.</span>
           </div>
         </div>
       )}
