@@ -1182,6 +1182,15 @@ function daysBetween(start, end) {
   return Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
 }
 
+function previousEqualLengthWindow(start, end) {
+  const dayCount = daysBetween(start, end);
+  if (!start || !end || !dayCount) return { start: "", end: "" };
+  return {
+    start: shiftDate(start, { days: -dayCount }),
+    end: shiftDate(start, { days: -1 }),
+  };
+}
+
 function comparisonWindow(start, end) {
   if (!start || !end) return { start, end };
   if (daysBetween(start, end) <= 100) return { start, end };
@@ -1351,7 +1360,7 @@ function getDashboard(params) {
 
   const revenueTotal = Number((kpiRows[0] || {}).revenue || 0);
   const expenseTotal = Number((kpiRows[0] || {}).expenses || 0);
-  const companyPerformance = byCompany.map((row) => {
+  let companyPerformance = byCompany.map((row) => {
     const revenue = Number(row.revenue || 0);
     return {
       ...row,
@@ -1557,12 +1566,11 @@ function getDashboard(params) {
   const p1UncappedTo = params.get("dateTo") || reportDateRange?.max || availableDateRange.max;
   const p1To = clampIsoDate(p1UncappedTo, "", minIsoDate(reportDateRange?.max, currentDate) || p1UncappedTo);
 
-  const p2From = params.get("dateFrom2") || (p1From ? shiftDate(p1From, { years: -1 }) : "");
-  const p2To = params.get("dateTo2") || (p1To ? shiftDate(p1To, { years: -1 }) : "");
-
-  const trailingP3 = trailingMonthWindow(p1To, 3);
-  const p3From = params.get("dateFrom3") || trailingP3.start;
-  const p3To = params.get("dateTo3") || trailingP3.end;
+  const previousPeriod = previousEqualLengthWindow(p1From, p1To);
+  const p2From = params.get("dateFrom2") || previousPeriod.start;
+  const p2To = params.get("dateTo2") || previousPeriod.end;
+  const p3From = params.get("dateFrom3") || (p1From ? shiftDate(p1From, { years: -1 }) : "");
+  const p3To = params.get("dateTo3") || (p1To ? shiftDate(p1To, { years: -1 }) : "");
 
   const daysP1 = daysBetween(p1From, p1To);
   const daysP2 = daysBetween(p2From, p2To);
@@ -1603,6 +1611,35 @@ function getDashboard(params) {
         `
       )
       .all(windowFilter.values);
+  }
+
+  function companyMetricsForWindow(start, end) {
+    if (!start || !end) return new Map();
+    const windowParams = periodParams(params, start, end);
+    const windowFilter = whereFromSearch(windowParams);
+    const windowAmount = pnlAmountExpression(windowParams);
+    return new Map(
+      db
+        .prepare(
+          `
+          SELECT
+            c.name AS company,
+            SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${windowAmount} ELSE 0 END) AS revenue,
+            SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${windowAmount} ELSE 0 END) AS net_earnings
+          FROM (
+            SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
+            FROM facts raw_f
+          ) f
+          JOIN reports r ON r.id = f.report_id
+          JOIN batches b ON b.id = r.batch_id
+          JOIN companies c ON c.id = r.company_id
+          ${windowFilter.sql}
+          GROUP BY c.name
+          `
+        )
+        .all(windowFilter.values)
+        .map((row) => [row.company, { revenue: Number(row.revenue || 0), net_earnings: Number(row.net_earnings || 0) }])
+    );
   }
 
   function pnlWindowCoverage(start, end) {
@@ -1649,6 +1686,42 @@ function getDashboard(params) {
     (pnlComparisonCoverage.p3.exact ? pnlRowsForWindow(pnlComparison.p3.start, pnlComparison.p3.end) : [])
       .map((row) => [pnlLineKey(row), Number(row.amount || 0)])
   );
+  const companyCurrentMap = pnlComparisonCoverage.p1.exact
+    ? companyMetricsForWindow(pnlComparison.p1.start, pnlComparison.p1.end)
+    : new Map();
+  const companyP2Map = pnlComparisonCoverage.p2.exact
+    ? companyMetricsForWindow(pnlComparison.p2.start, pnlComparison.p2.end)
+    : new Map();
+  const companyP3Map = pnlComparisonCoverage.p3.exact
+    ? companyMetricsForWindow(pnlComparison.p3.start, pnlComparison.p3.end)
+    : new Map();
+  const companyRevenueP2Map = new Map([...companyP2Map].map(([company, values]) => [company, values.revenue]));
+  const companyRevenueP3Map = new Map([...companyP3Map].map(([company, values]) => [company, values.revenue]));
+  const companyNetEarningsP2Map = new Map([...companyP2Map].map(([company, values]) => [company, values.net_earnings]));
+  const companyNetEarningsP3Map = new Map([...companyP3Map].map(([company, values]) => [company, values.net_earnings]));
+
+  companyPerformance = companyPerformance.map((row) => {
+    const current = companyCurrentMap.get(row.company) || row;
+    const revenueP2 = fairGrowthMetric(current.revenue, daysP1, companyRevenueP2Map, daysP2, row.company);
+    const revenueP3 = fairGrowthMetric(current.revenue, daysP1, companyRevenueP3Map, daysP3, row.company);
+    const netEarningsP2 = fairGrowthMetric(current.net_earnings, daysP1, companyNetEarningsP2Map, daysP2, row.company);
+    const netEarningsP3 = fairGrowthMetric(current.net_earnings, daysP1, companyNetEarningsP3Map, daysP3, row.company);
+    return {
+      ...row,
+      revenue_growth_p2: revenueP2.growth,
+      revenue_growth_p3: revenueP3.growth,
+      revenue_growth_status_p2: revenueP2.status,
+      revenue_growth_status_p3: revenueP3.status,
+      comparison_revenue_p2: companyRevenueP2Map.get(row.company) ?? null,
+      comparison_revenue_p3: companyRevenueP3Map.get(row.company) ?? null,
+      net_earnings_growth_p2: netEarningsP2.growth,
+      net_earnings_growth_p3: netEarningsP3.growth,
+      net_earnings_growth_status_p2: netEarningsP2.status,
+      net_earnings_growth_status_p3: netEarningsP3.status,
+      comparison_net_earnings_p2: companyNetEarningsP2Map.get(row.company) ?? null,
+      comparison_net_earnings_p3: companyNetEarningsP3Map.get(row.company) ?? null,
+    };
+  });
   const expenseContributorRows = db
     .prepare(
       `

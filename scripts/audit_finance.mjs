@@ -24,6 +24,10 @@ function line(data, section, lineItem) {
   return amount(data.pAndL.find((row) => row.section === section && row.line_item === lineItem)?.amount);
 }
 
+function daysBetween(start, end) {
+  return Math.max(1, Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1);
+}
+
 function auditExactPnl(data, label) {
   assert(data.meta.pnlCoverage.exact, `${label}: expected exact P&L coverage`);
   const revenue = line(data, "Income", "Total for Income");
@@ -91,6 +95,35 @@ assert(full.insights.revenueGrowth.growth_p2 === null, "Estimated P&L growth mus
 assert(full.meta.fxPolicy?.basis === "live_refresh_rate", "FX conversion basis is missing");
 assert(full.intercompany?.excluded === true, "Intercompany transactions must be excluded from consolidated totals");
 
+const automaticComparisons = await dashboard({
+  dimension: "class",
+  dateFrom: "2026-04-01",
+  dateTo: "2026-04-30",
+});
+assert(automaticComparisons.meta.pnlComparison.p2.start === "2026-03-02", "Period A must be the immediately preceding equal-length range");
+assert(automaticComparisons.meta.pnlComparison.p2.end === "2026-03-31", "Period A must end the day before the selected period");
+assert(daysBetween(automaticComparisons.meta.pnlComparison.p1.start, automaticComparisons.meta.pnlComparison.p1.end) === daysBetween(automaticComparisons.meta.pnlComparison.p2.start, automaticComparisons.meta.pnlComparison.p2.end), "Period A must match the selected period length");
+assert(automaticComparisons.meta.pnlComparison.p3.start === "2025-04-01", "Period B must default to the same dates last year");
+assert(automaticComparisons.meta.pnlComparison.p3.end === "2025-04-30", "Period B end date is wrong");
+
+const matchedCompanyComparisons = await dashboard({
+  dimension: "class",
+  dateFrom: "2023-01-01",
+  dateTo: "2026-05-22",
+  dateFrom2: "2023-01-01",
+  dateTo2: "2026-05-22",
+  dateFrom3: "2023-01-01",
+  dateTo3: "2026-05-22",
+});
+for (const row of matchedCompanyComparisons.companyPerformance) {
+  assert(row.revenue_growth_status_p2 === "ok" && row.revenue_growth_status_p3 === "ok", `Company revenue comparisons are unavailable: ${row.company}`);
+  assert(row.net_earnings_growth_status_p2 === "ok" && row.net_earnings_growth_status_p3 === "ok", `Company net earnings comparisons are unavailable: ${row.company}`);
+  assert(Math.abs(amount(row.revenue_growth_p2)) <= 0.000001 && Math.abs(amount(row.revenue_growth_p3)) <= 0.000001, `Company revenue comparison is not normalized: ${row.company}`);
+  assert(Math.abs(amount(row.net_earnings_growth_p2)) <= 0.000001 && Math.abs(amount(row.net_earnings_growth_p3)) <= 0.000001, `Company net earnings comparison is not normalized: ${row.company}`);
+  assert(Math.abs(amount(row.comparison_revenue_p2) - amount(row.revenue)) <= tolerance, `Company Period A revenue does not reconcile: ${row.company}`);
+  assert(Math.abs(amount(row.comparison_net_earnings_p2) - amount(row.net_earnings)) <= tolerance, `Company Period A net earnings does not reconcile: ${row.company}`);
+}
+
 const initialClass = await dashboard({ dimension: "class" });
 assert(initialClass.meta.preferredPnlRange?.start === "2026-04-01", "Complete monthly P&L should be the preferred initial range");
 assert(initialClass.meta.preferredPnlRange?.end === "2026-04-30", "Preferred monthly P&L end date is wrong");
@@ -154,4 +187,4 @@ for (const row of aprilMonthly.sku.rows.filter((item) => item.growth_status_p3 =
   assert(Math.abs(amount(row.growth_value_p3) - expectedValue) <= tolerance, `P3 growth dollars are not normalized: ${row.sku}`);
 }
 
-console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, intercompany elimination reconciliation, ${unavailableCases.length} blocked estimate cases, costed SKU margins, monthly P2/P3 comparisons, and FX basis.`);
+console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, intercompany elimination reconciliation, ${unavailableCases.length} blocked estimate cases, costed SKU margins, Period A/B comparisons, and FX basis.`);

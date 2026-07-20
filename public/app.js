@@ -287,12 +287,20 @@ function jsShiftDate(val, { years = 0, months = 0, days = 0 }) {
   return d.toISOString().slice(0, 10);
 }
 
-function jsTrailingMonthWindow(end, monthCount = 3) {
-  if (!end) return { start: "", end: "" };
-  const [year, month] = end.split("-").map(Number);
-  if (!year || !month) return { start: "", end };
-  const start = new Date(Date.UTC(year, month - monthCount, 1)).toISOString().slice(0, 10);
-  return { start, end };
+function jsDaysBetween(start, end) {
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  const endMs = Date.parse(`${end}T00:00:00Z`);
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) return 0;
+  return Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
+}
+
+function jsPreviousEqualLengthWindow(start, end) {
+  const dayCount = jsDaysBetween(start, end);
+  if (!start || !end || !dayCount) return { start: "", end: "" };
+  return {
+    start: jsShiftDate(start, { days: -dayCount }),
+    end: jsShiftDate(start, { days: -1 }),
+  };
 }
 
 function pctOrDash(value) {
@@ -374,8 +382,8 @@ function InsightGrid({ insights }) {
       label: "Revenue",
       value: hkd(insights.revenueTotal),
       lines: [
-        [p2UsesSku ? "Sales vs P2" : "P&L vs P2", <Growth value={p2UsesSku ? skuGrowth.growth_p2 : exactPnlGrowth.growth_p2} status={p2UsesSku ? skuGrowth.status_p2 : exactPnlGrowth.status_p2} missingLabel="no sales" />],
-        [p3UsesSku ? "Sales vs P3" : "P&L vs P3", <Growth value={p3UsesSku ? skuGrowth.growth_p3 : exactPnlGrowth.growth_p3} status={p3UsesSku ? skuGrowth.status_p3 : exactPnlGrowth.status_p3} missingLabel="no sales" />],
+        [p2UsesSku ? "Sales vs A" : "P&L vs A", <Growth value={p2UsesSku ? skuGrowth.growth_p2 : exactPnlGrowth.growth_p2} status={p2UsesSku ? skuGrowth.status_p2 : exactPnlGrowth.status_p2} missingLabel="no sales" />],
+        [p3UsesSku ? "Sales vs B" : "P&L vs B", <Growth value={p3UsesSku ? skuGrowth.growth_p3 : exactPnlGrowth.growth_p3} status={p3UsesSku ? skuGrowth.status_p3 : exactPnlGrowth.status_p3} missingLabel="no sales" />],
         [
           "Top company",
           insights.topRevenueCompany ? (
@@ -485,7 +493,22 @@ function InsightGrid({ insights }) {
   );
 }
 
-function PerformanceTable({ rows }) {
+function aggregateCompanyGrowth(rows, currentField, comparisonField, statusField, currentRange, comparisonRange) {
+  if (!rows.length || rows.some((row) => row[statusField] !== "ok")) return { growth: null, status: "no_prior" };
+  const currentDays = jsDaysBetween(currentRange?.start, currentRange?.end);
+  const comparisonDays = jsDaysBetween(comparisonRange?.start, comparisonRange?.end);
+  const current = rows.reduce((sum, row) => sum + Number(row[currentField] || 0), 0);
+  const comparison = rows.reduce((sum, row) => sum + Number(row[comparisonField] || 0), 0);
+  if (!currentDays || !comparisonDays || Math.abs(comparison / comparisonDays) < 0.01) {
+    return { growth: null, status: "no_prior" };
+  }
+  return {
+    growth: current / currentDays / (comparison / comparisonDays) - 1,
+    status: "ok",
+  };
+}
+
+function PerformanceTable({ rows, comparison }) {
   const total = rows.reduce(
     (acc, row) => ({
       company: "Total",
@@ -500,6 +523,20 @@ function PerformanceTable({ rows }) {
   total.gross_margin = total.revenue ? total.gross_profit / total.revenue : 0;
   total.expense_ratio = total.revenue ? total.expenses / total.revenue : 0;
   total.net_margin = total.revenue ? total.net_earnings / total.revenue : 0;
+  const totalRevenueA = aggregateCompanyGrowth(rows, "revenue", "comparison_revenue_p2", "revenue_growth_status_p2", comparison?.p1, comparison?.p2);
+  const totalRevenueB = aggregateCompanyGrowth(rows, "revenue", "comparison_revenue_p3", "revenue_growth_status_p3", comparison?.p1, comparison?.p3);
+  const totalNetEarningsA = aggregateCompanyGrowth(rows, "net_earnings", "comparison_net_earnings_p2", "net_earnings_growth_status_p2", comparison?.p1, comparison?.p2);
+  const totalNetEarningsB = aggregateCompanyGrowth(rows, "net_earnings", "comparison_net_earnings_p3", "net_earnings_growth_status_p3", comparison?.p1, comparison?.p3);
+  Object.assign(total, {
+    revenue_growth_p2: totalRevenueA.growth,
+    revenue_growth_status_p2: totalRevenueA.status,
+    revenue_growth_p3: totalRevenueB.growth,
+    revenue_growth_status_p3: totalRevenueB.status,
+    net_earnings_growth_p2: totalNetEarningsA.growth,
+    net_earnings_growth_status_p2: totalNetEarningsA.status,
+    net_earnings_growth_p3: totalNetEarningsB.growth,
+    net_earnings_growth_status_p3: totalNetEarningsB.status,
+  });
   const tableRows = [...rows, total];
 
   return (
@@ -514,6 +551,10 @@ function PerformanceTable({ rows }) {
             <th>Expense ratio</th>
             <th>Net margin</th>
             <th>Net earnings</th>
+            <th>Revenue vs A</th>
+            <th>Revenue vs B</th>
+            <th>Net earnings vs A</th>
+            <th>Net earnings vs B</th>
           </tr>
         </thead>
         <tbody>
@@ -526,6 +567,10 @@ function PerformanceTable({ rows }) {
               <td>{pct(row.expense_ratio)}</td>
               <td><Badge value={row.net_margin} /></td>
               <td>{hkd(row.net_earnings)}</td>
+              <td><Growth value={row.revenue_growth_p2} status={row.revenue_growth_status_p2} missingLabel="No data" /></td>
+              <td><Growth value={row.revenue_growth_p3} status={row.revenue_growth_status_p3} missingLabel="No data" /></td>
+              <td><Growth value={row.net_earnings_growth_p2} status={row.net_earnings_growth_status_p2} missingLabel="No data" /></td>
+              <td><Growth value={row.net_earnings_growth_p3} status={row.net_earnings_growth_status_p3} missingLabel="No data" /></td>
             </tr>
           ))}
         </tbody>
@@ -571,8 +616,8 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
         <span>Revenue</span>
         <span>Costed margin</span>
         <span>Share</span>
-        <span>vs P2</span>
-        <span>vs P3</span>
+        <span>vs A</span>
+        <span>vs B</span>
       </div>
       {rows.map((row) => {
         const name = row.brand || row.customer || "Unmapped";
@@ -611,10 +656,10 @@ function Growth({ value, status, missingLabel = "n/a" }) {
 const skuSortOptions = [
   { value: "revenue", label: "Sales" },
   { value: "gross_profit", label: "Margin $" },
-  { value: "growth_value_p2", label: "Sales growth $ (P1 vs P2)" },
-  { value: "growth_p2", label: "Sales growth % (P1 vs P2)" },
-  { value: "growth_value_p3", label: "Sales growth $ (P1 vs P3)" },
-  { value: "growth_p3", label: "Sales growth % (P1 vs P3)" },
+  { value: "growth_value_p2", label: "Sales growth $ (Selected vs A)" },
+  { value: "growth_p2", label: "Sales growth % (Selected vs A)" },
+  { value: "growth_value_p3", label: "Sales growth $ (Selected vs B)" },
+  { value: "growth_p3", label: "Sales growth % (Selected vs B)" },
 ];
 
 function sortSkuRows(rows, sortBy) {
@@ -685,10 +730,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
       "Revenue Share",
       "Avg Price (HKD)",
       "Margin Dollars (HKD)",
-      "Growth Value (P1 vs P2) (HKD)",
-      "Growth % (P1 vs P2)",
-      "Growth Value (P1 vs P3) (HKD)",
-      "Growth % (P1 vs P3)"
+      "Growth Value (Selected vs A) (HKD)",
+      "Growth % (Selected vs A)",
+      "Growth Value (Selected vs B) (HKD)",
+      "Growth % (Selected vs B)"
     ];
 
     const csvRows = [headers.join(",")];
@@ -812,11 +857,11 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                     {row.gross_profit === null || row.gross_profit === undefined ? "No COGS" : hkd(row.gross_profit)}
                   </span>
                   <span>
-                    <b>vs P2</b>
+                    <b>vs A</b>
                     <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="New" />
                   </span>
                   <span>
-                    <b>vs P3</b>
+                    <b>vs B</b>
                     <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="New" />
                   </span>
                 </div>
@@ -868,10 +913,10 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                 <th>Share</th>
                 <th>Avg price</th>
                 <th>Margin $</th>
-                <th>Growth $ (P1 vs P2)</th>
-                <th>Growth % (P1 vs P2)</th>
-                <th>Growth $ (P1 vs P3)</th>
-                <th>Growth % (P1 vs P3)</th>
+                <th>Growth $ (Selected vs A)</th>
+                <th>Growth % (Selected vs A)</th>
+                <th>Growth $ (Selected vs B)</th>
+                <th>Growth % (Selected vs B)</th>
               </tr>
             </thead>
             <tbody>
@@ -999,8 +1044,8 @@ function ScopeStrip({ filters }) {
     { label: "Brand", value: filters.brand?.length ? `${filters.brand.length} selected` : "All brands" },
     { label: "Customer", value: filters.customer?.length ? `${filters.customer.length} selected` : "All customers" },
     { label: "Active Period", value: filters.dateFrom && filters.dateTo ? `${filters.dateFrom} to ${filters.dateTo}` : "All dates" },
-    { label: "P2 Last Year", value: filters.dateFrom2 && filters.dateTo2 ? `${filters.dateFrom2} to ${filters.dateTo2}` : "Not set" },
-    { label: "P3 Trailing 3M", value: filters.dateFrom3 && filters.dateTo3 ? `${filters.dateFrom3} to ${filters.dateTo3}` : "Not set" },
+    { label: "Period A", value: filters.dateFrom2 && filters.dateTo2 ? `${filters.dateFrom2} to ${filters.dateTo2}` : "Not set" },
+    { label: "Period B", value: filters.dateFrom3 && filters.dateTo3 ? `${filters.dateFrom3} to ${filters.dateTo3}` : "Not set" },
   ];
   return (
     <div className="scopeStrip">
@@ -1315,17 +1360,17 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const [comparisonMode, setComparisonMode] = useState("standard");
   
   const comparisonModeOptions = [
-    { value: "standard", label: "Auto-comparison (LY / P3M)" },
+    { value: "standard", label: "Auto-comparison (Previous / LY)" },
     { value: "custom", label: "Custom comparison (Manual dates)" }
   ];
 
   useEffect(() => {
     if (comparisonMode === "standard" && filters.dateFrom && filters.dateTo) {
-      const from2 = jsShiftDate(filters.dateFrom, { years: -1 });
-      const to2 = jsShiftDate(filters.dateTo, { years: -1 });
-      const trailingP3 = jsTrailingMonthWindow(filters.dateTo, 3);
-      const from3 = trailingP3.start;
-      const to3 = trailingP3.end;
+      const previousPeriod = jsPreviousEqualLengthWindow(filters.dateFrom, filters.dateTo);
+      const from2 = previousPeriod.start;
+      const to2 = previousPeriod.end;
+      const from3 = jsShiftDate(filters.dateFrom, { years: -1 });
+      const to3 = jsShiftDate(filters.dateTo, { years: -1 });
       
       if (
         from2 !== filters.dateFrom2 ||
@@ -1460,13 +1505,13 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <div className="customComparisonBar animateFadeIn">
           <div className="customComparisonHeader">
             <h3>Custom comparison periods</h3>
-            <p>Fine-tune manual date ranges for Comparison Period 2 and Comparison Period 3.</p>
+            <p>Set the two date ranges used for company revenue and net-earnings comparisons.</p>
           </div>
           <div className="customComparisonGrid">
-            <DateField label="Comparison A Start" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
-            <DateField label="Comparison A End" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
-            <DateField label="Comparison B Start" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
-            <DateField label="Comparison B End" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
+            <DateField label="Period A start" value={filters.dateFrom2} onChange={(value) => setFilters({ ...filters, dateFrom2: value })} />
+            <DateField label="Period A end" value={filters.dateTo2} onChange={(value) => setFilters({ ...filters, dateTo2: value })} />
+            <DateField label="Period B start" value={filters.dateFrom3} onChange={(value) => setFilters({ ...filters, dateFrom3: value })} />
+            <DateField label="Period B end" value={filters.dateTo3} onChange={(value) => setFilters({ ...filters, dateTo3: value })} />
           </div>
         </div>
       )}
@@ -1520,10 +1565,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
             <div className="panelHeader">
               <div>
                 <h2>Company profitability</h2>
-                <p>Margins and ratios make companies easier to compare than bars</p>
+                <p>Margins plus daily-normalized change versus Period A and Period B</p>
               </div>
             </div>
-            <PerformanceTable rows={data.companyPerformance} />
+            <PerformanceTable rows={data.companyPerformance} comparison={data.meta.pnlComparison} />
           </div>
 
           <div className="panel">
@@ -1653,8 +1698,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
         <span>Account</span>
         <span>HKD</span>
         <span>% revenue</span>
-        <span>vs P2</span>
-        <span>vs P3</span>
+        <span>vs A</span>
+        <span>vs B</span>
       </div>
       {Object.entries(groups).map(([section, sectionRows]) => {
         const open = !!expanded[section];
@@ -1699,8 +1744,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
                     </span>
                     <strong>{hkd(row.amount)}</strong>
                     <em>{rowPct}</em>
-                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no P2" />
-                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no P3" />
+                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no A" />
+                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no B" />
                   </div>
                   {showContributors && contributorsOpen && (
                     <div className="expenseContributors">
