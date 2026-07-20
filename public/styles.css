@@ -1015,7 +1015,7 @@ h1 {
 .expenseHeaders,
 .expenseMeta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(140px, 1fr) 96px 108px 78px;
   align-items: center;
   column-gap: 6px;
 }
@@ -1035,6 +1035,14 @@ h1 {
 
 .expenseMeta .amountBadge {
   display: contents;
+}
+
+.expenseMeta .amountText {
+  text-align: right;
+}
+
+.expenseMeta .percentagePill {
+  justify-self: end;
 }
 
 .contributionRow,
@@ -1070,8 +1078,11 @@ h1 {
 }
 
 .expenseMeta.rowMeta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
   width: 100%;
-  gap: 6px;
+  column-gap: 6px;
 }
 
 .amountBadge {
