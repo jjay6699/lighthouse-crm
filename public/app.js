@@ -339,6 +339,11 @@ function periodLabel(start, end) {
 function ContributionList({ rows }) {
   return (
     <div className="contributionList">
+      <div className="contributionHeaders" aria-hidden="true">
+        <span>Company</span>
+        <span>Amount</span>
+        <span>Share</span>
+      </div>
       {rows.map((row) => (
         <div className="contributionRow" key={row.company}>
           <div className="rowMeta">
@@ -362,6 +367,8 @@ function InsightGrid({ insights }) {
   const skuGrowth = insights.skuGrowth || {};
   const p2UsesSku = exactPnlGrowth.growth_p2 === null || exactPnlGrowth.growth_p2 === undefined;
   const p3UsesSku = exactPnlGrowth.growth_p3 === null || exactPnlGrowth.growth_p3 === undefined;
+  const entityLabel = insights.entityLabel || "brand";
+  const entityLabelTitle = entityLabel === "customer" ? "customer" : "brand";
   const cards = [
     {
       label: "Revenue",
@@ -379,7 +386,7 @@ function InsightGrid({ insights }) {
           ) : "-"
         ],
         [
-          "Top brand",
+          `Top ${entityLabelTitle}`,
           insights.topRevenueBrand ? (
             <span className="insightValueWrap">
               <span className="insightName">{insights.topRevenueBrand.entity}</span>
@@ -400,7 +407,7 @@ function InsightGrid({ insights }) {
           ) : "0.0%"
         ],
         [
-          "Highest brand",
+          `Top ${entityLabelTitle}`,
           insights.topCostOfSalesBrand ? (
             <span className="insightValueWrap">
               <span className="insightName">{insights.topCostOfSalesBrand.entity}</span>
@@ -446,7 +453,7 @@ function InsightGrid({ insights }) {
           ) : "-"
         ],
         [
-          "Best brand",
+          `Best ${entityLabelTitle}`,
           insights.bestMarginBrand ? (
             <span className="insightValueWrap">
               <span className="insightName">{insights.bestMarginBrand.entity}</span>
@@ -1513,18 +1520,19 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           <div className="summaryTop">
             <div className="panel">
               <div className="panelHeader">
-                <div>
-                  <h2>Revenue contribution</h2>
-                  <p>Share of total revenue by company</p>
+              <div>
+                <h2>Revenue contribution</h2>
+                  <p>Amount and share of total revenue by company</p>
                 </div>
               </div>
               <ContributionList rows={data.companyPerformance} />
             </div>
             <div className="panel">
               <div className="panelHeader">
-                <div>
-                  <h2>Management insights</h2>
+              <div>
+                <h2>Management insights</h2>
                   <p>Auto-highlighted from the current filters</p>
+                  <small className="insightLegend">Growth compares normalized daily values. Shares show the relevant total for each card.</small>
                 </div>
               </div>
               <InsightGrid insights={data.insights} />

@@ -2250,6 +2250,7 @@ function getDashboard(params) {
         status_p2: pnlAvailable ? (revenueGrowthRow?.growth_status_p2 || "no_prior") : "unavailable",
         status_p3: pnlAvailable ? (revenueGrowthRow?.growth_status_p3 || "no_prior") : "unavailable",
       },
+      entityLabel: requestedDimension === "customer" ? "customer" : "brand",
       skuGrowth: {
         current_revenue: skuCurrentRevenue,
         p2_revenue: skuLyRevenue,

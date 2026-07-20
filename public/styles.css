@@ -982,6 +982,24 @@ h1 {
   gap: 16px;
 }
 
+.contributionHeaders {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  padding: 0 12px 2px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.contributionHeaders span:nth-child(2),
+.contributionHeaders span:nth-child(3) {
+  min-width: 56px;
+  text-align: right;
+}
+
 .expenseBars {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1112,6 +1130,15 @@ h1 {
   font-size: 20px;
   font-weight: 700;
   color: #0f172a;
+}
+
+.insightLegend {
+  display: block;
+  max-width: 42rem;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .insightLines {
