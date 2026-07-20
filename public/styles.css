@@ -1030,6 +1030,7 @@ h1 {
 }
 
 .expenseHeaders span:not(:first-child) {
+  justify-self: end;
   text-align: right;
 }
 
@@ -1079,7 +1080,7 @@ h1 {
 
 .expenseMeta.rowMeta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(140px, 1fr) 96px 108px 78px;
   align-items: center;
   width: 100%;
   column-gap: 6px;
