@@ -586,21 +586,33 @@ function Badge({ value }) {
 
 function ExpenseBars({ rows }) {
   const max = Math.max(...rows.map((row) => Number(row.amount || 0)), 1);
+  const splitAt = Math.ceil(rows.length / 2);
+  const columns = [rows.slice(0, splitAt), rows.slice(splitAt)].filter((column) => column.length);
   return (
     <div className="expenseBars">
-      {rows.map((row) => (
-        <div className="expenseRow" key={row.line_item}>
-          <div className="rowMeta">
-            <strong>{row.line_item}</strong>
-            <span className="amountBadge">
-              <span className="amountText">{hkd(row.amount)}</span>
-              <span className="percentagePill muted">{pct(row.share_of_expenses)} share</span>
-              <span className="percentagePill blue">{pct(row.share_of_revenue)} rev</span>
-            </span>
+      {columns.map((column, columnIndex) => (
+        <div className="expenseColumn" key={`expense-column-${columnIndex}`}>
+          <div className="expenseHeaders" aria-hidden="true">
+            <span>Expense</span>
+            <span>Amount</span>
+            <span>Share of expenses</span>
+            <span>% of revenue</span>
           </div>
-          <div className="barTrack expenseTrack">
-            <i style={{ width: `${Math.max(2, (Number(row.amount || 0) / max) * 100)}%` }} />
-          </div>
+          {column.map((row) => (
+            <div className="expenseRow" key={row.line_item}>
+              <div className="rowMeta expenseMeta">
+                <strong>{row.line_item}</strong>
+                <span className="amountBadge">
+                  <span className="amountText">{hkd(row.amount)}</span>
+                  <span className="percentagePill muted">{pct(row.share_of_expenses)}</span>
+                  <span className="percentagePill blue">{pct(row.share_of_revenue)}</span>
+                </span>
+              </div>
+              <div className="barTrack expenseTrack">
+                <i style={{ width: `${Math.max(2, (Number(row.amount || 0) / max) * 100)}%` }} />
+              </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>

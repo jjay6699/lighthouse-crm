@@ -1006,6 +1006,37 @@ h1 {
   gap: 16px 32px;
 }
 
+.expenseColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.expenseHeaders,
+.expenseMeta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  column-gap: 6px;
+}
+
+.expenseHeaders {
+  padding: 0 12px 2px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.expenseHeaders span:not(:first-child) {
+  text-align: right;
+}
+
+.expenseMeta .amountBadge {
+  display: contents;
+}
+
 .contributionRow,
 .expenseRow {
   display: flex;
@@ -1036,6 +1067,11 @@ h1 {
   font-size: 13px;
   font-weight: 600;
   color: #1e293b;
+}
+
+.expenseMeta.rowMeta {
+  width: 100%;
+  gap: 6px;
 }
 
 .amountBadge {
