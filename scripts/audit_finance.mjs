@@ -99,7 +99,7 @@ for (const [label, params] of unavailableCases) {
 }
 
 const full = await dashboard(exactCases[0][1]);
-assert(full.insights.revenueGrowth.status_p2 === "no_prior", "P&L growth should require an exact comparison report");
+assert(full.insights.revenueGrowth.status_p2 === "no_exact_report", "P&L growth should identify a missing exact comparison report");
 assert(full.insights.revenueGrowth.growth_p2 === null, "Estimated P&L growth must not be returned");
 assert(full.meta.fxPolicy?.basis === "live_refresh_rate", "FX conversion basis is missing");
 assert(full.intercompany?.excluded === true, "Intercompany transactions must be excluded from consolidated totals");
@@ -245,4 +245,25 @@ for (const row of aprilMonthly.sku.rows.filter((item) => item.growth_status_p3 =
   assert(Math.abs(amount(row.growth_value_p3) - expectedValue) <= tolerance, `P3 growth dollars are not normalized: ${row.sku}`);
 }
 
-console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, intercompany elimination reconciliation, ${unavailableCases.length} blocked estimate cases, costed SKU margins, Period A/B comparisons, and FX basis.`);
+const longRangeComparisons = await dashboard({
+  dimension: "class",
+  dateFrom: "2023-01-01",
+  dateTo: "2026-05-22",
+});
+assert(longRangeComparisons.sku.comparison.current.start === "2026-02-23", "Long-range SKU growth must use the latest three-month window");
+assert(longRangeComparisons.sku.comparison.current.end === "2026-05-22", "Long-range SKU growth end date is wrong");
+assert(longRangeComparisons.sku.comparison.ly.start === "2025-11-26", "Long-range Period A must immediately precede the SKU growth window");
+assert(longRangeComparisons.sku.comparison.ly.end === "2026-02-22", "Long-range Period A end date is wrong");
+assert(longRangeComparisons.sku.comparison.p3m.start === "2025-02-23", "Long-range Period B must use the same dates last year");
+assert(longRangeComparisons.sku.comparison.p3m.end === "2025-05-22", "Long-range Period B end date is wrong");
+assert(longRangeComparisons.sku.comparison.coverage.current.complete, "Long-range current SKU window must be fully covered");
+assert(longRangeComparisons.sku.comparison.coverage.p2.complete, "Long-range Period A must be fully covered");
+assert(longRangeComparisons.sku.comparison.coverage.p3.complete, "Long-range Period B must be fully covered");
+assert(longRangeComparisons.sku.brands.some((row) => row.growth_status_p2 === "ok"), "Long-range brand Period A comparisons are missing");
+assert(longRangeComparisons.sku.customers.some((row) => row.growth_status_p2 === "ok"), "Long-range customer Period A comparisons are missing");
+assert(longRangeComparisons.sku.rows.some((row) => row.growth_status_p2 === "ok"), "Long-range SKU Period A comparisons are missing");
+for (const row of longRangeComparisons.sku.rows.filter((item) => item.growth_status_p2 === "no_prior")) {
+  assert(row.growth_value_p2 === null, `Missing prior SKU sales exposed a false growth amount: ${row.sku}`);
+}
+
+console.log(`Finance audit passed: ${exactCases.length} exact P&L cases, intercompany elimination reconciliation, ${unavailableCases.length} blocked estimate cases, costed SKU margins, bounded Period A/B comparisons, and FX basis.`);

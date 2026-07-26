@@ -303,6 +303,15 @@ function jsPreviousEqualLengthWindow(start, end) {
   };
 }
 
+function jsComparisonWindow(start, end) {
+  if (!start || !end) return { start, end };
+  if (jsDaysBetween(start, end) <= 100) return { start, end };
+  return {
+    start: jsShiftDate(end, { months: -3, days: 1 }),
+    end,
+  };
+}
+
 function pctOrDash(value) {
   return value === null || value === undefined ? "n/a" : pct(value);
 }
@@ -494,7 +503,9 @@ function InsightGrid({ insights }) {
 }
 
 function aggregateCompanyGrowth(rows, currentField, comparisonField, statusField, currentRange, comparisonRange) {
-  if (!rows.length || rows.some((row) => row[statusField] !== "ok")) return { growth: null, status: "no_prior" };
+  if (!rows.length) return { growth: null, status: "no_prior" };
+  const unavailableRow = rows.find((row) => row[statusField] !== "ok");
+  if (unavailableRow) return { growth: null, status: unavailableRow[statusField] || "no_prior" };
   const currentDays = jsDaysBetween(currentRange?.start, currentRange?.end);
   const comparisonDays = jsDaysBetween(comparisonRange?.start, comparisonRange?.end);
   const current = rows.reduce((sum, row) => sum + Number(row[currentField] || 0), 0);
@@ -551,10 +562,10 @@ function PerformanceTable({ rows, comparison }) {
             <th>Expense ratio</th>
             <th>Net margin</th>
             <th>Net earnings</th>
-            <th>Revenue vs A</th>
-            <th>Revenue vs B</th>
-            <th>Net earnings vs A</th>
-            <th>Net earnings vs B</th>
+            <th>P&amp;L revenue vs A</th>
+            <th>P&amp;L revenue vs B</th>
+            <th>P&amp;L net earnings vs A</th>
+            <th>P&amp;L net earnings vs B</th>
           </tr>
         </thead>
         <tbody>
@@ -567,10 +578,10 @@ function PerformanceTable({ rows, comparison }) {
               <td>{pct(row.expense_ratio)}</td>
               <td><Badge value={row.net_margin} /></td>
               <td>{hkd(row.net_earnings)}</td>
-              <td><Growth value={row.revenue_growth_p2} status={row.revenue_growth_status_p2} missingLabel="No data" /></td>
-              <td><Growth value={row.revenue_growth_p3} status={row.revenue_growth_status_p3} missingLabel="No data" /></td>
-              <td><Growth value={row.net_earnings_growth_p2} status={row.net_earnings_growth_status_p2} missingLabel="No data" /></td>
-              <td><Growth value={row.net_earnings_growth_p3} status={row.net_earnings_growth_status_p3} missingLabel="No data" /></td>
+              <td><Growth value={row.revenue_growth_p2} status={row.revenue_growth_status_p2} missingLabel="No prior P&L" /></td>
+              <td><Growth value={row.revenue_growth_p3} status={row.revenue_growth_status_p3} missingLabel="No prior P&L" /></td>
+              <td><Growth value={row.net_earnings_growth_p2} status={row.net_earnings_growth_status_p2} missingLabel="No prior P&L" /></td>
+              <td><Growth value={row.net_earnings_growth_p3} status={row.net_earnings_growth_status_p3} missingLabel="No prior P&L" /></td>
             </tr>
           ))}
         </tbody>
@@ -697,8 +708,8 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
               <small>{pct(row.margin_coverage)} covered</small>
             </span>
             <strong>{pct(row.revenue_share)}</strong>
-            <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="New" />
-            <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="New" />
+            <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="No prior sales" />
+            <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="No prior sales" />
           </div>
         );
       })}
@@ -720,10 +731,24 @@ function Growth({ value, status, missingLabel = "n/a" }) {
       ? "unavailable"
       : empty && status === "no_prior"
         ? missingLabel
+        : empty && status === "no_exact_report"
+          ? "No exact P&L"
+          : empty && status === "incomplete_period"
+            ? "Outside sales range"
         : empty && status === "nonpositive_prior"
           ? "n/m"
           : pctOrDash(value);
-  return <span className={`growth ${tone}`}>{label}</span>;
+  const title =
+    status === "no_exact_report"
+      ? "No uploaded P&L report exactly matches this comparison period. The dashboard does not prorate accounting reports."
+      : status === "incomplete_period"
+        ? "This comparison period extends beyond the available Sales by Product transaction dates."
+        : status === "no_prior"
+          ? "There are no prior-period rows for this item in the selected comparison window."
+          : status === "nonpositive_prior"
+            ? "A percentage change is not meaningful because the prior value is zero or negative."
+            : "";
+  return <span className={`growth ${tone}`} title={title}>{label}</span>;
 }
 
 const skuSortOptions = [
@@ -903,6 +928,8 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
             <span>
               Available SKU range {dataRange.min || "-"} to {dataRange.max || "-"}
               {sku.comparison?.current?.start ? ` | Growth window ${sku.comparison.current.start} to ${sku.comparison.current.end}` : ""}
+              {sku.comparison?.ly?.start ? ` | A ${sku.comparison.ly.start} to ${sku.comparison.ly.end}` : ""}
+              {sku.comparison?.p3m?.start ? ` | B ${sku.comparison.p3m.start} to ${sku.comparison.p3m.end}` : ""}
             </span>
           </div>
           <button type="button" onClick={resetSkuFilters}>Reset SKU filters</button>
@@ -990,9 +1017,9 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
                   <td>{hkd(row.avg_price)}</td>
                   <td>{row.gross_profit === null || row.gross_profit === undefined ? "No COGS" : hkd(row.gross_profit)}</td>
                   <td>{row.growth_value_p2 === null || row.growth_value_p2 === undefined ? "n/a" : hkd(row.growth_value_p2)}</td>
-                  <td><Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="New" /></td>
+                  <td><Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="No prior sales" /></td>
                   <td>{row.growth_value_p3 === null || row.growth_value_p3 === undefined ? "n/a" : hkd(row.growth_value_p3)}</td>
-                  <td><Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="New" /></td>
+                  <td><Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="No prior sales" /></td>
                 </tr>
               ))}
             </tbody>
@@ -1450,11 +1477,12 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
 
   useEffect(() => {
     if (comparisonMode === "standard" && filters.dateFrom && filters.dateTo) {
-      const previousPeriod = jsPreviousEqualLengthWindow(filters.dateFrom, filters.dateTo);
+      const activeComparisonWindow = jsComparisonWindow(filters.dateFrom, filters.dateTo);
+      const previousPeriod = jsPreviousEqualLengthWindow(activeComparisonWindow.start, activeComparisonWindow.end);
       const from2 = previousPeriod.start;
       const to2 = previousPeriod.end;
-      const from3 = jsShiftDate(filters.dateFrom, { years: -1 });
-      const to3 = jsShiftDate(filters.dateTo, { years: -1 });
+      const from3 = jsShiftDate(activeComparisonWindow.start, { years: -1 });
+      const to3 = jsShiftDate(activeComparisonWindow.end, { years: -1 });
       
       if (
         from2 !== filters.dateFrom2 ||
@@ -1651,8 +1679,11 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           <div className="panel">
             <div className="panelHeader">
               <div>
-                <h2>Company profitability</h2>
-                <p>Margins plus daily-normalized change versus Period A and Period B</p>
+                <div className="panelTitleWithInfo">
+                  <h2>Company profitability</h2>
+                  <InfoHint text="P&L revenue and net-earnings comparisons are only calculated when an uploaded P&L report exactly matches Period A or B. Accounting reports are never prorated. Sales transaction comparisons remain available in Brand & Customer SKU." />
+                </div>
+                <p>Margins plus daily-normalized P&amp;L change versus Period A and Period B</p>
               </div>
             </div>
             <PerformanceTable rows={data.companyPerformance} comparison={data.meta.pnlComparison} />
@@ -1675,7 +1706,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           <div className="panel">
             <div className="panelHeader">
               <div>
-                <h2>Consolidated P&L statement</h2>
+                <div className="panelTitleWithInfo">
+                  <h2>Consolidated P&amp;L statement</h2>
+                  <InfoHint text="The vs A and vs B columns require uploaded P&L reports with the exact same period boundaries. When no exact report exists, the dashboard shows “No exact P&L” instead of estimating or prorating amounts." />
+                </div>
                 <p>Management view in HKD, ordered by source statement structure</p>
                 <div className="contextLabel">
                   <span>Showing</span>
@@ -1788,8 +1822,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
         <span>Account</span>
         <span>HKD</span>
         <span>% revenue</span>
-        <span>vs A</span>
-        <span>vs B</span>
+        <span>P&amp;L vs A</span>
+        <span>P&amp;L vs B</span>
       </div>
       {Object.entries(groups).map(([section, sectionRows]) => {
         const open = !!expanded[section];
@@ -1834,8 +1868,8 @@ function ProfitLossStatement({ rows, revenueBase, comparison }) {
                     </span>
                     <strong>{hkd(row.amount)}</strong>
                     <em>{rowPct}</em>
-                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="no A" />
-                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="no B" />
+                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="No prior P&L" />
+                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="No prior P&L" />
                   </div>
                   {showContributors && contributorsOpen && (
                     <div className="expenseContributors">

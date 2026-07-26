@@ -1315,18 +1315,18 @@ function safeGrowth(current, previous) {
 function fairGrowthMetric(currentSum, daysCurrent, compareMap, daysCompare, key, { requirePositiveBase = false } = {}) {
   const cSum = Number(currentSum || 0);
   if (!compareMap.has(key)) {
-    return { growth: null, value: cSum, status: "no_prior" };
+    return { growth: null, value: null, status: "no_prior" };
   }
   const pSum = Number(compareMap.get(key) || 0);
   if (daysCurrent <= 0 || daysCompare <= 0) {
-    return { growth: null, value: cSum - pSum, status: "no_prior" };
+    return { growth: null, value: null, status: "no_prior" };
   }
   const currentDaily = cSum / daysCurrent;
   const compareDaily = pSum / daysCompare;
   const normalizedCompare = compareDaily * daysCurrent;
   
   if (Math.abs(compareDaily) < 0.01 || (requirePositiveBase && compareDaily <= 0.01)) {
-    return { growth: null, value: cSum - pSum, status: "nonpositive_prior" };
+    return { growth: null, value: null, status: "nonpositive_prior" };
   }
   
   return {
@@ -1650,6 +1650,15 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   const daysP1 = daysBetween(p1From, p1To);
   const daysP2 = daysBetween(p2From, p2To);
   const daysP3 = daysBetween(p3From, p3To);
+  const skuCurrentWindow = comparisonWindow(p1From, p1To);
+  const skuPreviousPeriod = previousEqualLengthWindow(skuCurrentWindow.start, skuCurrentWindow.end);
+  const skuP2From = params.get("dateFrom2") || skuPreviousPeriod.start;
+  const skuP2To = params.get("dateTo2") || skuPreviousPeriod.end;
+  const skuP3From = params.get("dateFrom3") || shiftDate(skuCurrentWindow.start, { years: -1 });
+  const skuP3To = params.get("dateTo3") || shiftDate(skuCurrentWindow.end, { years: -1 });
+  const daysSkuCurrent = daysBetween(skuCurrentWindow.start, skuCurrentWindow.end);
+  const daysSkuP2 = daysBetween(skuP2From, skuP2To);
+  const daysSkuP3 = daysBetween(skuP3From, skuP3To);
 
   const pnlComparison = {
     p1: { start: p1From, end: p1To },
@@ -1785,14 +1794,14 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
       ...row,
       revenue_growth_p2: revenueP2.growth,
       revenue_growth_p3: revenueP3.growth,
-      revenue_growth_status_p2: revenueP2.status,
-      revenue_growth_status_p3: revenueP3.status,
+      revenue_growth_status_p2: pnlComparisonCoverage.p2.exact ? revenueP2.status : "no_exact_report",
+      revenue_growth_status_p3: pnlComparisonCoverage.p3.exact ? revenueP3.status : "no_exact_report",
       comparison_revenue_p2: companyRevenueP2Map.get(row.company) ?? null,
       comparison_revenue_p3: companyRevenueP3Map.get(row.company) ?? null,
       net_earnings_growth_p2: netEarningsP2.growth,
       net_earnings_growth_p3: netEarningsP3.growth,
-      net_earnings_growth_status_p2: netEarningsP2.status,
-      net_earnings_growth_status_p3: netEarningsP3.status,
+      net_earnings_growth_status_p2: pnlComparisonCoverage.p2.exact ? netEarningsP2.status : "no_exact_report",
+      net_earnings_growth_status_p3: pnlComparisonCoverage.p3.exact ? netEarningsP3.status : "no_exact_report",
       comparison_net_earnings_p2: companyNetEarningsP2Map.get(row.company) ?? null,
       comparison_net_earnings_p3: companyNetEarningsP3Map.get(row.company) ?? null,
     };
@@ -1833,8 +1842,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
       ...row,
       growth_p2: p2Metric.growth,
       growth_p3: p3Metric.growth,
-      growth_status_p2: p2Metric.status,
-      growth_status_p3: p3Metric.status,
+      growth_status_p2: pnlComparisonCoverage.p2.exact ? p2Metric.status : "no_exact_report",
+      growth_status_p3: pnlComparisonCoverage.p3.exact ? p3Metric.status : "no_exact_report",
       growth_value_p2: p2Metric.value,
       growth_value_p3: p3Metric.value,
       comparison_amount_p2: pnlP2Map.has(key) ? pnlP2Map.get(key) : null,
@@ -2209,14 +2218,14 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
 
     skuActiveRange = { from: p1From || "", to: p1To || "" };
     skuComparison = {
-      current: { start: p1From, end: p1To },
-      ly: { start: p2From, end: p2To },
-      p3m: { start: p3From, end: p3To },
+      current: { start: skuCurrentWindow.start, end: skuCurrentWindow.end },
+      ly: { start: skuP2From, end: skuP2To },
+      p3m: { start: skuP3From, end: skuP3To },
     };
-    if (p1From && p1To) {
-      const currentFilter = skuWhereFromSearch(periodParams(params, p1From, p1To));
-      const lyFilter = skuWhereFromSearch(periodParams(params, p2From, p2To));
-      const p3mFilter = skuWhereFromSearch(periodParams(params, p3From, p3To));
+    if (skuCurrentWindow.start && skuCurrentWindow.end) {
+      const currentFilter = skuWhereFromSearch(periodParams(params, skuCurrentWindow.start, skuCurrentWindow.end));
+      const lyFilter = skuWhereFromSearch(periodParams(params, skuP2From, skuP2To));
+      const p3mFilter = skuWhereFromSearch(periodParams(params, skuP3From, skuP3To));
       const comparisonSql = `
         SELECT ${skuBrandKey} AS brand_key, SUM(s.amount_hkd) AS revenue
         FROM sku_sales s
@@ -2376,8 +2385,52 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   const skuCurrentRevenue = sumRevenue(skuBrandCurrent);
   const skuLyRevenue = sumRevenue(skuBrandLy);
   const skuP3mRevenue = sumRevenue(skuBrandP3m);
-  const skuTotalP2Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuLyRevenue]]), daysP2, "total", { requirePositiveBase: true });
-  const skuTotalP3Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuP3mRevenue]]), daysP3, "total", { requirePositiveBase: true });
+  const skuPeriodCoverage = (window) => ({
+    ...window,
+    complete: Boolean(
+      window.start &&
+      window.end &&
+      meta.skuDateRange?.min &&
+      meta.skuDateRange?.max &&
+      window.start >= meta.skuDateRange.min &&
+      window.end <= meta.skuDateRange.max
+    ),
+  });
+  skuComparison = {
+    ...skuComparison,
+    coverage: {
+      current: skuPeriodCoverage(skuComparison.current),
+      p2: skuPeriodCoverage(skuComparison.ly),
+      p3: skuPeriodCoverage(skuComparison.p3m),
+    },
+  };
+  const skuGrowthMetric = (currentSum, compareMap, daysCompare, key, periodKey) => {
+    if (!skuComparison.coverage.current.complete || !skuComparison.coverage[periodKey].complete) {
+      return { growth: null, value: null, status: "incomplete_period" };
+    }
+    return fairGrowthMetric(
+      currentSum,
+      daysSkuCurrent,
+      compareMap,
+      daysCompare,
+      key,
+      { requirePositiveBase: true }
+    );
+  };
+  const skuTotalP2Metric = skuGrowthMetric(
+    skuCurrentRevenue,
+    new Map([["total", skuLyRevenue]]),
+    daysSkuP2,
+    "total",
+    "p2"
+  );
+  const skuTotalP3Metric = skuGrowthMetric(
+    skuCurrentRevenue,
+    new Map([["total", skuP3mRevenue]]),
+    daysSkuP3,
+    "total",
+    "p3"
+  );
   const skuKey = (row) =>
     `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").trim().toLowerCase()}`;
   const skuGrossProfit = (row) => {
@@ -2512,8 +2565,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         const currentRevenue = hasSkuComparison ? Number(skuCurrentMap.get(rowKey) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuLyMap, daysP2, rowKey, { requirePositiveBase: true });
-        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuP3mMap, daysP3, rowKey, { requirePositiveBase: true });
+        const p2Metric = skuGrowthMetric(currentRevenue, skuLyMap, daysSkuP2, rowKey, "p2");
+        const p3Metric = skuGrowthMetric(currentRevenue, skuP3mMap, daysSkuP3, rowKey, "p3");
         return {
           ...row,
           brand: brandLabel(key, row.brand),
@@ -2534,8 +2587,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         const currentRevenue = hasSkuComparison ? Number(skuBrandCurrentMap.get(row.brand_key) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandLyMap, daysP2, row.brand_key, { requirePositiveBase: true });
-        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandP3mMap, daysP3, row.brand_key, { requirePositiveBase: true });
+        const p2Metric = skuGrowthMetric(currentRevenue, skuBrandLyMap, daysSkuP2, row.brand_key, "p2");
+        const p3Metric = skuGrowthMetric(currentRevenue, skuBrandP3mMap, daysSkuP3, row.brand_key, "p3");
         return {
           ...row,
           brand: brandLabel(row.brand_key, row.brand),
@@ -2554,8 +2607,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         const currentRevenue = hasSkuComparison ? Number(skuCustomerCurrentMap.get(row.customer_key) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerLyMap, daysP2, row.customer_key, { requirePositiveBase: true });
-        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerP3mMap, daysP3, row.customer_key, { requirePositiveBase: true });
+        const p2Metric = skuGrowthMetric(currentRevenue, skuCustomerLyMap, daysSkuP2, row.customer_key, "p2");
+        const p3Metric = skuGrowthMetric(currentRevenue, skuCustomerP3mMap, daysSkuP3, row.customer_key, "p3");
         return {
           ...row,
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,
