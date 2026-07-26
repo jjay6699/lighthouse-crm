@@ -696,15 +696,11 @@ function isoDays(start, end) {
 }
 
 function BrandSkuView({ sku, filters, setFilters, kpis }) {
-  const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("revenue");
   const isClassView = filters.dimension === "class";
   const entityLabel = isClassView ? "Brand" : "Customer";
   const entityMixRows = isClassView ? sku.brands : sku.customers;
-  const rows = sortSkuRows(sku.rows.filter((row) =>
-    `${row.brand} ${row.customer || ""} ${row.sku} ${row.product_name}`.toLowerCase().includes(query.toLowerCase())
-  ), sortBy);
-  const topRows = rows.slice(0, 8);
+  const rows = sortSkuRows(sku.rows, sortBy);
   const activeRange = sku.activeRange || {};
   const dataRange = sku.dataRange || {};
   const costCoverage = sku.costCoverage || {};
@@ -720,7 +716,6 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
   const activeDays = isoDays(activeRange.from, activeRange.to);
   const narrowRange = activeDays > 0 && activeDays <= 7;
   const resetSkuFilters = () => {
-    setQuery("");
     setFilters({
       ...filters,
       batch: "all",
@@ -846,49 +841,13 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           </div>
           <EntityRevenueMix rows={entityMixRows.slice(0, 15)} entityLabel={entityLabel} />
         </div>
-        <div className="panel">
-          <div className="panelHeader">
-            <div>
-              <h2>SKU search</h2>
-              <p>{query ? `${rows.length} matching SKU rows` : "Type to filter, or review top SKUs below"}</p>
-            </div>
-          </div>
-          <label className="search wideSearch">
-            <Search size={15} />
-            <input value={query} placeholder={`Search SKU, product, ${entityLabel.toLowerCase()}`} onChange={(event) => setQuery(event.target.value)} />
-          </label>
-          <div className="skuResultList">
-            {topRows.map((row) => (
-              <button className="skuResult" key={`${isClassView ? row.brand : row.customer}-${row.sku}-${row.product_name}`} type="button" onClick={() => setQuery(row.sku)}>
-                <span>{isClassView ? row.brand : row.customer || "Not specified"}</span>
-                <strong>{row.product_name}</strong>
-                <em>{row.sku} | {hkd(row.revenue)}</em>
-                <div className="skuResultMeta">
-                  <span>
-                    <b>Margin $</b>
-                    {row.gross_profit === null || row.gross_profit === undefined ? "No COGS" : hkd(row.gross_profit)}
-                  </span>
-                  <span>
-                    <b>vs A</b>
-                    <Growth value={row.growth_p2} status={row.growth_status_p2} missingLabel="New" />
-                  </span>
-                  <span>
-                    <b>vs B</b>
-                    <Growth value={row.growth_p3} status={row.growth_status_p3} missingLabel="New" />
-                  </span>
-                </div>
-              </button>
-            ))}
-            {!topRows.length && <p className="emptyMini">No SKU rows match this search.</p>}
-          </div>
-        </div>
       </section>
 
       <div className="panel">
         <div className="panelHeader">
           <div>
             <h2>SKU detail</h2>
-            <p>{query ? `Filtered by "${query}"` : `Top SKU rows by ${skuSortOptions.find((option) => option.value === sortBy)?.label || "Sales"}`}</p>
+            <p>Top SKU rows by {skuSortOptions.find((option) => option.value === sortBy)?.label || "Sales"}</p>
           </div>
           <div className="panelActions" style={{ display: "flex", alignItems: "flex-end", gap: "10px" }}>
             <button
