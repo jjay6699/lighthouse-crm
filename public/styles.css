@@ -1765,6 +1765,50 @@ tbody tr:hover td {
   gap: 8px;
 }
 
+.panelTitleWithInfo {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.infoHint {
+  display: inline-flex;
+  position: relative;
+}
+
+.infoHint button {
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: #475569;
+  cursor: help;
+  display: inline-flex;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 700;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 18px;
+}
+
+.infoHint > span[role="tooltip"] {
+  background: #1e293b;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 400;
+  left: 0;
+  line-height: 1.45;
+  padding: 9px 10px;
+  position: absolute;
+  top: 24px;
+  width: 280px;
+  z-index: 10;
+}
+
 .statementGrid .lineTiles {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }

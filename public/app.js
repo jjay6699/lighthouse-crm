@@ -1404,6 +1404,25 @@ function Overview({ data, goFinance, setPage }) {
   );
 }
 
+function InfoHint({ text }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="infoHint" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        aria-label="More information"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+      >
+        i
+      </button>
+      {open && <span role="tooltip">{text}</span>}
+    </span>
+  );
+}
+
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh, subtab, setSubtab }) {
   const [comparisonMode, setComparisonMode] = useState("standard");
   
@@ -1463,6 +1482,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   ];
 
   const filteredLines = data.lines.filter((row) => `${row.line_item} ${row.section}`.toLowerCase().includes(search.toLowerCase()));
+  const largestOperatingLines = data.lines
+    .filter((row) => !/^total for\b/i.test(String(row.line_item || "")))
+    .filter((row) => !["Gross Profit", "Net Earnings"].includes(String(row.line_item || "")))
+    .sort((a, b) => Math.abs(Number(b.amount || 0)) - Math.abs(Number(a.amount || 0)));
   const pnlExact = data.meta.pnlCoverage?.exact !== false;
   const noCommonPnlRange = !data.meta.preferredPnlRange && Boolean(data.meta.pnlAvailableRanges?.length);
   const revenueBase = Number(data.kpis.revenue || 0);
@@ -1649,14 +1672,17 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
           </div>
 
           <div className="panel">
-            <div className="panelHeader">
+              <div className="panelHeader">
               <div>
-                <h2>Largest line items</h2>
-                <p>Quick scan by absolute value</p>
+                <div className="panelTitleWithInfo">
+                  <h2>Largest operating line items</h2>
+                  <InfoHint text="Shows underlying income, cost, and expense accounts by absolute value. Subtotals and calculated results such as Total for Income, Total for Cost of Sales, Gross Profit, and Net Earnings are excluded to prevent double counting." />
+                </div>
+                <p>Underlying accounts only; subtotals are shown in the P&amp;L statement.</p>
               </div>
             </div>
             <div className="lineTiles">
-              {filteredLines.slice(0, 8).map((row) => (
+              {largestOperatingLines.slice(0, 8).map((row) => (
                 <div className="lineTile" key={`${row.section}-${row.line_item}`}>
                   <span>{row.section}</span>
                   <strong>{row.line_item}</strong>
