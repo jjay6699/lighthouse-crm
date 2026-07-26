@@ -409,6 +409,17 @@ function initWarehouseDb() {
     )
   `);
 
+  try {
+    db.exec(`ALTER TABLE warehouse_edi_orders ADD COLUMN source_company TEXT`);
+  } catch (e) {
+    // ignore when the column already exists
+  }
+  try {
+    db.exec(`ALTER TABLE warehouse_edi_orders ADD COLUMN edi_profile TEXT`);
+  } catch (e) {
+    // ignore when the column already exists
+  }
+
   const countRow = db.prepare("SELECT COUNT(*) as count FROM warehouse_inventory").get();
   if (countRow.count === 0) {
     let products = [];
@@ -534,6 +545,21 @@ function initWarehouseDb() {
     );
   }
 
+  db.prepare(`
+    UPDATE warehouse_edi_orders
+    SET source_company = CASE retailer
+      WHEN 'Matsumoto Kiyoshi' THEN 'Moment Health Limited'
+      WHEN 'Don Don Donki' THEN 'Lighthouse Mart Trading Limited'
+      ELSE COALESCE(source_company, 'Unassigned')
+    END,
+    edi_profile = CASE retailer
+      WHEN 'Matsumoto Kiyoshi' THEN 'EZT-HK-MHL-01'
+      WHEN 'Don Don Donki' THEN 'EZT-HK-LMT-01'
+      ELSE COALESCE(edi_profile, 'Unassigned')
+    END
+    WHERE source_company IS NULL OR source_company = '' OR edi_profile IS NULL OR edi_profile = ''
+  `).run();
+
   // Seed carrier metrics if empty
   const countCarrier = db.prepare("SELECT COUNT(*) as count FROM warehouse_carrier_metrics").get();
   if (countCarrier.count === 0) {
@@ -563,17 +589,6 @@ function initAdsDb() {
       is_demo INTEGER DEFAULT 0
     )
   `);
-
-  try {
-    db.exec(`ALTER TABLE warehouse_edi_orders ADD COLUMN source_company TEXT`);
-  } catch (e) {
-    // ignore when the column already exists
-  }
-  try {
-    db.exec(`ALTER TABLE warehouse_edi_orders ADD COLUMN edi_profile TEXT`);
-  } catch (e) {
-    // ignore when the column already exists
-  }
 
   try {
     db.exec(`ALTER TABLE meta_ads_settings ADD COLUMN is_demo INTEGER DEFAULT 0`);
@@ -1669,21 +1684,6 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         .map((row) => [row.company, { revenue: Number(row.revenue || 0), net_earnings: Number(row.net_earnings || 0) }])
     );
   }
-
-  db.prepare(`
-    UPDATE warehouse_edi_orders
-    SET source_company = CASE retailer
-      WHEN 'Matsumoto Kiyoshi' THEN 'Moment Health Limited'
-      WHEN 'Don Don Donki' THEN 'Lighthouse Mart Trading Limited'
-      ELSE COALESCE(source_company, 'Unassigned')
-    END,
-    edi_profile = CASE retailer
-      WHEN 'Matsumoto Kiyoshi' THEN 'EZT-HK-MHL-01'
-      WHEN 'Don Don Donki' THEN 'EZT-HK-LMT-01'
-      ELSE COALESCE(edi_profile, 'Unassigned')
-    END
-    WHERE source_company IS NULL OR source_company = '' OR edi_profile IS NULL OR edi_profile = ''
-  `).run();
 
   function pnlWindowCoverage(start, end) {
     if (!start || !end) return { start, end, reportCount: 0, exact: false };
