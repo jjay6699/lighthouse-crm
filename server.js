@@ -385,6 +385,8 @@ function initWarehouseDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       po_number TEXT NOT NULL UNIQUE,
       retailer TEXT NOT NULL,
+      source_company TEXT,
+      edi_profile TEXT,
       delivery_location_raw TEXT NOT NULL,
       delivery_location_shorthand TEXT NOT NULL,
       items_json TEXT NOT NULL,
@@ -491,8 +493,8 @@ function initWarehouseDb() {
   const countEDI = db.prepare("SELECT COUNT(*) as count FROM warehouse_edi_orders").get();
   if (countEDI.count === 0) {
     const insertEDI = db.prepare(`
-      INSERT INTO warehouse_edi_orders (po_number, retailer, delivery_location_raw, delivery_location_shorthand, items_json, status, timestamp)
-      VALUES (?, ?, ?, ?, ?, 'Pending', datetime('now'))
+      INSERT INTO warehouse_edi_orders (po_number, retailer, source_company, edi_profile, delivery_location_raw, delivery_location_shorthand, items_json, status, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', datetime('now'))
     `);
 
     // Let's find real SKUs to reference or fallback to default ones
@@ -510,6 +512,8 @@ function initWarehouseDb() {
     insertEDI.run(
       "PO-MK-40912",
       "Matsumoto Kiyoshi",
+      "Moment Health Limited",
+      "EZT-HK-MHL-01",
       "Matsumoto Kiyoshi Personal personal care store - Shop 5, Mong Kok Plaza, Kowloon, Hong Kong",
       "MK-MK5",
       JSON.stringify(itemsMK)
@@ -522,6 +526,8 @@ function initWarehouseDb() {
     insertEDI.run(
       "PO-DK-90231",
       "Don Don Donki",
+      "Lighthouse Mart Trading Limited",
+      "EZT-HK-LMT-01",
       "DON DON DONKI Tsim Sha Tsui Mira Place 2, B1, Tsim Sha Tsui, Hong Kong",
       "TST-DK",
       JSON.stringify(itemsDK)
@@ -557,6 +563,17 @@ function initAdsDb() {
       is_demo INTEGER DEFAULT 0
     )
   `);
+
+  try {
+    db.exec(`ALTER TABLE warehouse_edi_orders ADD COLUMN source_company TEXT`);
+  } catch (e) {
+    // ignore when the column already exists
+  }
+  try {
+    db.exec(`ALTER TABLE warehouse_edi_orders ADD COLUMN edi_profile TEXT`);
+  } catch (e) {
+    // ignore when the column already exists
+  }
 
   try {
     db.exec(`ALTER TABLE meta_ads_settings ADD COLUMN is_demo INTEGER DEFAULT 0`);
@@ -1652,6 +1669,21 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         .map((row) => [row.company, { revenue: Number(row.revenue || 0), net_earnings: Number(row.net_earnings || 0) }])
     );
   }
+
+  db.prepare(`
+    UPDATE warehouse_edi_orders
+    SET source_company = CASE retailer
+      WHEN 'Matsumoto Kiyoshi' THEN 'Moment Health Limited'
+      WHEN 'Don Don Donki' THEN 'Lighthouse Mart Trading Limited'
+      ELSE COALESCE(source_company, 'Unassigned')
+    END,
+    edi_profile = CASE retailer
+      WHEN 'Matsumoto Kiyoshi' THEN 'EZT-HK-MHL-01'
+      WHEN 'Don Don Donki' THEN 'EZT-HK-LMT-01'
+      ELSE COALESCE(edi_profile, 'Unassigned')
+    END
+    WHERE source_company IS NULL OR source_company = '' OR edi_profile IS NULL OR edi_profile = ''
+  `).run();
 
   function pnlWindowCoverage(start, end) {
     if (!start || !end) return { start, end, reportCount: 0, exact: false };

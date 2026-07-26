@@ -4308,7 +4308,9 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
               <table className="cleanTable warehouseTable">
                 <thead>
                   <tr>
-                    <th>Channel/PO</th>
+                    <th>Retailer / PO</th>
+                    <th>Company / EDI</th>
+                    <th>Received</th>
                     <th>Destination Shorthand</th>
                     <th>Status</th>
                   </tr>
@@ -4331,6 +4333,13 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                         <td>
                           <div style={{ fontWeight: "700" }}>{order.retailer}</div>
                           <div style={{ fontSize: "11px", color: "#64748b" }}>{order.po_number}</div>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: "12px", fontWeight: "600", color: "#334155" }}>{order.source_company || "Unassigned"}</div>
+                          <code style={{ color: "#0f766e", fontSize: "11px", fontWeight: "700" }}>{order.edi_profile || "Unassigned"}</code>
+                        </td>
+                        <td style={{ fontSize: "12px", color: "#475569", whiteSpace: "nowrap" }}>
+                          {order.timestamp ? new Date(`${order.timestamp.replace(" ", "T")}Z`).toLocaleString("en-HK", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) : "Not recorded"}
                         </td>
                         <td>
                           <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", fontSize: "11px", fontWeight: "700" }}>
@@ -4378,6 +4387,21 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
                   <RefreshCw size={14} className={ediProcessing ? "loadingSpinner" : ""} />
                   {selectedEdi.status === "Processed" ? "Synced to QuickBooks" : "Populate QB Invoice"}
                 </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", marginBottom: "20px" }}>
+                <div style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "8px", background: "#f8fafc" }}>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>Company</div>
+                  <strong style={{ fontSize: "13px", color: "#1e293b" }}>{selectedEdi.source_company || "Unassigned"}</strong>
+                </div>
+                <div style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "8px", background: "#f8fafc" }}>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>EDI profile</div>
+                  <code style={{ fontSize: "12px", fontWeight: "700", color: "#0f766e" }}>{selectedEdi.edi_profile || "Unassigned"}</code>
+                </div>
+                <div style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "8px", background: "#f8fafc" }}>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}>Received (UTC)</div>
+                  <strong style={{ fontSize: "13px", color: "#1e293b" }}>{selectedEdi.timestamp ? new Date(`${selectedEdi.timestamp.replace(" ", "T")}Z`).toLocaleString("en-HK", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) : "Not recorded"}</strong>
+                </div>
               </div>
 
               <div style={{ padding: "16px", borderRadius: "8px", background: "#f8fafc", border: "1px solid var(--border)", marginBottom: "20px", fontSize: "13px" }}>
