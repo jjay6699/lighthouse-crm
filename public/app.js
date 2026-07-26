@@ -5189,6 +5189,25 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
         </div>
       )}
 
+      {isConnected && (
+        <div style={{
+          background: "#ecfdf5",
+          border: "1px solid #a7f3d0",
+          borderLeft: "4px solid var(--primary)",
+          borderRadius: "8px",
+          padding: "16px 20px",
+          marginBottom: "24px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px"
+        }}>
+          <span style={{ fontSize: "18px", color: "#047857" }}>✓</span>
+          <div style={{ fontSize: "14px", color: "#065f46", lineHeight: "1.5" }}>
+            <strong>Meta Ads Account Connected:</strong> Campaigns are queued and will show performance data once Meta begins delivery.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: "24px", borderBottom: "1px solid var(--border)", marginBottom: "24px" }}>
         <button
           onClick={() => setSubtab("campaigns")}
@@ -5453,8 +5472,8 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
           <div className="panel" style={{ padding: "0", overflow: "hidden" }}>
             <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <h3 style={{ fontSize: "16px", fontWeight: "700" }}>Active Ad Campaigns</h3>
-                <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>Live performance report from Meta Ads Manager APIs.</p>
+                <h3 style={{ fontSize: "16px", fontWeight: "700" }}>Ad Campaigns</h3>
+                <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>Pending campaigns will report metrics after delivery begins.</p>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <button 
@@ -5511,8 +5530,9 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                   {campaigns && campaigns.map(camp => {
                     const hasMetrics = camp.metrics !== null;
                     const isCampActive = camp.status === "ACTIVE";
+                    const isCampPending = camp.status === "PENDING";
                     return (
-                      <tr key={camp.id} style={{ opacity: isCampActive ? 1 : 0.6 }}>
+                      <tr key={camp.id} style={{ opacity: camp.status === "PAUSED" ? 0.6 : 1 }}>
                         <td style={{ verticalAlign: "middle" }}>
                           <button
                             onClick={() => handleToggleCampStatus(camp.id, camp.status)}
@@ -5534,9 +5554,9 @@ function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, 
                               width: "8px",
                               height: "8px",
                               borderRadius: "50%",
-                              background: isCampActive ? "#10b981" : "#94a3b8"
+                              background: isCampActive ? "#10b981" : isCampPending ? "#f59e0b" : "#94a3b8"
                             }} />
-                            <span style={{ fontSize: "11px", fontWeight: "600", color: isCampActive ? "#047857" : "#64748b" }}>
+                            <span style={{ fontSize: "11px", fontWeight: "600", color: isCampActive ? "#047857" : isCampPending ? "#b45309" : "#64748b" }}>
                               {camp.status}
                             </span>
                           </button>

@@ -553,9 +553,16 @@ function initAdsDb() {
       app_id TEXT,
       access_token TEXT,
       ad_account_id TEXT,
-      ai_optimization INTEGER DEFAULT 0
+      ai_optimization INTEGER DEFAULT 0,
+      is_demo INTEGER DEFAULT 0
     )
   `);
+
+  try {
+    db.exec(`ALTER TABLE meta_ads_settings ADD COLUMN is_demo INTEGER DEFAULT 0`);
+  } catch (e) {
+    // ignore when the column already exists
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS meta_campaigns (
@@ -599,21 +606,25 @@ function initAdsDb() {
   if (countRow.count === 0) {
     db.prepare(`
       INSERT INTO meta_ads_settings (connected, app_id, access_token, ad_account_id, ai_optimization)
-      VALUES (0, '', '', '', 0)
+      VALUES (1, 'demo_meta_app', '', 'act_987654321', 0)
     `).run();
   }
 
-  const campCount = db.prepare("SELECT COUNT(*) as count FROM meta_campaigns").get();
-  if (campCount.count === 0) {
+  const settings = db.prepare("SELECT * FROM meta_ads_settings ORDER BY id ASC LIMIT 1").get();
+  if (settings && !settings.is_demo && !settings.app_id && !settings.ad_account_id) {
+    db.prepare(`
+      UPDATE meta_ads_settings
+      SET connected = 1, app_id = 'demo_meta_app', ad_account_id = 'act_987654321', is_demo = 1
+      WHERE id = ?
+    `).run(settings.id);
+  }
+
+  const pendingCampaignCount = db.prepare("SELECT COUNT(*) as count FROM meta_campaigns WHERE id LIKE 'pending_camp_%'").get();
+  if (pendingCampaignCount.count === 0) {
     const seedCampaigns = [
-      ["camp_1", "[Teazen_Grapefruit] Traffic Campaign (5/6 - 30/6)", "Traffic", "ACTIVE", 1, 14250, 0.0, 0.0, 0.45, 6412.50, 125400, 89200, 250.0, "Get the best grapefruit tea for your diet!"],
-      ["camp_2", "[Teazen_Grapefruit] Awareness Campaign (5/6 - 30/6)", "Awareness", "ACTIVE", 1, 98400, 0.0, 0.0, 0.02, 1968.00, 245000, 98400, 100.0, "Try Teazen Grapefruit tea, now worldwide!"],
-      ["camp_3", "[Teazen_ACV] Traffic Campaign (5/6 - 30/6)", "Traffic", "ACTIVE", 0, 8420, 0.0, 0.0, 0.52, 4378.40, 82100, 61000, 180.0, "Cleanse your body with Apple Cider Vinegar tea."],
-      ["camp_4", "[Teazen_Kombucha] Engagement Video Views_ThruPlay (5/6 - 30/6)", "Engagement", "ACTIVE", 0, 45300, 0.0, 0.0, 0.05, 2265.00, 110200, 84000, 120.0, "Watch how Kombucha is made!"],
-      ["camp_5", "[Teazen_Kombucha] Awareness Campaign (5/6 - 30/6)", "Awareness", "ACTIVE", 0, 154200, 0.0, 0.0, 0.01, 1542.00, 310000, 154200, 80.0, "The original Kombucha by Teazen."],
-      ["camp_6", "[Healthall] RBPainpatch B1G1 (3-16 June 2026) Engagement", "Engagement", "ACTIVE", 1, 1840, 12450.00, 3.12, 2.17, 3992.80, 35400, 28100, 150.0, "Buy one get one free pain patches!"],
-      ["camp_7", "[Healthall] WTC Painpatch (R&B) B1G1 (3-16 Jun 2026) Traffic", "Traffic", "ACTIVE", 1, 5610, 18200.00, 2.84, 1.14, 6395.40, 62800, 47200, 200.0, "Relieve muscle soreness fast with WTC patches."],
-      ["camp_8", "[Healthall_Goldpatch] MNG_Traffic Campaign (17-30 June 2026)", "Traffic", "PAUSED", 1, 2150, 5400.00, 1.86, 1.35, 2902.50, 24100, 18900, 100.0, "Premium Gold Pain patch from Healthall."]
+      ["pending_camp_1", "[Lightmart] August New Arrivals", "Sales", "PENDING", 0, 0, 0.0, 0.0, 0.0, 0.0, 0, 0, 180.0, "Discover Lightmart's newest arrivals."],
+      ["pending_camp_2", "[Lightmart] Back-to-School Essentials", "Traffic", "PENDING", 0, 0, 0.0, 0.0, 0.0, 0.0, 0, 0, 120.0, "Shop practical back-to-school essentials."],
+      ["pending_camp_3", "[Lightmart] Home Refresh Collection", "Awareness", "PENDING", 0, 0, 0.0, 0.0, 0.0, 0.0, 0, 0, 90.0, "Fresh ideas for an easy home refresh."]
     ];
 
     const insert = db.prepare(`
@@ -3182,13 +3193,10 @@ createServer(async (req, res) => {
           ai_optimization = settings.ai_optimization;
         }
 
-        let queryStr = "SELECT * FROM meta_campaigns";
-        if (!connected) {
-          queryStr += " WHERE id NOT IN ('camp_1', 'camp_2', 'camp_3', 'camp_4', 'camp_5', 'camp_6', 'camp_7', 'camp_8')";
-        }
+        const queryStr = "SELECT * FROM meta_campaigns WHERE id LIKE 'pending_camp_%' OR id NOT IN ('camp_1', 'camp_2', 'camp_3', 'camp_4', 'camp_5', 'camp_6', 'camp_7', 'camp_8')";
         const list = db.prepare(queryStr).all();
         campaigns = list.map(camp => {
-          const metrics = {
+          const metrics = camp.status === "PENDING" ? null : {
               results: camp.results,
               value: camp.value,
               roas: camp.roas,
