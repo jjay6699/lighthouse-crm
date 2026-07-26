@@ -622,6 +622,8 @@ function ExpenseBars({ rows }) {
 function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
   const [sortKey, setSortKey] = useState("revenue");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [showAll, setShowAll] = useState(false);
+  const previewLimit = 10;
   const max = Math.max(...rows.map((row) => Number(row.revenue || 0)), 1);
   const sortableColumns = [
     { key: "revenue", label: "Revenue" },
@@ -648,6 +650,7 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
     setSortKey(key);
     setSortDirection("desc");
   };
+  const visibleRows = showAll ? sortedRows : sortedRows.slice(0, previewLimit);
   return (
     <div className="brandMixList">
       <div className="brandMixHead">
@@ -664,7 +667,7 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
           </button>
         ))}
       </div>
-      {sortedRows.map((row) => {
+      {visibleRows.map((row) => {
         const name = row.brand || row.customer || "Unmapped";
         return (
           <div className="brandMixRow" key={name}>
@@ -686,6 +689,11 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
           </div>
         );
       })}
+      {sortedRows.length > previewLimit && (
+        <button className="mixExpandButton" type="button" onClick={() => setShowAll((expanded) => !expanded)}>
+          {showAll ? `Show top ${previewLimit}` : `Show all ${sortedRows.length}`} {entityLabel.toLowerCase()}s
+        </button>
+      )}
     </div>
   );
 }
@@ -737,7 +745,10 @@ function isoDays(start, end) {
 function BrandSkuView({ sku, filters, setFilters, kpis }) {
   const [sortBy, setSortBy] = useState("revenue");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [showAllSkuRows, setShowAllSkuRows] = useState(false);
+  const skuPreviewLimit = 15;
   const rows = sortSkuRows(sku.rows, sortBy, sortDirection);
+  const visibleSkuRows = showAllSkuRows ? rows : rows.slice(0, skuPreviewLimit);
   const activeRange = sku.activeRange || {};
   const dataRange = sku.dataRange || {};
   const costCoverage = sku.costCoverage || {};
@@ -938,7 +949,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {visibleSkuRows.map((row) => (
                 <tr key={`${row.brand}-${row.sku}-${row.product_name}`}>
                   <td>{row.brand || "Unmapped"}</td>
                   <td>{row.sku}</td>
@@ -957,6 +968,13 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
             </tbody>
           </table>
         </div>
+        {rows.length > skuPreviewLimit && (
+          <div className="tableExpandControl">
+            <button className="ghostButton" type="button" onClick={() => setShowAllSkuRows((expanded) => !expanded)}>
+              {showAllSkuRows ? `Show top ${skuPreviewLimit} SKUs` : `Show all ${rows.length} SKUs`}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
