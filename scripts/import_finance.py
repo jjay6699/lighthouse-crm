@@ -268,17 +268,19 @@ def parse_mapping_files(paths):
     for sku, candidates in candidates_by_sku.items():
         valid_costs = [cost for cost in candidates if cost["unit_cost_hkd"] is not None]
         if not valid_costs:
-            chosen = candidates[0]
+            chosen = dict(candidates[0])
+            chosen["cost_conflict"] = 0
+            chosen["cost_variants"] = ""
             resolved.append(chosen)
             continue
 
-        counts = {}
-        for cost in valid_costs:
-            rounded = round(float(cost["unit_cost_hkd"]), 6)
-            counts[rounded] = counts.get(rounded, 0) + 1
-        chosen_value = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
-        chosen = next(cost for cost in valid_costs if round(float(cost["unit_cost_hkd"]), 6) == chosen_value)
-        chosen["unit_cost_hkd"] = chosen_value
+        distinct_costs = sorted(
+            {round(float(cost["unit_cost_hkd"]), 6) for cost in valid_costs}
+        )
+        chosen = dict(valid_costs[0])
+        chosen["cost_conflict"] = int(len(distinct_costs) > 1)
+        chosen["cost_variants"] = ", ".join(str(value) for value in distinct_costs)
+        chosen["unit_cost_hkd"] = distinct_costs[0] if len(distinct_costs) == 1 else None
         resolved.append(chosen)
 
     return resolved
@@ -293,14 +295,39 @@ def parse_file(path: Path):
     dimension = "customer" if "Customer" in report_title else "class"
     currency = infer_currency(company)
 
-    headers = []
+    raw_headers = []
     for col in range(1, df.shape[1]):
         label = clean_label(df.iat[4, col])
         if not label:
             continue
-        if label == "Total" or label.startswith("Total for "):
+        if label == "Total":
             continue
-        headers.append((col, label))
+        raw_headers.append((col, label))
+
+    headers = [
+        {"col": col, "entity": label, "entity_group": label}
+        for col, label in raw_headers
+        if not label.startswith("Total for ")
+    ]
+    if dimension == "class":
+        for subtotal_col, subtotal_label in raw_headers:
+            if not subtotal_label.startswith("Total for "):
+                continue
+            group_name = subtotal_label.removeprefix("Total for ").strip()
+            group_start = next(
+                (
+                    header["col"]
+                    for header in reversed(headers)
+                    if header["col"] < subtotal_col
+                    and header["entity"].strip().casefold() == group_name.casefold()
+                ),
+                None,
+            )
+            if group_start is None:
+                continue
+            for header in headers:
+                if group_start <= header["col"] < subtotal_col:
+                    header["entity_group"] = group_name
 
     facts = []
     current_section = None
@@ -311,8 +338,16 @@ def parse_file(path: Path):
         if line_item.startswith("Accrual Basis"):
             continue
 
-        values = [(col, entity, numeric(df.iat[row, col])) for col, entity in headers]
-        has_any_number = any(amount is not None for _, _, amount in values)
+        values = [
+            (
+                header["col"],
+                header["entity"],
+                header["entity_group"],
+                numeric(df.iat[row, header["col"]]),
+            )
+            for header in headers
+        ]
+        has_any_number = any(amount is not None for _, _, _, amount in values)
 
         if line_item in SECTION_NAMES:
             current_section = line_item
@@ -323,12 +358,13 @@ def parse_file(path: Path):
                 current_section = line_item if current_section is None else current_section
             continue
 
-        for _, entity, amount in values:
+        for _, entity, entity_group, amount in values:
             if amount is None:
                 continue
             facts.append(
                 {
                     "entity": entity,
+                    "entity_group": entity_group,
                     "line_item": line_item,
                     "section": current_section or "Unclassified",
                     "row_order": row,
@@ -377,6 +413,8 @@ def parse_sales_file(path: Path):
             sales.append(
                 {
                     "transaction_date": normalize_transaction_date(transaction_date),
+                    "transaction_type": clean_label(df.iat[row, 2]) or "",
+                    "transaction_number": clean_label(df.iat[row, 3]) or "",
                     "customer": clean_label(df.iat[row, 4]) or "Not specified",
                     "brand": brand,
                     "sku": sku or product_name,
@@ -594,6 +632,7 @@ def init_db(conn: sqlite3.Connection):
             id INTEGER PRIMARY KEY,
             report_id INTEGER NOT NULL REFERENCES reports(id),
             entity TEXT NOT NULL,
+            entity_group TEXT NOT NULL,
             line_item TEXT NOT NULL,
             section TEXT NOT NULL,
             row_order INTEGER NOT NULL,
@@ -611,6 +650,8 @@ def init_db(conn: sqlite3.Connection):
             period_start TEXT,
             period_end TEXT,
             transaction_date TEXT,
+            transaction_type TEXT NOT NULL,
+            transaction_number TEXT NOT NULL,
             customer TEXT NOT NULL,
             brand TEXT NOT NULL,
             sku TEXT NOT NULL,
@@ -625,6 +666,8 @@ def init_db(conn: sqlite3.Connection):
             mapped_brand TEXT,
             mapped_product_name TEXT,
             unit_cost_hkd REAL,
+            cost_conflict INTEGER NOT NULL,
+            cost_variants TEXT NOT NULL,
             source_file TEXT NOT NULL
         );
 
@@ -694,8 +737,11 @@ def main():
 
         conn.executemany(
             """
-            INSERT INTO sku_costs(sku, mapped_brand, mapped_product_name, unit_cost_hkd, source_file)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO sku_costs(
+                sku, mapped_brand, mapped_product_name, unit_cost_hkd,
+                cost_conflict, cost_variants, source_file
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -703,6 +749,8 @@ def main():
                     cost["mapped_brand"],
                     cost["mapped_product_name"],
                     cost["unit_cost_hkd"],
+                    cost["cost_conflict"],
+                    cost["cost_variants"],
                     cost["source_file"],
                 )
                 for cost in sku_costs
@@ -750,13 +798,17 @@ def main():
             rate = rates[report["currency"]][0]
             conn.executemany(
                 """
-                INSERT INTO facts(report_id, entity, line_item, section, row_order, amount_original, amount_hkd, is_total)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO facts(
+                    report_id, entity, entity_group, line_item, section, row_order,
+                    amount_original, amount_hkd, is_total
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
                         report_id,
                         fact["entity"],
+                        fact["entity_group"],
                         fact["line_item"],
                         fact["section"],
                         fact["row_order"],
@@ -768,7 +820,7 @@ def main():
                 ],
             )
 
-        seen_sales = set()
+        seen_sales_counts = {}
         for report in sales_reports:
             conn.execute(
                 "INSERT OR IGNORE INTO batches(batch_key, name, uploaded_at, period_start, period_end) VALUES (?, ?, ?, ?, ?)",
@@ -792,19 +844,23 @@ def main():
             ).fetchone()[0]
             rate = rates[report["currency"]][0]
             sale_rows = []
+            report_key_counts = {}
             for sale in report["sales"]:
                 dedupe_key = (
                     report["company"],
                     sale["transaction_date"],
+                    sale["transaction_type"].strip().lower(),
+                    sale["transaction_number"].strip().lower(),
                     sale["customer"].strip().lower(),
                     normalize_sku(sale["sku"]),
                     sale["product_name"].strip().lower(),
                     round(float(sale["quantity"] or 0), 6),
                     round(float(sale["amount_original"] or 0), 6),
                 )
-                if dedupe_key in seen_sales:
+                occurrence = report_key_counts.get(dedupe_key, 0) + 1
+                report_key_counts[dedupe_key] = occurrence
+                if occurrence <= seen_sales_counts.get(dedupe_key, 0):
                     continue
-                seen_sales.add(dedupe_key)
                 sale_rows.append(
                     (
                         batch_id,
@@ -814,6 +870,8 @@ def main():
                         report["period_start"],
                         report["period_end"],
                         sale["transaction_date"],
+                        sale["transaction_type"],
+                        sale["transaction_number"],
                         sale["customer"],
                         sale["brand"],
                         normalize_sku(sale["sku"]),
@@ -823,14 +881,20 @@ def main():
                         sale["amount_original"] * rate,
                     )
                 )
+            for dedupe_key, occurrence_count in report_key_counts.items():
+                seen_sales_counts[dedupe_key] = max(
+                    seen_sales_counts.get(dedupe_key, 0),
+                    occurrence_count,
+                )
 
             conn.executemany(
                 """
                 INSERT INTO sku_sales(
                     batch_id, company_id, source_file, period_label, period_start, period_end,
-                    transaction_date, customer, brand, sku, product_name, quantity, amount_original, amount_hkd
+                    transaction_date, transaction_type, transaction_number, customer, brand,
+                    sku, product_name, quantity, amount_original, amount_hkd
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 sale_rows,
             )

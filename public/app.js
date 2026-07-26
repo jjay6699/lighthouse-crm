@@ -715,7 +715,14 @@ function Growth({ value, status, missingLabel = "n/a" }) {
   const numeric = Number(value);
   const empty = value === null || value === undefined || Number.isNaN(numeric);
   const tone = empty ? "na" : numeric >= 0 ? "up" : "down";
-  const label = empty && status === "unavailable" ? "unavailable" : empty && status === "no_prior" ? missingLabel : pctOrDash(value);
+  const label =
+    empty && status === "unavailable"
+      ? "unavailable"
+      : empty && status === "no_prior"
+        ? missingLabel
+        : empty && status === "nonpositive_prior"
+          ? "n/m"
+          : pctOrDash(value);
   return <span className={`growth ${tone}`}>{label}</span>;
 }
 
@@ -773,6 +780,8 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     ? Number(costCoverage.matched_revenue || 0) / Number(costCoverage.revenue || 0)
     : 0;
   const missingCostMap = !Number(costCoverage.valid_cost_rows || 0);
+  const conflictingCostMappings = Number(costCoverage.conflicting_mapping_rows || 0);
+  const hasCostConflicts = conflictingCostMappings > 0;
   const lowCostCoverage = !missingCostMap && mappedRevenueShare < 0.999999;
   const activeDays = isoDays(activeRange.from, activeRange.to);
   const narrowRange = activeDays > 0 && activeDays <= 7;
@@ -861,21 +870,29 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           <p>One shared sales scope, split into Brand and Customer breakdowns.</p>
         </div>
         <p className="sourceNote">
-          SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. Costed margin uses only sales with mapped COGS and always shows its coverage.
+          SKU revenue is net Sales by Product activity, including credit notes and returns. It may differ from P&L revenue because P&L can also include discounts, shipping, funding, service income, and accounting adjustments. Costed margin uses only sales with one unambiguous mapped COGS value and always shows its coverage.
         </p>
         <div className="skuReconcile">
           <span>P&L revenue {pnlRevenueAvailable ? hkd(pnlRevenue) : "unavailable for this period"}</span>
           <span>SKU revenue {hkd(skuRevenue)}</span>
           <strong>Difference {revenueGap === null ? "n/a" : hkd(revenueGap)}</strong>
         </div>
-        {(missingCostMap || lowCostCoverage) && (
+        {(missingCostMap || lowCostCoverage || hasCostConflicts) && (
           <div className="skuRangeNotice warning">
             <div>
-              <strong>{missingCostMap ? "SKU COGS mapping is not loaded" : "SKU COGS mapping coverage is incomplete"}</strong>
+              <strong>
+                {missingCostMap
+                  ? "SKU COGS mapping is not loaded"
+                  : hasCostConflicts
+                    ? "Ambiguous SKU costs were excluded"
+                    : "SKU COGS mapping coverage is incomplete"}
+              </strong>
               <span>
                 {missingCostMap
                   ? "Upload MAPPING DATA.xlsx with the Sales by Product files, then reimport finance data."
-                  : `${pct(mappedRevenueShare)} of visible SKU revenue has mapped COGS. Displayed costed margins apply only to that mapped revenue.`}
+                  : hasCostConflicts
+                    ? `${conflictingCostMappings} mapping keys contain more than one cost. Those costs are withheld instead of selecting an arbitrary value; ${pct(mappedRevenueShare)} of visible SKU revenue has an unambiguous mapped COGS.`
+                    : `${pct(mappedRevenueShare)} of visible SKU revenue has mapped COGS. Displayed costed margins apply only to that mapped revenue.`}
               </span>
             </div>
           </div>
@@ -1486,7 +1503,8 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
     .filter((row) => !/^total for\b/i.test(String(row.line_item || "")))
     .filter((row) => !["Gross Profit", "Net Earnings"].includes(String(row.line_item || "")))
     .sort((a, b) => Math.abs(Number(b.amount || 0)) - Math.abs(Number(a.amount || 0)));
-  const pnlExact = data.meta.pnlCoverage?.exact !== false;
+  const pnlExact = data.meta.pnlCoverage?.available ?? data.meta.pnlCoverage?.exact !== false;
+  const incompatiblePnlFilters = data.meta.pnlFilterCompatibility?.exact === false;
   const noCommonPnlRange = !data.meta.preferredPnlRange && Boolean(data.meta.pnlAvailableRanges?.length);
   const revenueBase = Number(data.kpis.revenue || 0);
   const grossMargin = revenueBase ? Number(data.kpis.gross_profit || 0) / revenueBase : 0;
@@ -1582,9 +1600,17 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       {subtab !== "sku" && !pnlExact && (
         <div className="skuRangeNotice warning">
           <div>
-            <strong>{noCommonPnlRange ? "Company P&L periods do not align" : "Exact P&L is unavailable for this period"}</strong>
+            <strong>
+              {incompatiblePnlFilters
+                ? "Combined brand/customer P&L is unavailable"
+                : noCommonPnlRange
+                  ? "Company P&L periods do not align"
+                  : "Exact P&L is unavailable for this period"}
+            </strong>
             <span>
-              {noCommonPnlRange
+              {incompatiblePnlFilters
+                ? data.meta.pnlFilterCompatibility.reason
+                : noCommonPnlRange
                 ? `No single exact report period covers all ${data.meta.pnlScopeCompanyCount || "selected"} companies. Uploaded reports span ${data.meta.pnlCoverage?.active?.min || "-"} to ${data.meta.pnlCoverage?.active?.max || "-"}; align the source report dates before consolidating.`
                 : `Requested ${data.meta.pnlCoverage?.requested?.from || "-"} to ${data.meta.pnlCoverage?.requested?.to || "-"}. The selected source reports cover ${data.meta.pnlCoverage?.active?.min || "-"} to ${data.meta.pnlCoverage?.active?.max || "-"}; estimated proration has been disabled.`}
             </span>
@@ -8082,6 +8108,7 @@ function App() {
   const query = useMemo(() => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
+      if (key === "dimension") return;
       if (Array.isArray(value)) {
         value.forEach((item) => {
           if (item && item !== "all") params.append(key, item);
@@ -8090,6 +8117,9 @@ function App() {
         params.append(key, value);
       }
     });
+    const financialDimension =
+      filters.customer.length > 0 && filters.brand.length === 0 ? "customer" : "class";
+    params.set("dimension", financialDimension);
     if (search) params.append("search", search);
     return params.toString();
   }, [filters, search]);

@@ -104,6 +104,55 @@ assert(full.insights.revenueGrowth.growth_p2 === null, "Estimated P&L growth mus
 assert(full.meta.fxPolicy?.basis === "live_refresh_rate", "FX conversion basis is missing");
 assert(full.intercompany?.excluded === true, "Intercompany transactions must be excluded from consolidated totals");
 
+const healthallEntity = full.byEntity.find((row) => String(row.entity).toLowerCase() === "healthall");
+assert(healthallEntity, "Grouped Healthall class is missing from the P&L entity breakdown");
+const healthallFiltered = await dashboard({
+  dimension: "class",
+  brand: "Healthall",
+  dateFrom: "2023-01-01",
+  dateTo: "2026-05-22",
+});
+assert(
+  Math.abs(amount(healthallFiltered.kpis.revenue) - amount(healthallEntity.revenue)) <= tolerance,
+  "Parent-brand P&L does not include its grouped sub-classes"
+);
+
+const customerFiltered = await dashboard({
+  dimension: "customer",
+  customer: "A.S. Watson Retail (HK) Ltd.",
+  dateFrom: "2023-01-01",
+  dateTo: "2026-05-22",
+});
+assert(customerFiltered.meta.pnlCoverage.available, "Single-customer P&L should be available");
+assert(
+  amount(customerFiltered.kpis.revenue) > 0 && amount(customerFiltered.kpis.revenue) < amount(full.kpis.revenue),
+  "Customer filter did not narrow the P&L"
+);
+assert(
+  Math.abs(amount(customerFiltered.kpis.revenue) - line(customerFiltered, "Income", "Total for Income")) <= tolerance,
+  "Customer-filtered KPI does not tie to its P&L"
+);
+
+const intersectedDimensions = await dashboard({
+  dimension: "class",
+  brand: "Healthall",
+  customer: "A.S. Watson Retail (HK) Ltd.",
+  dateFrom: "2023-01-01",
+  dateTo: "2026-05-22",
+});
+assert(
+  intersectedDimensions.meta.pnlFilterCompatibility.exact === false,
+  "Combined brand/customer P&L should disclose that no exact cross-dimensional source exists"
+);
+assert(
+  Object.values(intersectedDimensions.kpis).every((value) => value === null),
+  "An assumed brand/customer P&L intersection escaped the accuracy gate"
+);
+assert(
+  amount(intersectedDimensions.sku.totals.revenue) > 0,
+  "Transaction-level SKU data should still support combined brand/customer filters"
+);
+
 const automaticComparisons = await dashboard({
   dimension: "class",
   dateFrom: "2026-04-01",

@@ -19,6 +19,7 @@ const authUser = process.env.CRM_USERNAME || "admin";
 const passwordHash = process.env.CRM_PASSWORD_HASH || "";
 const sessionSecret = process.env.SESSION_SECRET || "";
 const sessions = new Map();
+let financeSchemaChecked = false;
 const bundledPython = process.env.USERPROFILE
   ? join(process.env.USERPROFILE, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
   : "";
@@ -327,6 +328,29 @@ function openDbWrite() {
     return null;
   }
   return new DatabaseSync(dbPath);
+}
+
+function ensureFinanceSchema() {
+  if (financeSchemaChecked) return;
+  const db = openDbWrite();
+  if (!db) return;
+  try {
+    const factColumns = db.prepare("PRAGMA table_info(facts)").all().map((column) => column.name);
+    if (factColumns.length && !factColumns.includes("entity_group")) {
+      db.exec("ALTER TABLE facts ADD COLUMN entity_group TEXT");
+      db.exec("UPDATE facts SET entity_group = entity WHERE entity_group IS NULL OR entity_group = ''");
+    }
+    const costColumns = db.prepare("PRAGMA table_info(sku_costs)").all().map((column) => column.name);
+    if (costColumns.length && !costColumns.includes("cost_conflict")) {
+      db.exec("ALTER TABLE sku_costs ADD COLUMN cost_conflict INTEGER NOT NULL DEFAULT 0");
+    }
+    if (costColumns.length && !costColumns.includes("cost_variants")) {
+      db.exec("ALTER TABLE sku_costs ADD COLUMN cost_variants TEXT NOT NULL DEFAULT ''");
+    }
+    financeSchemaChecked = true;
+  } finally {
+    db.close();
+  }
 }
 
 function initWarehouseDb() {
@@ -965,7 +989,7 @@ function whereFromSearch(params, options = {}) {
     const brandConditions = selectedBrands.map((brand, index) => {
       const key = `$brand${index}`;
       values[key] = brand;
-      return `${brandKeyFromValue("f.entity")} = ${brandKeyFromValue(key)}`;
+      return `${brandKeyFromValue("COALESCE(f.entity_group, f.entity)")} = ${brandKeyFromValue(key)}`;
     });
     clauses.push(`(${brandConditions.join(" OR ")})`);
   } else if (dimension === "customer" && selectedCustomers.length) {
@@ -1202,7 +1226,7 @@ function skuWhereFromSearch(params) {
     clauses.push(`((${skuDate} IS NOT NULL AND ${skuDate} <= $dateTo) OR (${skuDate} IS NULL AND (s.period_end IS NULL OR s.period_end <= $dateTo)))`);
     values.$dateTo = dateTo;
   }
-  clauses.push("s.amount_hkd > 0.01");
+  clauses.push("ABS(s.amount_hkd) > 0.01");
 
   return {
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
@@ -1288,7 +1312,7 @@ function safeGrowth(current, previous) {
   return (Number(current || 0) - base) / Math.abs(base);
 }
 
-function fairGrowthMetric(currentSum, daysCurrent, compareMap, daysCompare, key) {
+function fairGrowthMetric(currentSum, daysCurrent, compareMap, daysCompare, key, { requirePositiveBase = false } = {}) {
   const cSum = Number(currentSum || 0);
   if (!compareMap.has(key)) {
     return { growth: null, value: cSum, status: "no_prior" };
@@ -1301,8 +1325,8 @@ function fairGrowthMetric(currentSum, daysCurrent, compareMap, daysCompare, key)
   const compareDaily = pSum / daysCompare;
   const normalizedCompare = compareDaily * daysCurrent;
   
-  if (Math.abs(compareDaily) < 0.01) {
-    return { growth: null, value: cSum - pSum, status: "no_prior" };
+  if (Math.abs(compareDaily) < 0.01 || (requirePositiveBase && compareDaily <= 0.01)) {
+    return { growth: null, value: cSum - pSum, status: "nonpositive_prior" };
   }
   
   return {
@@ -1338,6 +1362,7 @@ function pnlAmountExpression(params, factAlias = "f", reportAlias = "r") {
 }
 
 function getDashboard(params, { skipConsolidationReconciliation = false } = {}) {
+  ensureFinanceSchema();
   const db = openDb();
   if (!db) {
     return {
@@ -1403,6 +1428,10 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
 
   const revenueTotal = Number((kpiRows[0] || {}).revenue || 0);
   const expenseTotal = Number((kpiRows[0] || {}).expenses || 0);
+  const pnlEntityKey =
+    (params.get("dimension") || "class") === "class"
+      ? brandKeyFromValue("COALESCE(f.entity_group, f.entity)")
+      : "f.entity";
   let companyPerformance = byCompany.map((row) => {
     const revenue = Number(row.revenue || 0);
     return {
@@ -1417,18 +1446,19 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   const byEntity = db
     .prepare(
       `
-      SELECT f.entity,
+      SELECT ${pnlEntityKey} AS entity,
         SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END) AS revenue,
         SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${pnlAmount} ELSE 0 END) AS gross_profit,
         SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${pnlAmount} ELSE 0 END) AS net_earnings
       ${baseJoin}
-      GROUP BY f.entity
+      GROUP BY ${pnlEntityKey}
       HAVING ABS(revenue) + ABS(gross_profit) + ABS(net_earnings) > 0
       ORDER BY revenue DESC
       LIMIT 25
       `
     )
-    .all(filter.values);
+    .all(filter.values)
+    .map((row) => ({ ...row, entity: brandLabel(row.entity, row.entity) }));
 
   const expenses = db
     .prepare(
@@ -1527,17 +1557,18 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   const costOfSalesByEntity = db
     .prepare(
       `
-      SELECT f.entity,
+      SELECT ${pnlEntityKey} AS entity,
         SUM(${pnlAmount}) AS amount
       ${baseJoin}
       ${appendWhere(filter, "f.line_item = 'Total for Cost of Sales'")}
-      GROUP BY f.entity
+      GROUP BY ${pnlEntityKey}
       HAVING ABS(amount) > 0.01
       ORDER BY ABS(amount) DESC
       LIMIT 10
       `
     )
     .all(filter.values)
+    .map((row) => ({ ...row, entity: brandLabel(row.entity, row.entity) }))
     .filter((row) => String(row.entity || "").toLowerCase() !== "not specified")
     .map((row) => ({
       ...row,
@@ -1569,19 +1600,20 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   const companyEntity = db
     .prepare(
       `
-      SELECT c.name AS company, f.entity,
+      SELECT c.name AS company, ${pnlEntityKey} AS entity,
         SUM(CASE WHEN f.line_item = 'Total for Income' THEN ${pnlAmount} ELSE 0 END) AS revenue,
         SUM(CASE WHEN f.line_item = 'Gross Profit' THEN ${pnlAmount} ELSE 0 END) AS gross_profit,
         SUM(CASE WHEN f.line_item = 'Total for Expenses' THEN ${pnlAmount} ELSE 0 END) AS expenses,
         SUM(CASE WHEN f.line_item = 'Net Earnings' THEN ${pnlAmount} ELSE 0 END) AS net_earnings
       ${baseJoin}
-      GROUP BY c.name, f.entity
+      GROUP BY c.name, ${pnlEntityKey}
       HAVING ABS(revenue) + ABS(gross_profit) + ABS(expenses) + ABS(net_earnings) > 0
       ORDER BY revenue DESC
       LIMIT 120
       `
     )
-    .all(filter.values);
+    .all(filter.values)
+    .map((row) => ({ ...row, entity: brandLabel(row.entity, row.entity) }));
 
   const hasSkuSales = !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sku_sales'").get();
   const skuDate = skuDateExpression("s");
@@ -1853,7 +1885,23 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
       `
     )
     .all(filter.values);
-  const filteredReportDateRange = filteredReports.reduce(
+  const coverageFilter = entityOptionsWhere(params);
+  const coverageReports = db
+    .prepare(
+      `
+      SELECT DISTINCT
+        r.id,
+        r.period_start,
+        r.period_end,
+        c.name AS company
+      FROM reports r
+      JOIN batches b ON b.id = r.batch_id
+      JOIN companies c ON c.id = r.company_id
+      ${coverageFilter.sql}
+      `
+    )
+    .all(coverageFilter.values);
+  const filteredReportDateRange = coverageReports.reduce(
     (range, report) => ({
       min: minIsoDate(range.min, report.period_start),
       max: maxIsoDate(range.max, report.period_end),
@@ -1870,7 +1918,7 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
     const entityFilter = entityOptionsWhere(entityParams);
     const entitySelect =
       dimension === "class"
-        ? `${brandKeyFromValue("f.entity")} AS entity_key, MIN(f.entity) AS entity`
+        ? `${brandKeyFromValue("COALESCE(f.entity_group, f.entity)")} AS entity_key, MIN(COALESCE(f.entity_group, f.entity)) AS entity`
         : `f.entity AS entity_key, f.entity AS entity`;
     const entityGroup = dimension === "class" ? "entity_key" : "f.entity";
     return db
@@ -1963,10 +2011,13 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
     pnlCoverage: {
       requested: requestedPnlRange,
       active: filteredReportDateRange,
-      reportCount: filteredReports.length,
+      reportCount: coverageReports.length,
+      companyCount: new Set(coverageReports.map((report) => report.company)).size,
+      expectedCompanyCount: pnlScopeCompanyCount,
       exact: Boolean(
-        filteredReports.length &&
-          filteredReports.every(
+        coverageReports.length &&
+          new Set(coverageReports.map((report) => report.company)).size === pnlScopeCompanyCount &&
+          coverageReports.every(
             (report) =>
               (!requestedPnlRange.from || report.period_start === requestedPnlRange.from) &&
               (!requestedPnlRange.to || report.period_end === requestedPnlRange.to)
@@ -2001,6 +2052,9 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   let skuCostCoverage = {
     mapping_rows: 0,
     valid_cost_rows: 0,
+    conflicting_mapping_rows: 0,
+    conflicting_sales_rows: 0,
+    conflicting_revenue: 0,
     matched_sales_rows: 0,
     sales_rows: 0,
     matched_revenue: 0,
@@ -2045,6 +2099,9 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
           SELECT
             (SELECT COUNT(*) FROM sku_costs) AS mapping_rows,
             (SELECT COUNT(*) FROM sku_costs WHERE unit_cost_hkd IS NOT NULL) AS valid_cost_rows,
+            (SELECT COUNT(*) FROM sku_costs WHERE cost_conflict = 1) AS conflicting_mapping_rows,
+            SUM(CASE WHEN sc.cost_conflict = 1 THEN 1 ELSE 0 END) AS conflicting_sales_rows,
+            SUM(CASE WHEN sc.cost_conflict = 1 THEN s.amount_hkd ELSE 0 END) AS conflicting_revenue,
             SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE 1 END) AS matched_sales_rows,
             COUNT(*) AS sales_rows,
             SUM(CASE WHEN sc.unit_cost_hkd IS NULL THEN 0 ELSE s.amount_hkd END) AS matched_revenue,
@@ -2125,7 +2182,7 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
     }
     const brandMarginFilter = whereFromSearch(brandMarginParams);
     const brandMarginAmount = pnlAmountExpression(brandMarginParams);
-    const pnlBrandKey = brandKeyExpression("f", "entity");
+    const pnlBrandKey = brandKeyFromValue("COALESCE(f.entity_group, f.entity)");
     const brandMarginJoin = `
       FROM (
         SELECT raw_f.*, CASE WHEN ${intercompanyExpression("raw_f")} THEN 1 ELSE 0 END AS is_intercompany
@@ -2319,8 +2376,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   const skuCurrentRevenue = sumRevenue(skuBrandCurrent);
   const skuLyRevenue = sumRevenue(skuBrandLy);
   const skuP3mRevenue = sumRevenue(skuBrandP3m);
-  const skuTotalP2Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuLyRevenue]]), daysP2, "total");
-  const skuTotalP3Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuP3mRevenue]]), daysP3, "total");
+  const skuTotalP2Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuLyRevenue]]), daysP2, "total", { requirePositiveBase: true });
+  const skuTotalP3Metric = fairGrowthMetric(skuCurrentRevenue, daysP1, new Map([["total", skuP3mRevenue]]), daysP3, "total", { requirePositiveBase: true });
   const skuKey = (row) =>
     `${row.brand_key || String(row.brand || "").toLowerCase()}|${String(row.sku || "").toLowerCase()}|${String(row.product_name || "").trim().toLowerCase()}`;
   const skuGrossProfit = (row) => {
@@ -2338,8 +2395,10 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
     return revenue ? Number(row.costed_revenue || 0) / revenue : 0;
   };
 
-  const pnlAvailable = meta.pnlCoverage.exact;
   const selectedBrandFilters = params.getAll("brand").filter((value) => value && value !== "all");
+  const selectedCustomerFilters = params.getAll("customer").filter((value) => value && value !== "all");
+  const crossDimensionPnlFilter = selectedBrandFilters.length > 0 && selectedCustomerFilters.length > 0;
+  const pnlAvailable = meta.pnlCoverage.exact && !crossDimensionPnlFilter;
   const shouldReconcileFromCustomers =
     !skipConsolidationReconciliation && requestedDimension === "class" && selectedBrandFilters.length === 0;
   let customerConsolidation = null;
@@ -2368,6 +2427,16 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
   const unavailableKpis = { revenue: null, gross_profit: null, expenses: null, net_earnings: null };
   const responseMeta = {
     ...meta,
+    pnlCoverage: {
+      ...meta.pnlCoverage,
+      available: pnlAvailable,
+    },
+    pnlFilterCompatibility: {
+      exact: !crossDimensionPnlFilter,
+      reason: crossDimensionPnlFilter
+        ? "Brand and customer can be intersected in transaction-level SKU sales, but the uploaded P&L exports contain those dimensions in separate reports. A combined brand/customer P&L would require unsupported allocation assumptions."
+        : "",
+    },
     consolidationBasis: {
       requestedDimension,
       financialDimension: useCustomerConsolidation ? "customer" : requestedDimension,
@@ -2443,8 +2512,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         const currentRevenue = hasSkuComparison ? Number(skuCurrentMap.get(rowKey) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuLyMap, daysP2, rowKey);
-        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuP3mMap, daysP3, rowKey);
+        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuLyMap, daysP2, rowKey, { requirePositiveBase: true });
+        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuP3mMap, daysP3, rowKey, { requirePositiveBase: true });
         return {
           ...row,
           brand: brandLabel(key, row.brand),
@@ -2465,8 +2534,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         const currentRevenue = hasSkuComparison ? Number(skuBrandCurrentMap.get(row.brand_key) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandLyMap, daysP2, row.brand_key);
-        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandP3mMap, daysP3, row.brand_key);
+        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandLyMap, daysP2, row.brand_key, { requirePositiveBase: true });
+        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuBrandP3mMap, daysP3, row.brand_key, { requirePositiveBase: true });
         return {
           ...row,
           brand: brandLabel(row.brand_key, row.brand),
@@ -2485,8 +2554,8 @@ function getDashboard(params, { skipConsolidationReconciliation = false } = {}) 
         const currentRevenue = hasSkuComparison ? Number(skuCustomerCurrentMap.get(row.customer_key) || 0) : Number(row.revenue || 0);
         const mappedGrossProfit = skuGrossProfit(row);
         const grossMargin = skuGrossMargin(row, mappedGrossProfit);
-        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerLyMap, daysP2, row.customer_key);
-        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerP3mMap, daysP3, row.customer_key);
+        const p2Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerLyMap, daysP2, row.customer_key, { requirePositiveBase: true });
+        const p3Metric = fairGrowthMetric(currentRevenue, daysP1, skuCustomerP3mMap, daysP3, row.customer_key, { requirePositiveBase: true });
         return {
           ...row,
           revenue_share: Number(skuTotals.revenue || 0) ? Number(row.revenue || 0) / Number(skuTotals.revenue || 0) : 0,

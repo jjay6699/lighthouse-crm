@@ -6,6 +6,7 @@
   "scripts": {
     "import:finance": "python scripts/import_finance.py",
     "audit:finance": "node scripts/audit_finance.mjs",
+    "audit:finance:source": "python scripts/audit_finance_source.py",
     "hash:password": "node scripts/hash_password.mjs",
     "start": "node server.js"
   },
