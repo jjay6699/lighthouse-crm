@@ -4819,7 +4819,7 @@ function WarehouseDashboard({ subtab, setSubtab, stock, loading, error, loadStoc
   );
 }
 
-function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, loadData }) {
+function AdsDashboard({ subtab, setSubtab, settings, campaigns, loading, error, loadData, data, warehouseStock }) {
   const [appId, setAppId] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [adAccountId, setAdAccountId] = useState("");
@@ -8533,6 +8533,8 @@ function App() {
           loading={adsLoading}
           error={adsError}
           loadData={loadAdsData}
+          data={data}
+          warehouseStock={warehouseStock}
         />
       ) : page === "metaLibrary" ? (
         <MetaAdsLibraryDashboard subtab={metaLibrarySubtab} setSubtab={setMetaLibrarySubtab} />
