@@ -1825,15 +1825,23 @@ tbody tr:hover td {
   padding-bottom: 6px;
 }
 
-.brandMixHead span:nth-child(n+2) {
-  text-align: right;
+.brandMixHead .brandMixSort {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 3px;
+  justify-self: end;
+  padding: 0;
+  text-align: center;
 }
 
-.brandMixHead span:nth-child(5),
-.brandMixHead span:nth-child(6) {
-  justify-self: end;
-  width: 58px;
-  text-align: center;
+.brandMixHead .brandMixSort:hover,
+.brandMixHead .brandMixSort.active {
+  color: var(--ink);
 }
 
 .brandMixRow {

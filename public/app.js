@@ -620,18 +620,51 @@ function ExpenseBars({ rows }) {
 }
 
 function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
+  const [sortKey, setSortKey] = useState("revenue");
+  const [sortDirection, setSortDirection] = useState("desc");
   const max = Math.max(...rows.map((row) => Number(row.revenue || 0)), 1);
+  const sortableColumns = [
+    { key: "revenue", label: "Revenue" },
+    { key: "gross_profit", label: "Costed margin" },
+    { key: "revenue_share", label: "Share" },
+    { key: "growth_p2", label: "Revenue Δ P2" },
+    { key: "growth_p3", label: "Revenue Δ P3" },
+  ];
+  const sortedRows = useMemo(() => [...rows].sort((a, b) => {
+    const aValue = Number(a[sortKey]);
+    const bValue = Number(b[sortKey]);
+    const aMissing = a[sortKey] === null || a[sortKey] === undefined || Number.isNaN(aValue);
+    const bMissing = b[sortKey] === null || b[sortKey] === undefined || Number.isNaN(bValue);
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+  }), [rows, sortKey, sortDirection]);
+  const toggleSort = (key) => {
+    if (key === sortKey) {
+      setSortDirection((direction) => direction === "desc" ? "asc" : "desc");
+      return;
+    }
+    setSortKey(key);
+    setSortDirection("desc");
+  };
   return (
     <div className="brandMixList">
       <div className="brandMixHead">
         <span>{entityLabel}</span>
-        <span>Revenue</span>
-        <span>Costed margin</span>
-        <span>Share</span>
-        <span>vs A</span>
-        <span>vs B</span>
+        {sortableColumns.map((column) => (
+          <button
+            className={`brandMixSort ${sortKey === column.key ? "active" : ""}`}
+            type="button"
+            key={column.key}
+            onClick={() => toggleSort(column.key)}
+            title={`Sort by ${column.label}`}
+          >
+            {column.label} <ArrowUpDown size={12} aria-hidden="true" />
+          </button>
+        ))}
       </div>
-      {rows.map((row) => {
+      {sortedRows.map((row) => {
         const name = row.brand || row.customer || "Unmapped";
         return (
           <div className="brandMixRow" key={name}>
@@ -846,7 +879,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
               <p>Revenue, margin dollars, share, and growth from Sales by Product reports</p>
             </div>
           </div>
-          <EntityRevenueMix rows={entityMixRows.slice(0, 15)} entityLabel={entityLabel} />
+          <EntityRevenueMix rows={entityMixRows} entityLabel={entityLabel} />
         </div>
       </section>
 
