@@ -837,6 +837,12 @@ h1 {
   gap: 16px;
 }
 
+.entityMixGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .statementGrid {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -2522,6 +2528,7 @@ tbody tr:hover td {
   .cleanGrid,
   .skuStats,
   .brandMixRow,
+  .entityMixGrid,
   .summaryTop {
     grid-template-columns: 1fr;
   }

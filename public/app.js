@@ -737,9 +737,6 @@ function isoDays(start, end) {
 function BrandSkuView({ sku, filters, setFilters, kpis }) {
   const [sortBy, setSortBy] = useState("revenue");
   const [sortDirection, setSortDirection] = useState("desc");
-  const isClassView = filters.dimension === "class";
-  const entityLabel = isClassView ? "Brand" : "Customer";
-  const entityMixRows = isClassView ? sku.brands : sku.customers;
   const rows = sortSkuRows(sku.rows, sortBy, sortDirection);
   const activeRange = sku.activeRange || {};
   const dataRange = sku.dataRange || {};
@@ -769,7 +766,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
 
   const exportToCsv = () => {
     const headers = [
-      entityLabel,
+      "Brand",
       "SKU",
       "Product Name",
       "Quantity",
@@ -786,7 +783,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     const csvRows = [headers.join(",")];
 
     rows.forEach((row) => {
-      const entityVal = isClassView ? row.brand : row.customer || "Not specified";
+      const entityVal = row.brand || "Unmapped";
       const formatString = (val) => {
         if (val === null || val === undefined) return '""';
         const str = String(val).replace(/"/g, '""');
@@ -825,7 +822,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     const link = document.createElement("a");
     link.setAttribute("href", url);
     const dateStr = new Date().toISOString().slice(0, 10);
-    link.setAttribute("download", `SKU_Sales_Export_${entityLabel}_${sortBy}_${sortDirection}_${dateStr}.csv`);
+    link.setAttribute("download", `SKU_Sales_Export_Brand_${sortBy}_${sortDirection}_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -836,8 +833,8 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     <section className="summaryStack">
       <section className="skuHeader panel">
         <div>
-          <h2>{entityLabel} / SKU sales</h2>
-          <p>Sales by Product/Service detail, external customers only, converted to HKD.</p>
+          <h2>Brand & customer SKU sales</h2>
+          <p>One shared sales scope, split into Brand and Customer breakdowns.</p>
         </div>
         <p className="sourceNote">
           SKU revenue may not equal P&L revenue because this view shows positive Sales by Product rows only. P&L can include discounts, shipping, funding, service income, credit notes, returns, and accounting adjustments. Costed margin uses only sales with mapped COGS and always shows its coverage.
@@ -871,15 +868,24 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
         </div>
       </section>
 
-      <section className="summaryTop">
+      <section className="entityMixGrid">
         <div className="panel">
           <div className="panelHeader">
             <div>
-              <h2>{entityLabel} revenue mix</h2>
+              <h2>Brand revenue mix</h2>
               <p>Revenue, margin dollars, share, and growth from Sales by Product reports</p>
             </div>
           </div>
-          <EntityRevenueMix rows={entityMixRows} entityLabel={entityLabel} />
+          <EntityRevenueMix rows={sku.brands} entityLabel="Brand" />
+        </div>
+        <div className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>Customer revenue mix</h2>
+              <p>The same filtered sales, grouped by customer</p>
+            </div>
+          </div>
+          <EntityRevenueMix rows={sku.customers} entityLabel="Customer" />
         </div>
       </section>
 
@@ -917,7 +923,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
           <table>
             <thead>
               <tr>
-                <th>{entityLabel}</th>
+                <th>Brand</th>
                 <th>SKU</th>
                 <th>Product</th>
                 <th>Quantity</th>
@@ -933,8 +939,8 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={`${isClassView ? row.brand : row.customer}-${row.sku}-${row.product_name}`}>
-                  <td>{isClassView ? row.brand : row.customer || "Not specified"}</td>
+                <tr key={`${row.brand}-${row.sku}-${row.product_name}`}>
+                  <td>{row.brand || "Unmapped"}</td>
                   <td>{row.sku}</td>
                   <td>{row.product_name}</td>
                   <td>{new Intl.NumberFormat("en-HK").format(Number(row.quantity || 0))}</td>
@@ -1368,7 +1374,6 @@ function Overview({ data, goFinance, setPage }) {
 }
 
 function FinancialDashboard({ data, filters, setFilters, search, setSearch, uploadState, uploadFiles, renameBatch, deleteBatch, refresh, subtab, setSubtab }) {
-  const isClassView = filters.dimension === "class";
   const [comparisonMode, setComparisonMode] = useState("standard");
   
   const comparisonModeOptions = [
@@ -1400,15 +1405,10 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
       }
     }
   }, [filters.dateFrom, filters.dateTo, comparisonMode, setFilters]);
-  const activeEntityTypeLabel = isClassView ? "Brand" : "Customer";
   const companyOptions = [
     { value: "all", label: "All companies" },
     ...data.meta.companies.map((company) => ({ value: company.name, label: company.name })),
   ];
-  const dimensionOptions = data.meta.dimensions.map((dimension) => ({
-    value: dimension,
-    label: dimension === "class" ? "By class / brand" : "By customer",
-  }));
   const brandSource = data.meta.entitiesByDimension?.class || [];
   const brandOptions = [
     { value: "all", label: "All brands" },
@@ -1448,9 +1448,8 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
   const skuMarginCoverage = skuRevenue ? skuCostedRevenue / skuRevenue : 0;
   const statementContext = [
     Array.isArray(filters.company) && filters.company.length ? `${filters.company.length} companies` : "All companies",
-    isClassView
-      ? filters.brand?.length ? `${filters.brand.length} brands` : "All brands"
-      : filters.customer?.length ? `${filters.customer.length} customers` : "All customers",
+    filters.brand?.length ? `${filters.brand.length} brands` : "All brands",
+    filters.customer?.length ? `${filters.customer.length} customers` : "All customers",
   ].join(" / ");
   const metricCards = subtab === "sku"
     ? [
@@ -1472,7 +1471,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <div>
           <p className="eyebrow">Financial Consolidation</p>
           <h1>Profit and loss analytics</h1>
-          <p className="subtitle">Consolidated HKD dashboard with controls for period, company, view, entity scope, and P&L section.</p>
+          <p className="subtitle">Consolidated HKD dashboard with shared company, brand, customer, and period controls.</p>
         </div>
         <div className="headerActions">
           <button className="primaryButton" type="button" onClick={() => setSubtab("import")}>
@@ -1490,12 +1489,8 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         <div className="filterGroup">
           <Select label="Batch" value={filters.batch} options={batchOptions} onChange={(value) => setFilters({ ...filters, batch: value })} />
           <MultiSelect label="Select Companies" values={filters.company} options={companyOptions} onChange={(values) => setFilters({ ...filters, company: values })} />
-          <SegmentedToggle label="View By" value={filters.dimension} options={dimensionOptions} onChange={(value) => setFilters({ ...filters, dimension: value, brand: [], customer: [] })} />
-          {isClassView ? (
-            <MultiSelect label="Select Brands" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
-          ) : (
-            <MultiSelect label="Select Customers" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...filters, customer: values })} />
-          )}
+          <MultiSelect label="Select Brands" values={filters.brand} options={brandOptions} onChange={(values) => setFilters({ ...filters, brand: values })} />
+          <MultiSelect label="Select Customers" values={filters.customer} options={customerOptions} onChange={(values) => setFilters({ ...filters, customer: values })} />
         </div>
         
         <div className="filterDivider" />
@@ -1510,7 +1505,7 @@ function FinancialDashboard({ data, filters, setFilters, search, setSearch, uplo
         </div>
       </section>
       <p className="filterHelp">
-        Batch keeps uploads separate. Brand and Customer filters filter P&L lines dynamically based on active dimension view, and apply concurrently to SKU sales analysis.
+        Batch keeps uploads separate. Brand and Customer selections apply together to SKU sales; the breakdowns below show the same filtered sales by each dimension.
       </p>
 
       {comparisonMode === "custom" && (
