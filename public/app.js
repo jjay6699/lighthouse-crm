@@ -632,6 +632,10 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
     { key: "growth_p2", label: "Revenue Δ P2" },
     { key: "growth_p3", label: "Revenue Δ P3" },
   ];
+  const sortDirectionOptions = [
+    { value: "desc", label: "Highest to lowest" },
+    { value: "asc", label: "Lowest to highest" },
+  ];
   const sortedRows = useMemo(() => [...rows].sort((a, b) => {
     const aValue = Number(a[sortKey]);
     const bValue = Number(b[sortKey]);
@@ -653,6 +657,15 @@ function EntityRevenueMix({ rows, entityLabel = "Brand" }) {
   const visibleRows = showAll ? sortedRows : sortedRows.slice(0, previewLimit);
   return (
     <div className="brandMixList">
+      <div className="mixSortControls">
+        <Select
+          label="Sort by"
+          value={sortKey}
+          options={sortableColumns.map((column) => ({ value: column.key, label: column.label }))}
+          onChange={setSortKey}
+        />
+        <Select label="Order" value={sortDirection} options={sortDirectionOptions} onChange={setSortDirection} />
+      </div>
       <div className="brandMixHead">
         <span>{entityLabel}</span>
         {sortableColumns.map((column) => (

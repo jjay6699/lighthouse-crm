@@ -1813,6 +1813,17 @@ tbody tr:hover td {
   gap: 8px;
 }
 
+.mixSortControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.mixSortControls .field {
+  min-width: 150px;
+}
+
 .mixExpandButton,
 .tableExpandControl .ghostButton {
   justify-self: start;
