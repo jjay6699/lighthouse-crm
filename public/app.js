@@ -674,16 +674,22 @@ const skuSortOptions = [
   { value: "growth_p3", label: "Sales growth % (Selected vs B)" },
 ];
 
-function sortSkuRows(rows, sortBy) {
+const skuSortDirectionOptions = [
+  { value: "desc", label: "Highest to lowest" },
+  { value: "asc", label: "Lowest to highest" },
+];
+
+function sortSkuRows(rows, sortBy, sortDirection) {
   return [...rows].sort((a, b) => {
     const aValue = a[sortBy];
     const bValue = b[sortBy];
     const aMissing = aValue === null || aValue === undefined || Number.isNaN(Number(aValue));
     const bMissing = bValue === null || bValue === undefined || Number.isNaN(Number(bValue));
-    if (aMissing && bMissing) return Number(b.revenue || 0) - Number(a.revenue || 0);
+    if (aMissing && bMissing) return 0;
     if (aMissing) return 1;
     if (bMissing) return -1;
-    return Number(bValue || 0) - Number(aValue || 0);
+    const difference = Number(aValue || 0) - Number(bValue || 0);
+    return sortDirection === "asc" ? difference : -difference;
   });
 }
 
@@ -697,10 +703,11 @@ function isoDays(start, end) {
 
 function BrandSkuView({ sku, filters, setFilters, kpis }) {
   const [sortBy, setSortBy] = useState("revenue");
+  const [sortDirection, setSortDirection] = useState("desc");
   const isClassView = filters.dimension === "class";
   const entityLabel = isClassView ? "Brand" : "Customer";
   const entityMixRows = isClassView ? sku.brands : sku.customers;
-  const rows = sortSkuRows(sku.rows, sortBy);
+  const rows = sortSkuRows(sku.rows, sortBy, sortDirection);
   const activeRange = sku.activeRange || {};
   const dataRange = sku.dataRange || {};
   const costCoverage = sku.costCoverage || {};
@@ -785,7 +792,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
     const link = document.createElement("a");
     link.setAttribute("href", url);
     const dateStr = new Date().toISOString().slice(0, 10);
-    link.setAttribute("download", `SKU_Sales_Export_${entityLabel}_${sortBy}_${dateStr}.csv`);
+    link.setAttribute("download", `SKU_Sales_Export_${entityLabel}_${sortBy}_${sortDirection}_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -847,7 +854,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
         <div className="panelHeader">
           <div>
             <h2>SKU detail</h2>
-            <p>Top SKU rows by {skuSortOptions.find((option) => option.value === sortBy)?.label || "Sales"}</p>
+            <p>{skuSortDirectionOptions.find((option) => option.value === sortDirection)?.label} by {skuSortOptions.find((option) => option.value === sortBy)?.label || "Sales"}</p>
           </div>
           <div className="panelActions" style={{ display: "flex", alignItems: "flex-end", gap: "10px" }}>
             <button
@@ -870,6 +877,7 @@ function BrandSkuView({ sku, filters, setFilters, kpis }) {
               Export to CSV
             </button>
             <Select label="Sort by" value={sortBy} options={skuSortOptions} onChange={setSortBy} />
+            <Select label="Order" value={sortDirection} options={skuSortDirectionOptions} onChange={setSortDirection} />
           </div>
         </div>
         <div className="tableWrap compactTable">
